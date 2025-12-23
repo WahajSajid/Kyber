@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+    <!-- drawable/card_docume.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="387dp"
+android:height="58dp"
+android:viewportWidth="387"
+android:viewportHeight="58"
+    >
+<group>
+    <clip-path
+        android:pathData="M14 0H373C380.732 0 387 6.26801 387 14V44C387 51.732 380.732 58 373 58H14C6.26801 58 0 51.732 0 44V14C0 6.26801 6.26801 0 14 0Z"
+        />
+    <path
+        android:pathData="M0 0V58H387V0"
+        android:fillColor="#2A2B36"
+        />
+</group>
+</vector>

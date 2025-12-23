@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="@android:color/transparent"
+    tools:context=".fragments.ContactsFragment">
+    <com.google.android.material.button.MaterialButton
+        android:visibility="gone"
+        android:layout_marginTop="@dimen/_10sdp"
+        android:id="@+id/btnCreateContact"
+        android:layout_width="wrap_content"
+        android:layout_marginHorizontal="@dimen/_14sdp"
+        android:layout_height="@dimen/_48sdp"
+        android:backgroundTint="#300047AF"
+        android:text="Create New Contact"
+        android:textColor="@android:color/white"
+        android:textAllCaps="false"
+        android:paddingStart="@dimen/_16sdp"
+        android:paddingEnd="@dimen/_16sdp"
+        android:gravity="center"
+        app:cornerRadius="@dimen/_24sdp"
+        app:icon="@drawable/add_chat"
+        app:iconTint="@null"
+        app:iconGravity="textStart"
+        app:strokeColor="#803362AB"
+        app:strokeWidth="@dimen/_1sdp" />
+
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvContacts"
+        android:layout_below="@id/btnCreateContact"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:listitem="@layout/contact_list_item"
+        android:padding="@dimen/_14sdp"
+        android:clipToPadding="false" />
+
+</RelativeLayout>

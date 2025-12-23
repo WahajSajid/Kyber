@@ -1,0 +1,246 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/_510sdp"
+    android:layout_marginRight="@dimen/_18sdp"
+    android:layout_marginLeft="@dimen/_18sdp"
+    android:background="@drawable/disappearing_messages_dialog_bg">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_510sdp"
+            android:orientation="vertical"
+            android:paddingTop="@dimen/_18sdp"
+            android:paddingBottom="@dimen/_18sdp">
+
+            <!-- Title -->
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="Disappearing messages"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/_18sdp"
+                android:textStyle="bold" />
+
+            <!-- Centered icon -->
+            <ImageView
+                android:id="@+id/centerIcon"
+                android:layout_width="@dimen/_33sdp"
+                android:layout_height="@dimen/_41sdp"
+                android:layout_gravity="center"
+                android:layout_marginTop="@dimen/_14sdp"
+                android:src="@drawable/disappearing_messages_icon"
+                android:tint="@color/white" />
+
+            <!-- Description -->
+            <TextView
+                android:id="@+id/description"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="@dimen/_12sdp"
+                android:lineSpacingExtra="@dimen/_2sdp"
+                android:text="New messages vanish after the\n selected time. Anyone in the chat\n can update this setting."
+                android:textColor="#CDE6FF"
+                android:textSize="@dimen/_13sdp" />
+
+            <!-- Options list -->
+            <LinearLayout
+                android:id="@+id/optionsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingTop="@dimen/_2sdp"
+                android:paddingBottom="@dimen/_6sdp">
+
+                <!-- Option: 24 Hours -->
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider1"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="#26263A" />
+
+                <LinearLayout
+                    android:id="@+id/layout_24Hours"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_24h"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="24 Hours"
+                        android:textColor="#E6F7FF"
+                        android:textSize="@dimen/_16sdp" />
+
+                    <ImageButton
+                        android:id="@+id/radio_24h"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider2"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="#26263A" />
+
+                <!-- Option: 7 Days -->
+                <LinearLayout
+                    android:id="@+id/layout_7Days"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_7d"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="7 Days"
+                        android:textColor="#E6F7FF"
+                        android:textSize="@dimen/_16sdp" />
+
+                    <ImageButton
+                        android:id="@+id/radio_7Days"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider3"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="#26263A" />
+
+                <!-- Option: 30 Days -->
+                <LinearLayout
+                    android:id="@+id/layout_30Days"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_30d"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="30 Days"
+                        android:textColor="#E6F7FF"
+                        android:textSize="@dimen/_16sdp" />
+
+                    <ImageButton
+                        android:id="@+id/radio_30Days"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider4"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="#26263A" />
+
+                <!-- Option: Always -->
+                <LinearLayout
+                    android:id="@+id/layout_always"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp">
+
+                    <TextView
+                        android:id="@+id/opt_always"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Always"
+                        android:textColor="#E6F7FF"
+                        android:textSize="16sp" />
+
+                    <ImageButton
+                        android:id="@+id/radio_always"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider5"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="#26263A" />
+
+                <!-- Option: Off (selected) -->
+                <LinearLayout
+                    android:id="@+id/layout_off"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_off"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Off"
+                        android:textColor="#FF6B6B"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <!-- show checked circle with check icon -->
+                    <ImageButton
+                        android:id="@+id/radio_off"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/transparent"
+                        android:src="@drawable/radio_checked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/chatListFragment"
+        android:enabled="true"
+        android:title="Chat"
+        android:icon="@drawable/chat_bottom"/>
+
+    <item
+        android:id="@+id/netwokFragment"
+        android:enabled="true"
+        android:title="Network"
+        android:icon="@drawable/network_bottom"/>
+
+    <item
+        android:id="@+id/contactsFragment"
+        android:enabled="true"
+        android:title="Contacts"
+        android:icon="@drawable/contact_bottom"/>
+
+    <item
+        android:id="@+id/settingFragment"
+        android:enabled="true"
+        android:title="Setting"
+        android:icon="@drawable/setting_bottom"/>
+</menu>

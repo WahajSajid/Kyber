@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary_color">#FF2176FF</color>
+    <color name="opacity_50_primary_color">#802176FF</color>
+    <color name="opacity_20_primary_color">#202176FF</color>
+    <color name="opacity_10_black_color">#10000000</color>
+    <color name="opacity_70_white_color">#70FFFFFF</color>
+    <color name="opacity_50_white_color">#50FFFFFF</color>
+    <color name="primary_light_blue">#FF90BAFF</color>
+    <color name="primary_text_color">#FF212226</color>
+    <color name="secondary_text_color">#FF6E7185</color>
+    <color name="dull_text_color">#FF6E7185</color>
+    <color name="background_color">#FFFFFFFF</color>
+    <color name="statusbar_color">#FFFFFFFF</color>
+    <color name="background_gradient_start_color">#FF2176FF</color>
+    <color name="background_gradient_end_color">#FF04194E</color>
+    <color name="inputfield_outline_color">#FF1A8BCF</color>
+    <color name="inputfield_outline_dark_color">#FF3362AB</color>
+
+
+    <color name="avatar_stroke">#2D79FF</color> <!-- blue border / edit bg -->
+    <color name="avatar_background">#FFFFFF</color> <!-- avatar fill -->
+    <color name="avatar_text">#000000</color> <!-- letter color -->
+
+
+
+    <!-- background surface -->
+    <color name="surface_dark">#0f0b17</color>
+
+    <!-- container -->
+    <color name="tab_container_bg">#00000000</color> <!-- transparent -->
+    <color name="tab_container_stroke">#0047AF</color> <!-- soft purple stroke -->
+
+    <!-- selected gradient -->
+    <color name="tab_selected_start">#111736CC</color> <!-- bright bluish -->
+    <color name="tab_selected_end">#31429CCC</color>
+
+    <!-- tab text colors (selector defined separately) -->
+    <color name="tab_text_selected">#FFFFFF</color>
+    <color name="tab_text_unselected">#969A9F</color>
+
+
+</resources>

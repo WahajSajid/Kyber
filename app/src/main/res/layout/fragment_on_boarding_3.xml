@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:background="@drawable/intro4"
+    tools:context=".fragments.OnboardingFragment">
+
+    <TextView
+        android:layout_marginBottom="@dimen/_150sdp"
+        android:layout_alignParentBottom="true"
+        android:id="@+id/appname"
+        android:layout_marginTop="40dp"
+        android:layout_centerHorizontal="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textAlignment="center"
+        android:text="@string/intor4_txt"
+        android:fontFamily="@font/roboto_semibold"
+        android:textSize="28sp"
+        android:textColor="@color/primary_text_color"/>
+
+
+
+</RelativeLayout>

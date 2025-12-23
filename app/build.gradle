@@ -1,0 +1,109 @@
+plugins {
+    id 'com.android.application'
+    id("org.jetbrains.kotlin.android")
+    id 'com.google.dagger.hilt.android'
+    id 'com.google.devtools.ksp'
+    id 'kotlin-parcelize'
+
+}
+
+android {
+    namespace 'app.secure.kyber'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "app.secure.kyber"
+        minSdk 28
+        targetSdk 36
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables {
+            useSupportLibrary = true
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+    buildFeatures {
+        viewBinding true
+    }
+}
+
+dependencies {
+
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.appcompat
+    implementation libs.material
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.navigation.fragment.ktx
+    implementation libs.androidx.navigation.ui.ktx
+    implementation libs.androidx.camera.lifecycle
+    implementation libs.androidx.emoji2.emojipicker
+    implementation libs.androidx.espresso.web
+    implementation libs.firebase.crashlytics.buildtools
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.junit
+    androidTestImplementation libs.androidx.espresso.core
+    implementation "com.google.dagger:hilt-android:2.52"
+    ksp "com.google.dagger:hilt-compiler:2.52"
+    implementation("com.github.AppIntro:appintro:6.2.0")
+    implementation("com.github.bumptech.glide:glide:4.16.0")
+    ksp("com.github.bumptech.glide:compiler:4.16.0")
+
+    //
+    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+
+    implementation ('com.google.zxing:core:3.5.0')
+
+
+    //Dependency to load emojis
+    implementation libs.androidx.emoji2 // Replace version if needed
+    implementation libs.emoji2.views // Replace with stable version when available
+    implementation libs.emoji2.views.helper
+    implementation "com.google.guava:guava:33.5.0-android"
+
+    //Dependency to load image
+    implementation("io.coil-kt:coil:2.4.0")
+
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+
+    // Compose UI
+    implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+
+
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+
+    // Coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // JSON parsing
+    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+
+    // Lifecycle
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+
+
+    implementation("androidx.room:room-ktx:2.6.1")
+    implementation "androidx.room:room-runtime:2.6.1"
+    ksp "androidx.room:room-compiler:2.6.1"
+
+}
+

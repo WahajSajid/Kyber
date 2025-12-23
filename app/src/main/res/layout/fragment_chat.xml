@@ -1,0 +1,312 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent"
+    android:fitsSystemWindows="true"
+    tools:context=".fragments.ChatListFragment">
+
+    <!-- RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvMsg"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginBottom="@dimen/_6sdp"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/_14sdp"
+        app:layout_constraintBottom_toTopOf="@id/bottom_sheet"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:listitem="@layout/msg_list_item" />
+
+    <!-- Emoji Picker Card -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/emoji_card"
+        android:layout_width="0dp"
+        android:layout_height="320dp"
+        android:layout_margin="8dp"
+        android:backgroundTint="@android:color/transparent"
+        android:visibility="gone"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="8dp"
+        app:layout_constraintBottom_toTopOf="@id/bottom_sheet"
+        app:layout_constraintEnd_toEndOf="@id/rvMsg"
+        app:layout_constraintStart_toStartOf="@id/rvMsg">
+
+        <FrameLayout
+            android:id="@+id/emojiPickerContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+    </androidx.cardview.widget.CardView>
+
+    <androidx.emoji2.emojipicker.EmojiPickerView
+        android:id="@+id/emoji_picker"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/white"
+        android:visibility="gone"
+        app:emojiGridColumns="9"
+        app:layout_constraintBottom_toTopOf="@id/bottom_sheet"
+        app:layout_constraintEnd_toEndOf="@id/rvMsg"
+        app:layout_constraintStart_toStartOf="@id/rvMsg" />
+
+    <!-- Expandable bottom view -->
+    <LinearLayout
+        android:id="@+id/bottom_sheet"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bottom_nav_bar_bg_png"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/_14sdp"
+        android:paddingVertical="@dimen/_10sdp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <RelativeLayout
+            android:id="@+id/llActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:gravity="center">
+
+            <ImageView
+                android:id="@+id/ivAdd"
+                android:layout_width="@dimen/_32sdp"
+                android:layout_height="@dimen/_32sdp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="@dimen/_4sdp"
+                android:padding="@dimen/xXXSmallPadding"
+                android:scaleType="fitCenter"
+                android:src="@drawable/add_content"
+                android:visibility="visible"
+                app:tint="@null" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilMsg"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_toLeftOf="@id/icon_layout"
+                android:layout_toRightOf="@id/ivAdd"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                app:boxBackgroundColor="@color/opacity_10_black_color"
+                app:boxBackgroundMode="outline"
+                app:boxCornerRadiusBottomEnd="@dimen/_18sdp"
+                app:boxCornerRadiusBottomStart="@dimen/_18sdp"
+                app:boxCornerRadiusTopEnd="@dimen/_18sdp"
+                app:boxCornerRadiusTopStart="@dimen/_18sdp"
+                app:boxStrokeColor="#30009FFF"
+                app:boxStrokeWidth="1dp"
+                app:endIconDrawable="@drawable/emoji_icon"
+                app:endIconMode="custom"
+                app:endIconTint="@color/white"
+                app:errorIconDrawable="@null"
+                app:hintEnabled="false">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etMsg"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/roboto_regular"
+                    android:gravity="center_vertical|start"
+                    android:includeFontPadding="false"
+                    android:inputType="textMultiLine|textCapSentences"
+                    android:lineSpacingExtra="@dimen/_2sdp"
+                    android:maxHeight="@dimen/_120sdp"
+                    android:maxLines="4"
+                    android:minHeight="@dimen/_40sdp"
+                    android:paddingStart="@dimen/_12sdp"
+                    android:paddingTop="@dimen/_8sdp"
+                    android:paddingEnd="@dimen/_12sdp"
+                    android:paddingBottom="@dimen/_8sdp"
+                    android:scrollbars="vertical"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_16sdp">
+
+                    <!-- Remove this <requestFocus/> if you don't want the editor focused automatically -->
+                    <requestFocus />
+                </com.google.android.material.textfield.TextInputEditText>
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <LinearLayout
+                android:id="@+id/icon_layout"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/ivCamera"
+                    android:layout_width="@dimen/_32sdp"
+                    android:layout_height="@dimen/_32sdp"
+                    android:layout_marginStart="@dimen/xXXSmallPadding"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/camera"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <ImageView
+                    android:id="@+id/ivMic"
+                    android:layout_width="@dimen/_32sdp"
+                    android:layout_height="@dimen/_32sdp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginStart="@dimen/xXXSmallPadding"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/mic"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <ImageView
+                    android:id="@+id/ivSend"
+                    android:layout_width="@dimen/_40sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginStart="@dimen/xXXSmallPadding"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/send_button"
+                    android:visibility="gone"
+                    app:tint="@null" />
+
+            </LinearLayout>
+
+        </RelativeLayout>
+
+        <!-- Content Menu -->
+        <RelativeLayout
+            android:id="@+id/contentMenu"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="@dimen/_25sdp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/llGallery"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/_3sdp"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/ivGallery"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/gallery_icon"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="Gallery"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_12sdp" />
+            </LinearLayout>
+
+
+            <LinearLayout
+                android:id="@+id/llDocument"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/_3sdp"
+                android:layout_toEndOf="@id/llGallery"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/ivDocument"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/document_ic"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="Document"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_12sdp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/llContact"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/llDocument"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/ivContact"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/contact_ic"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="Contact"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_12sdp" />
+            </LinearLayout>
+
+
+            <LinearLayout
+                android:id="@+id/llAudio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/llContact"
+                android:orientation="vertical">
+
+                <ImageView
+                    android:id="@+id/ivAudio"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:padding="@dimen/xXXSmallPadding"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/audio_ic"
+                    android:visibility="visible"
+                    app:tint="@null" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="Audio"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_12sdp" />
+            </LinearLayout>
+
+
+        </RelativeLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

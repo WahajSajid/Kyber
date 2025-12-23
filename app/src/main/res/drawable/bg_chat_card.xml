@@ -1,0 +1,6 @@
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#5012213D"/> <!-- light blue fill -->
+    <corners android:radius="18dp"/>
+    <!-- subtle darker outer stroke like reference -->
+    <stroke android:width="0.5dp" android:color="#803362AB"/>
+</shape>

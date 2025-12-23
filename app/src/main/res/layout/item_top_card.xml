@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+    <RelativeLayout
+        android:id="@+id/top_card"
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        android:layout_width="@dimen/_190sdp"
+        android:layout_height="@dimen/_105sdp"
+        android:background="@drawable/settings_boxed_items_bg"
+        android:padding="@dimen/_12sdp"
+        android:clickable="true"
+        android:focusable="true">
+
+        <!-- icon -->
+        <ImageView
+            android:id="@+id/card_icon"
+            android:layout_width="@dimen/_28sdp"
+            android:layout_height="@dimen/_26sdp"
+            android:layout_centerHorizontal="true"
+            android:layout_alignParentTop="true"
+            android:src="@drawable/lock_ic" />
+
+        <!-- small info icon at the bottom-right -->
+        <ImageView
+            android:id="@+id/card_info"
+            android:layout_width="@dimen/_11sdp"
+            android:layout_height="@dimen/_11sdp"
+            android:layout_alignParentBottom="true"
+            android:layout_alignParentEnd="true"
+            android:src="@drawable/info_icon" />
+
+        <!-- title -->
+        <TextView
+            android:id="@+id/card_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/card_icon"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:layout_centerHorizontal="true"
+            android:text="Auto Lock"
+            android:textColor="@color/white"
+            android:textSize="@dimen/_14sdp"
+            android:textStyle="bold"/>
+
+        <!-- pill value -->
+        <TextView
+            android:id="@+id/card_value"
+            android:layout_width="@dimen/_86sdp"
+            android:layout_height="@dimen/_21sdp"
+            android:layout_alignParentBottom="true"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_centerHorizontal="true"
+            android:background="@drawable/pill_bg"
+            android:gravity="center"
+            android:text="1 Minute"
+            android:textColor="@color/white"
+            android:textSize="@dimen/_12sdp"/>
+    </RelativeLayout>

@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="@dimen/_360sdp"
+    android:background="@drawable/dialog_bg"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/appname"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/ivLogo"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:fontFamily="@font/roboto_medium"
+        android:text="New Contact"
+        android:textColor="@color/primary_text_color"
+        android:textSize="20sp" />
+
+    <TextView
+        android:id="@+id/desc"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/appname"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="3dp"
+        android:fontFamily="@font/roboto_medium"
+        android:text="Enter or Scan the the Kyber Chat ID of the person you'd like to connect with."
+        android:textColor="#DADADA"
+        android:textSize="14sp" />
+
+    <TextView
+        android:id="@+id/tvId"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/desc"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:fontFamily="@font/roboto_medium"
+        android:text="Enter ID"
+        android:textColor="@color/opacity_70_white_color"
+        android:textSize="14sp" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilId"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/tvId"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="3dp"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        app:boxBackgroundColor="@color/opacity_10_black_color"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusBottomEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxStrokeColor="@color/inputfield_outline_color"
+        app:boxStrokeWidth="1dp"
+        app:errorIconDrawable="@null"
+        app:boxStrokeErrorColor="#31429CCC"
+        app:errorTextColor="#31429CCC"
+        app:cursorColor="@color/primary_color"
+        app:hintEnabled="false"
+
+        app:endIconMode="custom"
+        app:endIconDrawable="@drawable/qr"
+        app:endIconTint="@color/white"
+
+        >
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/roboto_regular"
+            android:hint="Enter ID"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1"
+            android:textColor="@color/white"
+            android:textColorHint="@color/opacity_70_white_color"
+            android:textSize="14sp">
+
+            <requestFocus />
+        </com.google.android.material.textfield.TextInputEditText>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <TextView
+        android:id="@+id/tvName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/tilId"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="10dp"
+        android:fontFamily="@font/roboto_medium"
+        android:text="Enter Name"
+        android:textColor="@color/opacity_70_white_color"
+        android:textSize="14sp" />
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/tilName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/tvName"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="3dp"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        app:boxBackgroundColor="@color/opacity_10_black_color"
+        app:boxBackgroundMode="outline"
+        app:boxCornerRadiusBottomEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxStrokeColor="@color/inputfield_outline_color"
+        app:boxStrokeWidth="1dp"
+        app:errorIconDrawable="@null"
+        app:boxStrokeErrorColor="#31429CCC"
+        app:errorTextColor="#31429CCC"
+        app:cursorColor="@color/primary_color"
+        app:hintEnabled="false"
+        >
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/roboto_regular"
+            android:hint="Enter Name"
+            android:imeOptions="actionDone"
+            android:inputType="text"
+            android:maxLines="1"
+            android:textColor="@color/white"
+            android:textColorHint="@color/opacity_70_white_color"
+            android:textSize="14sp">
+
+
+        </com.google.android.material.textfield.TextInputEditText>
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="16dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancel"
+            android:layout_width="@dimen/_100sdp"
+            android:layout_height="@dimen/_46sdp"
+            android:layout_centerHorizontal="true"
+            android:background="@android:color/transparent"
+            android:fontFamily="@font/roboto_semibold"
+            android:textColor="#969A9F"
+            android:textSize="16sp"
+            app:backgroundTint="@null"
+            app:cornerRadius="10dp"
+            android:text="Cancel"/>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSave"
+            android:layout_marginStart="8dp"
+            android:layout_width="@dimen/_140sdp"
+            android:layout_height="@dimen/_46sdp"
+            android:layout_centerHorizontal="true"
+            app:backgroundTint="#5F99F6"
+            android:fontFamily="@font/roboto_semibold"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            app:cornerRadius="6dp"
+            android:text="Add Contact"/>
+    </LinearLayout>
+</LinearLayout>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Optional: color state list if you prefer to tint Android's built-in radio drawable -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#4DA6FF" android:state_checked="true" />
+    <item android:color="#969A9F" />
+</selector>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+    <!-- drawable/list_4_dens.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="240dp"
+android:height="191dp"
+android:viewportWidth="240"
+android:viewportHeight="191"
+    >
+<group>
+    <clip-path
+        android:pathData="M12 0H228C234.627 0 240 5.37258 240 12V179C240 185.627 234.627 191 228 191H12C5.37258 191 0 185.627 0 179V12C0 5.37258 5.37258 0 12 0Z"
+        />
+    <group
+        android:translateX="1"
+        android:translateY="0"
+        android:pivotX="120"
+        android:pivotY="95.5"
+        android:scaleX="2"
+        android:scaleY="2"
+        android:rotation="90"
+        >
+        <path
+            android:pathData="M0 0V191H240V0"
+            >
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="60"
+                    android:startY="95.5"
+                    android:endX="180"
+                    android:endY="95.5"
+                    >
+                    <item
+                        android:color="#CC111736"
+                        android:offset="0"
+                        />
+                    <item
+                        android:color="#CC31429C"
+                        android:offset="1"
+                        />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</group>
+</vector>

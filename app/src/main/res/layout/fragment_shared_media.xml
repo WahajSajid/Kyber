@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context=".fragments.SharedMediaFragment"
+    android:padding="@dimen/_20sdp"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <!-- Container with rounded outline that looks like your image -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:minWidth="@dimen/_300sdp"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent">
+
+        <com.google.android.material.tabs.TabLayout
+            android:id="@+id/tab_layout"
+            android:layout_width="match_parent"
+            android:minWidth="@dimen/_300sdp"
+            android:layout_height="@dimen/_48sdp"
+            app:tabGravity="fill"
+            app:tabMode="fixed"
+            app:tabIndicator="@null"
+            app:tabMinWidth="0dp"
+            android:background="@drawable/bg_tab_container"
+            app:tabPaddingStart="@dimen/_6sdp"
+            app:tabPaddingEnd="@dimen/_6sdp" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/view_pager"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"
+        android:layout_marginTop="@dimen/_12sdp" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

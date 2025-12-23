@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:foreground="?attr/selectableItemBackgroundBorderless"
+    android:paddingLeft="@dimen/_4sdp"
+    android:paddingRight="@dimen/_4sdp">
+
+    <TextView
+        android:id="@+id/tab2_title"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:paddingTop="@dimen/_8sdp"
+        android:paddingBottom="@dimen/_8sdp"
+        android:textAppearance="?attr/textAppearanceSubtitle1"
+        android:background="@drawable/tab2_bg_selector"
+        android:textColor="@drawable/tab1_text_color"
+        android:maxLines="1"
+        android:ellipsize="end" />
+</FrameLayout>

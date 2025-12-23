@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary_color">#FF2176FF</color>
+    <color name="opacity_50_primary_color">#802176FF</color>
+    <color name="opacity_20_primary_color">#202176FF</color>
+    <color name="opacity_10_black_color">#10000000</color>
+    <color name="opacity_70_white_color">#70FFFFFF</color>
+
+    <color name="primary_text_color">#FFFFFFFF</color>
+    <color name="secondary_text_color">#FFDADADA</color>
+    <color name="primary_light_blue">#FF90BAFF</color>
+    <color name="dull_text_color">#FF6E7185</color>
+    <color name="background_color">#FF010102</color>
+    <color name="statusbar_color">#FF212226</color>
+    <color name="background_gradient_start_color">#FF2176FF</color>
+    <color name="background_gradient_end_color">#FF04194E</color>
+    <color name="inputfield_outline_color">#FF1A8BCF</color>
+
+</resources>

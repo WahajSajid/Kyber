@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_marginTop="@dimen/_10sdp"
+    android:background="@android:color/transparent"
+    android:padding="@dimen/_10sdp">
+
+    <ScrollView
+        android:id="@+id/scroll_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:isScrollContainer="false"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Top bar / profile area -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/cltop"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_84sdp"
+                android:background="@drawable/settings_card_bg"
+                android:paddingHorizontal="@dimen/_10sdp">
+
+                <FrameLayout
+                    android:id="@+id/profile_picture"
+                    android:layout_width="@dimen/_67sdp"
+                    android:layout_height="@dimen/_67sdp"
+                    android:background="@drawable/bg_avatar"
+                    android:backgroundTint="#2A3E63"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <!-- Circular avatar with centered letter and a small overlapping edit (pencil) badge -->
+                    <FrameLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content">
+
+                        <!-- Avatar circle with letter -->
+                        <TextView
+                            android:id="@+id/avatar_letter"
+                            android:layout_width="@dimen/_67sdp"
+                            android:layout_height="@dimen/_67sdp"
+                            android:background="@drawable/circle_avatar"
+                            android:fontFamily="sans-serif-medium"
+                            android:gravity="center"
+                            android:text="B"
+                            android:textColor="@color/avatar_text"
+                            android:textSize="@dimen/_20sdp" />
+
+                        <!-- Edit badge (small blue circle with white pencil), positioned bottom-end -->
+                        <ImageView
+                            android:id="@+id/avatar_edit"
+                            android:layout_width="@dimen/_20sdp"
+                            android:layout_height="@dimen/_20sdp"
+                            android:layout_gravity="bottom|end"
+                            android:layout_marginEnd="0dp"
+                            android:layout_marginBottom="0dp"
+                            android:background="@drawable/edit_icon_bg"
+                            android:contentDescription="@null"
+                            android:padding="@dimen/_4sdp"
+                            android:src="@drawable/pencil" />
+                    </FrameLayout>
+
+                </FrameLayout>
+
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/details_layout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/_8sdp"
+                    app:layout_constraintBottom_toBottomOf="@id/profile_picture"
+                    app:layout_constraintStart_toEndOf="@id/profile_picture"
+                    app:layout_constraintTop_toTopOf="@id/profile_picture">
+
+
+                    <!-- Name -->
+                    <TextView
+                        android:id="@+id/tvNameDis"
+                        android:layout_width="@dimen/_150sdp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/_15sdp"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/roboto_regular"
+                        android:maxLines="1"
+                        android:text="Bryan"
+                        android:textColor="#E0F1FF"
+                        android:textSize="@dimen/_24sdp"
+                        android:textStyle="bold"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+
+                    <TextView
+                        android:id="@+id/tvName"
+                        android:layout_width="@dimen/_160sdp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/_15sdp"
+                        android:ellipsize="end"
+                        android:fontFamily="@font/roboto_regular"
+                        android:maxLines="1"
+                        android:text="Bryan"
+                        android:textColor="@color/primary_color"
+                        android:textSize="@dimen/_14sdp"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@id/tvNameDis" />
+
+
+                    <!-- Last update (right). badge is separate so you can style it. -->
+                    <LinearLayout
+                        android:id="@+id/last_update_group"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="@dimen/_15sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@id/tvName">
+
+                        <TextView
+                            android:id="@+id/last_update_label"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="@dimen/_8sdp"
+                            android:text="@string/last_update"
+                            android:textColor="@android:color/white"
+                            android:textSize="@dimen/_10sdp" />
+
+                        <TextView
+                            android:id="@+id/last_update_badge"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/hours_ago_bg"
+                            android:paddingStart="@dimen/_8sdp"
+                            android:paddingTop="@dimen/_2sdp"
+                            android:paddingEnd="@dimen/_8sdp"
+                            android:paddingBottom="@dimen/_2sdp"
+                            android:text="@string/last_update_age"
+                            android:textColor="#FFFFFF"
+                            android:textSize="@dimen/_8sdp" />
+
+                        <ImageView
+                            android:id="@+id/lock_img"
+                            android:layout_width="@dimen/_16sdp"
+                            android:layout_height="@dimen/_16sdp"
+                            android:layout_marginStart="@dimen/_5sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/group_1171276116" />
+                    </LinearLayout>
+
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnQR"
+                    android:layout_width="@dimen/_35sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:layout_marginHorizontal="@dimen/_6sdp"
+                    android:backgroundTint="@color/primary_color"
+                    android:gravity="center"
+                    android:text=""
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    app:cornerRadius="@dimen/_10sdp"
+                    app:icon="@drawable/qr"
+                    app:iconGravity="textStart"
+                    app:iconTint="#FFFFFF"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:strokeColor="@color/primary_color"
+                    app:strokeWidth="@dimen/_1sdp" />
+
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnShare"
+                    android:layout_width="@dimen/_35sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:layout_marginHorizontal="@dimen/_6sdp"
+                    android:backgroundTint="@color/primary_color"
+                    android:gravity="center"
+                    android:text=""
+                    android:textAllCaps="false"
+                    android:textColor="@android:color/white"
+                    app:cornerRadius="@dimen/_10sdp"
+                    app:icon="@drawable/share"
+                    app:iconGravity="textStart"
+                    app:iconTint="#FFFFFF"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@id/btnQR"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:strokeColor="@color/primary_color"
+                    app:strokeWidth="@dimen/_1sdp" />
+
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <!-- Main content area -->
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_15sdp">
+
+                <!-- Top grid: 2 columns x 2 rows of feature cards -->
+                <GridLayout
+                    android:id="@+id/top_grid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:alignmentMode="alignMargins"
+                    android:columnCount="2"
+                    android:columnOrderPreserved="false"
+                    android:rowCount="2"
+                    android:useDefaultMargins="true"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <!-- Card 1 -->
+                    <include
+                        android:id="@+id/auto_lock_card"
+                        layout="@layout/item_top_card"
+                        android:layout_width="@dimen/_160sdp"
+                        android:layout_height="@dimen/_110sdp"
+                        android:layout_row="0"
+                        android:layout_column="0"
+                        android:layout_columnWeight="1"
+                        android:tag="auto_lock" />
+
+                    <!-- Card 2 -->
+                    <include
+                        android:id="@+id/disappearing_chat_card"
+                        layout="@layout/item_top_card"
+                        android:layout_width="@dimen/_160sdp"
+                        android:layout_height="@dimen/_110sdp"
+                        android:layout_row="0"
+                        android:layout_column="1"
+                        android:layout_columnWeight="1"
+                        android:tag="disappearing_chat" />
+
+                    <!-- Card 3 -->
+                    <include
+                        android:id="@+id/search_privacy_card"
+                        layout="@layout/item_top_card"
+                        android:layout_width="@dimen/_160sdp"
+                        android:layout_height="@dimen/_110sdp"
+                        android:layout_row="1"
+                        android:layout_column="0"
+                        android:layout_columnWeight="1"
+                        android:tag="search_privacy" />
+
+                    <!-- Card 4 -->
+                    <include
+                        android:id="@+id/encryption_timer_card"
+                        layout="@layout/item_top_card"
+                        android:layout_width="@dimen/_160sdp"
+                        android:layout_height="@dimen/_110sdp"
+                        android:layout_row="1"
+                        android:layout_column="1"
+                        android:layout_columnWeight="1"
+                        android:tag="encryption_timer" />
+                </GridLayout>
+
+                <!-- Subscription section -->
+                <LinearLayout
+                    android:id="@+id/subscription_card"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_120sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="@drawable/settings_card_bg"
+                    android:orientation="vertical"
+                    android:padding="@dimen/_10sdp"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/top_grid">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_20sdp"
+                        android:paddingBottom="@dimen/_6sdp">
+
+                        <TextView
+                            android:id="@+id/sub_title"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:paddingTop="@dimen/_20sdp"
+                            android:text="Subscription"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_16sdp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/sub_remaining"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Over 1 month remaining"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_14sdp" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_15sdp">
+
+                        <ProgressBar
+                            android:id="@+id/sub_progress"
+                            style="?android:attr/progressBarStyleHorizontal"
+                            android:layout_width="0dp"
+                            android:layout_height="@dimen/_12sdp"
+                            android:layout_weight="1"
+                            android:indeterminate="false"
+                            android:paddingEnd="@dimen/_10sdp"
+                            android:progress="64"
+                            android:progressDrawable="@drawable/remaining_subscription_bg" />
+
+                        <androidx.constraintlayout.widget.ConstraintLayout
+                            android:id="@+id/btn_upgrade"
+                            android:layout_width="@dimen/_102sdp"
+                            android:layout_height="@dimen/_32sdp"
+                            android:background="@drawable/upgrade_btn_bg">
+
+                            <ImageView
+                                android:id="@+id/start_icon"
+                                android:layout_width="@dimen/_16sdp"
+                                android:layout_height="@dimen/_16sdp"
+                                android:contentDescription="@null"
+                                android:src="@drawable/star_icon"
+                                app:layout_constraintBottom_toBottomOf="parent"
+                                app:layout_constraintEnd_toStartOf="@+id/textView"
+                                app:layout_constraintHorizontal_bias="0.5"
+                                app:layout_constraintStart_toStartOf="parent"
+                                app:layout_constraintTop_toTopOf="parent" />
+
+                            <TextView
+                                android:id="@+id/textView"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Upgrade"
+                                android:textColor="#21005D"
+                                android:textSize="@dimen/_16sdp"
+                                app:layout_constraintBottom_toBottomOf="@id/start_icon"
+                                app:layout_constraintEnd_toEndOf="parent"
+                                app:layout_constraintHorizontal_bias="0.5"
+                                app:layout_constraintStart_toEndOf="@+id/start_icon"
+                                app:layout_constraintTop_toTopOf="@id/start_icon" />
+
+
+                        </androidx.constraintlayout.widget.ConstraintLayout>
+
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/sub_end"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:paddingHorizontal="@dimen/_20sdp"
+                        android:text="END DATE April 18, 2025"
+                        android:textColor="@color/white"
+                        android:textSize="@dimen/_14sdp" />
+                </LinearLayout>
+
+                <!-- First List section -->
+                <LinearLayout
+                    android:id="@+id/list_container"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_95sdp"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="@drawable/settings_card_bg"
+                    android:orientation="vertical"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/subscription_card">
+
+                    <!-- Security item -->
+                    <LinearLayout
+                        android:id="@+id/item_security"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:layout_marginBottom="@dimen/_5sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_18sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_19sdp"
+                            android:layout_height="@dimen/_20sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/security_ic" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_15sdp"
+                            android:layout_weight="1"
+                            android:text="Security"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+
+                    <!-- Notifications -->
+                    <LinearLayout
+                        android:id="@+id/item_notifications"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:layout_marginBottom="@dimen/_5sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_16sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_24sdp"
+                            android:layout_height="@dimen/_24sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/notification_icon" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_15sdp"
+                            android:layout_weight="1"
+                            android:text="Notifications"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
+
+                <!-- Second List section -->
+                <LinearLayout
+                    android:id="@+id/list2_container"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="@drawable/settings_card_bg"
+                    android:orientation="vertical"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/list_container">
+
+                    <!-- Help -->
+                    <LinearLayout
+                        android:id="@+id/item_help"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:layout_marginBottom="@dimen/_5sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_18sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_24sdp"
+                            android:layout_height="@dimen/_24sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/help_ic" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_15sdp"
+                            android:layout_weight="1"
+                            android:text="Help"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+
+                    <!-- Invite friends -->
+                    <LinearLayout
+                        android:id="@+id/item_invite"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:layout_marginBottom="@dimen/_5sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_20sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_20sdp"
+                            android:layout_height="@dimen/_16sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/mail_ic" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_20sdp"
+                            android:layout_weight="1"
+                            android:text="Invite friends"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+
+                    <!-- Delete Account -->
+                    <LinearLayout
+                        android:id="@+id/item_delete"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_18sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_22sdp"
+                            android:layout_height="@dimen/_22sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/trash_icon" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_15sdp"
+                            android:layout_weight="1"
+                            android:text="Delete Account"
+                            android:textColor="#FF4848"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+                </LinearLayout>
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </LinearLayout>
+    </ScrollView>
+</androidx.constraintlayout.widget.ConstraintLayout>

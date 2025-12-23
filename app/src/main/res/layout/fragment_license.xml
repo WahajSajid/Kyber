@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:src="@drawable/main_mid_gradient_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType= "centerCrop"
+        />
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@android:color/transparent"
+        android:focusableInTouchMode="true">
+
+        <ImageView
+            android:id="@+id/ivLogo"
+            android:layout_width="@dimen/_168sdp"
+            android:layout_height="@dimen/_177sdp"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="100dp"
+            android:scaleType="fitXY"
+            android:src="@drawable/license_key" />
+
+        <TextView
+            android:id="@+id/appname"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/ivLogo"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="10dp"
+            android:fontFamily="@font/roboto_bold"
+            android:text="Active License Key"
+            android:textColor="@color/primary_text_color"
+            android:textSize="26sp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilPwd"
+            android:layout_width="@dimen/_300sdp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/appname"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="40dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            app:boxBackgroundColor="@color/opacity_10_black_color"
+            app:boxBackgroundMode="outline"
+            app:boxCornerRadiusBottomEnd="12dp"
+            app:boxCornerRadiusBottomStart="12dp"
+            app:boxCornerRadiusTopEnd="12dp"
+            app:boxCornerRadiusTopStart="12dp"
+            app:boxStrokeColor="@color/inputfield_outline_color"
+            app:boxStrokeWidth="1dp"
+            app:errorIconDrawable="@null"
+            app:hintEnabled="false"
+            >
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etPwd"
+                android:layout_width="@dimen/_300sdp"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/roboto_regular"
+                android:hint="License Key"
+                android:imeOptions="actionDone"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textColor="@color/white"
+                android:textColorHint="@color/opacity_70_white_color"
+                android:textSize="14sp">
+
+                <requestFocus />
+            </com.google.android.material.textfield.TextInputEditText>
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <TextView
+            android:layout_marginTop="@dimen/_15sdp"
+            android:layout_centerHorizontal="true"
+            android:layout_below="@id/tilPwd"
+            android:id="@+id/termsfirst"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="To enhance your privacy, please use the "
+            android:fontFamily="@font/roboto_regular"
+            android:textSize="14sp"
+            android:textAlignment="center"
+            android:textColor="@color/secondary_text_color"/>
+        <LinearLayout
+
+            android:id="@+id/tilDesc"
+            android:layout_below="@id/termsfirst"
+            android:layout_width="wrap_content"
+            android:layout_centerHorizontal="true"
+            android:layout_height="wrap_content">
+            <TextView
+                android:id="@+id/terms"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="provided  "
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="14sp"
+                android:textAlignment="center"
+                android:textColor="@color/secondary_text_color"/>
+            <TextView
+                android:id="@+id/weblink"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/weblink"
+                android:fontFamily="@font/roboto_semibold"
+                android:textSize="14sp"
+                android:textAlignment="center"
+                android:textColor="@color/primary_text_color"/>
+
+            <TextView
+                android:id="@+id/lasttxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=" to enter your license key."
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="14sp"
+                android:textAlignment="center"
+                android:textColor="@color/secondary_text_color"/>
+        </LinearLayout>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnPwd"
+            android:layout_below="@id/tilDesc"
+            android:layout_width="@dimen/_300sdp"
+            android:layout_height="@dimen/_56sdp"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="50dp"
+            android:layout_marginBottom="20dp"
+            android:background="@drawable/btn_gradient"
+            android:fontFamily="@font/roboto_semibold"
+            android:text="Continue"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            app:backgroundTint="@null"
+            app:cornerRadius="10dp" />
+
+    </RelativeLayout>
+
+</FrameLayout>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="@dimen/_240sdp"
+    android:layout_height="@dimen/_200sdp"
+    android:background="@drawable/wipe_chat_bg">
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Wipe Chat"
+        android:textColor="#F54535"
+        android:textSize="@dimen/_18sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        android:textStyle="bold"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Big "no" icon -->
+    <ImageView
+        android:id="@+id/ivNoIcon"
+        android:layout_width="@dimen/_30sdp"
+        android:layout_height="@dimen/_34sdp"
+        android:src="@drawable/trash_icon"
+        android:tint="@android:color/white"
+        android:layout_marginTop="@dimen/_12sdp"
+        app:layout_constraintTop_toBottomOf="@id/tvTitle"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Message -->
+    <TextView
+        android:id="@+id/tvMessage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="This will delete all messages in\n the conversation while keeping\n the contact saved."
+        android:textColor="#FEF7FF"
+        android:textSize="@dimen/_13sdp"
+        android:lineSpacingExtra="@dimen/_4sdp"
+        android:gravity="center"
+        android:paddingLeft="@dimen/_28sdp"
+        android:paddingRight="@dimen/_28sdp"
+        android:layout_marginTop="@dimen/_12sdp"
+        app:layout_constraintTop_toBottomOf="@id/ivNoIcon"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <View
+        android:id="@+id/divider1"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_1sdp"
+        android:layout_marginTop="@dimen/_10sdp"
+        android:background="#26263A"
+        app:layout_constraintTop_toBottomOf="@id/tvMessage"/>
+
+
+    <!-- Bottom rounded bar (actions) -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="0dp"
+        android:layout_height="@dimen/_45sdp"
+        android:orientation="horizontal"
+        android:background="@android:color/transparent"
+        android:paddingLeft="@dimen/_35sdp"
+        android:paddingRight="@dimen/_35sdp"
+        android:gravity="center_vertical"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/divider1">
+
+        <!-- Left action text -->
+        <TextView
+            android:id="@+id/btnBlock"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Wipe Chat"
+            android:textColor="#F15353"
+            android:textSize="@dimen/_18sdp" />
+
+        <!-- Right small red icon -->
+        <ImageView
+            android:id="@+id/ivBarIcon"
+            android:layout_width="@dimen/_20sdp"
+            android:layout_height="@dimen/_20sdp"
+            android:src="@drawable/trash_icon"/>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

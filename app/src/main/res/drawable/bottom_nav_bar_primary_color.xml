@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Top border only -->
+    <item
+        android:gravity="top">  <!-- 👈 REQUIRED so the strip sticks to the top -->
+        <shape android:shape="rectangle">
+            <stroke
+                android:width="@dimen/_2sdp"
+                android:color="#30009FFF"
+                />
+            <solid android:color="#20009FFF"/>
+
+            <corners android:topRightRadius="30dp"
+                android:topLeftRadius="30dp"
+                />
+        </shape>
+    </item>
+<item>
+    <shape
+        android:shape="rectangle"
+        >
+
+        <corners android:topRightRadius="30dp" android:topLeftRadius="30dp"/>
+
+        <solid android:color= "#60000000"/>
+    </shape>
+</item>
+
+
+
+</layer-list>

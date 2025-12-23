@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_intro"
+    >
+    <ImageView
+        android:id="@+id/ivinto1"
+        android:src="@drawable/intro1"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/_475sdp"
+        android:scaleType= "fitCenter"
+        android:layout_centerHorizontal="true"
+        />
+    <TextView
+        android:id="@+id/appname"
+        android:layout_marginTop="5dp"
+        android:layout_centerHorizontal="true"
+        android:layout_below="@id/ivinto1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Kyber Chat "
+        android:fontFamily="@font/roboto_semibold"
+        android:textSize="28sp"
+        android:textColor="@color/primary_color"/>
+
+    <TextView
+        android:id="@+id/secondxt"
+        android:layout_below="@id/appname"
+        android:layout_centerHorizontal="true"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Securing your conversations\nwith end-to-end encryption."
+        android:fontFamily="@font/roboto_semibold"
+        android:textSize="24sp"
+        android:textAlignment="center"
+        android:textColor="@color/secondary_text_color"/>
+
+</RelativeLayout>

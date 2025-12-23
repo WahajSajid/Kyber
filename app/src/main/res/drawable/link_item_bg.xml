@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+    <!-- drawable/card_link.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="389dp"
+android:height="80dp"
+android:viewportWidth="389"
+android:viewportHeight="80"
+    >
+<group>
+    <clip-path
+        android:pathData="M8 0H381C385.418 0 389 3.58172 389 8V72C389 76.4183 385.418 80 381 80H8C3.58172 80 0 76.4183 0 72V8C0 3.58172 3.58172 0 8 0Z"
+        />
+    <path
+        android:pathData="M0 0V80H389V0"
+        android:fillColor="#2A2B36"
+        />
+</group>
+</vector>

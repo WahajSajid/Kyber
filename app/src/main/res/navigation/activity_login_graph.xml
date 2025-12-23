@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_login_graph"
+    app:startDestination="@id/licenseFragment">
+
+    <fragment
+        android:id="@+id/encryptMsgPwdFragment"
+        android:name="app.secure.kyber.fragments.EncryptMsgPwdFragment"
+        android:label="EncryptMsgPwdFragment"
+        tools:layout="@layout/fragment_encrypt_msg_pwd" >
+        <action
+            android:id="@+id/action_encryptMsgPwdFragment_to_displayNameFragment2"
+            app:destination="@id/displayNameFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/licenseFragment"
+        android:name="app.secure.kyber.fragments.LicenseFragment"
+        android:label="LicenseFragment" >
+        <action
+            android:id="@+id/action_licenseFragment_to_encryptMsgPwdFragment"
+            app:destination="@id/encryptMsgPwdFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/displayNameFragment"
+        android:name="app.secure.kyber.fragments.DisplayNameFragment"
+        android:label="DisplayNameFragment" />
+</navigation>

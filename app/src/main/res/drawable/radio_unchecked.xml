@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Unchecked: outer ring only -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <size android:width="@dimen/_28sdp" android:height="@dimen/_28sdp" />
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="2dp" android:color="#969A9F"/> <!-- default stroke color -->
+</shape>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Radio checked drawable: circular outline with centered check mark.
+  This file intentionally omits any filled background color (per your request).
+  Use it as the "checked" drawable in your selector (e.g. radio_button_selector.xml).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="@dimen/_30sdp"
+    android:height="@dimen/_30sdp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Outer circular ring (stroke only) -->
+    <path
+        android:name="outer_ring"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#969A9F"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,2
+                          A10,10 0 1,1 11.999,2z" />
+
+    <!-- Centered check mark (solid) -->
+    <!-- Path shaped and scaled to look like the check in your image -->
+    <path
+        android:name="check_mark"
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="@android:color/transparent"
+        android:pathData="M7.0,12.5
+                          L9.6,15.2
+                          L16.8,8.0
+                          L15.1,6.4
+                          L9.6,12.0
+                          L8.0,10.6
+                          Z" />
+</vector>

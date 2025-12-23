@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+    <!--
+    Warning: Using more than one drop shadow effect is not supported, only the last visible one will be used as elevation.
+    -->
+
+    <!-- drawable/content.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="102dp"
+android:height="32dp"
+android:viewportWidth="102"
+android:viewportHeight="32"
+    >
+<group>
+    <clip-path
+        android:pathData="M16 0H86C94.8366 0 102 7.16344 102 16C102 24.8366 94.8366 32 86 32H16C7.16344 32 0 24.8366 0 16C0 7.16344 7.16344 0 16 0Z"
+        />
+    <path
+        android:pathData="M0 0V32H102V0"
+        android:fillColor="#E8F7F2FA"
+        />
+</group>
+</vector>

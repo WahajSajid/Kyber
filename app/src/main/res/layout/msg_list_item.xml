@@ -1,0 +1,130 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="@dimen/_2sdp">
+
+    <!-- Received Message -->
+    <LinearLayout
+        android:id="@+id/rlMsgRcvd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="@dimen/_5sdp"
+        android:layout_marginEnd="@dimen/_20sdp"
+        android:layout_alignParentStart="true"
+        android:orientation="vertical"
+        android:gravity="start"
+        android:minWidth="@dimen/_85sdp"
+        android:layout_marginStart="@dimen/_5sdp"
+        android:paddingVertical="@dimen/_4sdp"
+        android:paddingHorizontal="@dimen/_6sdp"
+        android:background="@drawable/recv_msg_bg">
+
+        <!-- Received message text -->
+        <TextView
+            android:id="@+id/tvMsgRcv"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="250dp"
+            android:text="H"
+            android:fontFamily="@font/roboto_regular"
+            android:textSize="16sp"
+            android:layout_gravity="start"
+            android:textColor="#FFFFFF"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:layout_marginEnd="@dimen/_6sdp"
+            android:textAlignment="textStart" />
+
+        <!-- Received message time + icon -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:orientation="horizontal"
+            android:minWidth="@dimen/_30sdp"
+            android:gravity="end|center_vertical">
+
+            <TextView
+                android:id="@+id/tvRcvTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2:30 PM"
+                android:textSize="12sp"
+                android:textColor="#60FFFFFF"
+                android:fontFamily="@font/roboto_regular"
+                android:layout_marginEnd="@dimen/_4sdp" />
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:layout_gravity="center_vertical"
+                android:src="@drawable/privacy"
+                app:tint="#60FFFFFF" />
+        </LinearLayout>
+
+
+
+    </LinearLayout>
+
+    <!-- Sent Message -->
+    <LinearLayout
+        android:id="@+id/rlMsgSent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_marginVertical="@dimen/_5sdp"
+        android:layout_marginStart="@dimen/_20sdp"
+        android:orientation="vertical"
+        android:gravity="end"
+        android:minWidth="@dimen/_91sdp"
+        android:layout_marginEnd="@dimen/_5sdp"
+        android:paddingVertical="@dimen/_4sdp"
+        android:paddingHorizontal="@dimen/_6sdp"
+        android:background="@drawable/sent_msg_bg">
+
+        <!-- Sent message text -->
+        <TextView
+            android:id="@+id/tvSentMsg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxWidth="250dp"
+            android:text="H"
+            android:fontFamily="@font/roboto_regular"
+            android:textSize="16sp"
+            android:layout_gravity="start"
+            android:textColor="#FFFFFF"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:layout_marginEnd="@dimen/_6sdp"
+            android:textAlignment="textStart" />
+
+        <!-- Sent message time + icon -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:orientation="horizontal"
+            android:gravity="end|center_vertical">
+
+            <TextView
+                android:id="@+id/tvSentTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="10:30 AM"
+                android:textSize="12sp"
+                android:textColor="#60FFFFFF"
+                android:fontFamily="@font/roboto_regular"
+                android:layout_marginEnd="@dimen/_4sdp" />
+
+            <ImageView
+                android:layout_width="@dimen/_15sdp"
+                android:layout_height="@dimen/_15sdp"
+                android:layout_gravity="center_vertical"
+                android:src="@drawable/privacy"
+                app:tint="#60FFFFFF" />
+        </LinearLayout>
+    </LinearLayout>
+
+</RelativeLayout>

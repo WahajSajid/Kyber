@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/mute_notifications_dialog_bg">
+
+    <LinearLayout
+        android:id="@+id/dialog_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:clipToPadding="false"
+        android:paddingTop="@dimen/_20sdp"
+        android:paddingBottom="@dimen/_12sdp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Mute notification"
+            android:textColor="@color/white"
+            android:textSize="@dimen/_18sdp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="@dimen/_12sdp" />
+
+        <!-- Bell icon -->
+        <ImageView
+            android:id="@+id/bell_icon"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_gravity="center"
+            android:src="@drawable/notification_icon"
+            android:tint="@color/white"
+            android:layout_marginBottom="@dimen/_12sdp"
+            android:contentDescription="bell" />
+
+        <!-- Description -->
+        <TextView
+            android:id="@+id/description"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Turn off alerts for this chat. You\n will still receive messages but\n without sound or vibration."
+            android:textColor="@color/white"
+            android:textSize="@dimen/_13sdp"
+            android:lineSpacingExtra="2dp"
+            android:gravity="center"
+            android:layout_marginBottom="18dp" />
+
+        <!-- Top divider -->
+        <View
+            android:id="@+id/divider1"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_1sdp"
+            android:layout_marginTop="@dimen/_18sdp"
+            android:background="#336A78FF" />
+
+        <!-- Options (no repeated include; each option is unique) -->
+        <LinearLayout
+            android:id="@+id/options_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Option 1 -->
+            <LinearLayout
+                android:id="@+id/opt_1"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="@dimen/_20sdp"
+                android:paddingRight="@dimen/_20sdp">
+
+                <TextView
+                    android:id="@+id/opt_1_text"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="1 Hour"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_18sdp" />
+
+                <RadioButton
+                    android:id="@+id/opt_1_radio"
+                    android:layout_width="@dimen/_40sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:button="@drawable/radio_button_selector"
+                    android:buttonTint="@null"
+                    android:contentDescription="radio" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/divider2"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:background="#336A78FF" />
+
+            <!-- Option 2 -->
+            <LinearLayout
+                android:id="@+id/opt_2"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="@dimen/_20sdp"
+                android:paddingRight="@dimen/_20sdp">
+
+                <TextView
+                    android:id="@+id/opt_2_text"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="12 Hours"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_18sdp" />
+
+                <RadioButton
+                    android:id="@+id/opt_2_radio"
+                    android:layout_width="@dimen/_40sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:button="@drawable/radio_button_selector"
+                    android:buttonTint="@null"
+                    android:contentDescription="radio" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/divider3"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:background="#336A78FF" />
+
+            <!-- Option 3 -->
+            <LinearLayout
+                android:id="@+id/opt_3"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="@dimen/_20sdp"
+                android:paddingRight="@dimen/_20sdp">
+
+                <TextView
+                    android:id="@+id/opt_3_text"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="7 Days"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_18sdp" />
+
+                <RadioButton
+                    android:id="@+id/opt_3_radio"
+                    android:layout_width="@dimen/_40sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:button="@drawable/radio_button_selector"
+                    android:buttonTint="@null"
+                    android:contentDescription="radio" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/divider4"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:background="#336A78FF" />
+
+            <!-- Option 4 -->
+            <LinearLayout
+                android:id="@+id/opt_4"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingLeft="@dimen/_20sdp"
+                android:paddingRight="@dimen/_20sdp">
+
+                <TextView
+                    android:id="@+id/opt_4_text"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Always"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_18sdp" />
+
+                <RadioButton
+                    android:id="@+id/opt_4_radio"
+                    android:layout_width="@dimen/_40sdp"
+                    android:layout_height="@dimen/_40sdp"
+                    android:button="@drawable/radio_button_selector"
+                    android:buttonTint="@null"
+                    android:contentDescription="radio" />
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

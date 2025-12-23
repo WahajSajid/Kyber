@@ -1,0 +1,91 @@
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="@dimen/_10sdp"
+    android:paddingTop="@dimen/_8sdp">
+
+    <TextView
+        android:id="@+id/letter"
+        android:layout_width="@dimen/_30sdp"
+        android:layout_height="@dimen/_30sdp"
+        android:text="B"
+        android:gravity="center"
+        android:visibility="visible"
+        android:layout_marginBottom="@dimen/_10sdp"
+        android:background="@drawable/letter_heading_bg"
+        android:layout_marginStart="@dimen/_5sdp"
+        app:layout_constraintStart_toStartOf="@id/item_card_layout"
+        app:layout_constraintBottom_toTopOf="@id/item_card_layout" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/item_card_layout"
+        android:layout_width="0dp"
+        android:layout_height="@dimen/_70sdp"
+        android:layout_marginTop="@dimen/_7sdp"
+        android:paddingHorizontal="@dimen/_10sdp"
+        android:background="@drawable/contact_bg"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/letter">
+
+        <!-- Avatar + small clock badge -->
+        <FrameLayout
+            android:id="@+id/avatarHolder"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:backgroundTint="#2A3E63"
+            android:background="@drawable/bg_avatar"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <ImageView
+                android:id="@+id/imgAvatar"
+                android:layout_width="@dimen/_40sdp"
+                android:layout_height="@dimen/_40sdp"
+                android:src="@drawable/ic_person"
+                android:padding="5dp"
+                android:contentDescription="@string/app_name" />
+
+        </FrameLayout>
+
+        <!-- Name -->
+        <TextView
+            android:id="@+id/tvName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Bryan"
+            android:fontFamily="@font/roboto_regular"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:layout_marginStart="@dimen/_15sdp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            app:layout_constraintStart_toEndOf="@id/avatarHolder"
+            app:layout_constraintTop_toTopOf="@id/avatarHolder"
+            app:layout_constraintBottom_toBottomOf="@id/avatarHolder" />
+
+        <!-- ID -->
+        <TextView
+            android:id="@+id/tvID"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ID: K27777"
+            android:fontFamily="@font/roboto_regular"
+            android:textSize="@dimen/_12sdp"
+            android:textColor="#878B95"
+            android:layout_marginStart="@dimen/_15sdp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:layout_marginEnd="@dimen/_5sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/avatarHolder"
+            app:layout_constraintBottom_toBottomOf="@id/avatarHolder" />
+
+
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

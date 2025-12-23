@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!-- drawable/list_header.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="26dp"
+    android:height="26dp"
+    android:strokeWidth="2"
+    android:strokeColor="#803362AB"
+    android:viewportWidth="26"
+    android:viewportHeight="26">
+
+    <!-- Outer circle stroke -->
+    <path
+        android:pathData="M13 0.5C19.9036 0.5 25.5 6.09644 25.5 13C25.5 19.9036 19.9036 25.5 13 25.5C6.09644 25.5 0.5 19.9036 0.5 13C0.5 6.09644 6.09644 0.5 13 0.5Z"
+        android:strokeColor="#803362AB"
+        android:strokeWidth="0.5"
+        android:fillColor="@android:color/transparent" />
+
+    <group>
+        <clip-path android:pathData="M13 0.5C19.9036 0.5 25.5 6.09644 25.5 13C25.5 19.9036 19.9036 25.5 13 25.5C6.09644 25.5 0.5 19.9036 0.5 13C0.5 6.09644 6.09644 0.5 13 0.5Z" />
+        <path
+            android:fillColor="#085CB6F2"
+            android:pathData="M0.5 0.5V25.5H25.5V0.5" />
+    </group>
+</vector>

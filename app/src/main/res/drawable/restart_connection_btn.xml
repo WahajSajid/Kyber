@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- drawable/button.xml -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="142dp"
+    android:height="26dp"
+    android:viewportWidth="142"
+    android:viewportHeight="26"
+    >
+    <group>
+        <!-- rounded rect used as clip shape -->
+        <clip-path
+            android:pathData="M10.5 0.5H131.5C137.023 0.5 141.5 4.97715 141.5 10.5V15.5C141.5 21.0228 137.023 25.5 131.5 25.5H10.5C4.97715 25.5 0.5 21.0228 0.5 15.5V10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z"
+            />
+
+        <!-- background fill -->
+        <path
+            android:pathData="M0.5 0.5V25.5H141.5V0.5"
+            android:fillColor="#6B2B2E4A"
+            />
+
+        <!-- 1dp stroke matching the rounded rect shape -->
+        <path
+            android:pathData="M10.5 0.5H131.5C137.023 0.5 141.5 4.97715 141.5 10.5V15.5C141.5 21.0228 137.023 25.5 131.5 25.5H10.5C4.97715 25.5 0.5 21.0228 0.5 15.5V10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="1"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round"
+            />
+    </group>
+</vector>

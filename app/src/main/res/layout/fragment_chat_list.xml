@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="@android:color/transparent"
+    tools:context=".fragments.ChatListFragment">
+
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true"
+        android:scrollbars="none"
+        android:id="@+id/scroll_view"
+        >
+    <LinearLayout
+        android:orientation="horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+    <com.google.android.material.button.MaterialButton
+        android:layout_marginTop="@dimen/_10sdp"
+        android:id="@+id/btnIndividualChat"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/_40sdp"
+        android:layout_marginHorizontal="@dimen/_14sdp"
+        android:backgroundTint="#300047AF"
+        android:text="Individual chat"
+        android:textColor="@android:color/white"
+        android:textAllCaps="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:gravity="center"
+        app:cornerRadius="24dp"
+        app:icon="@drawable/person_blue"
+        app:iconTint="#1A8BCE"
+        app:iconGravity="textStart"
+        app:strokeColor="#803362AB"
+        app:strokeWidth="1dp" />
+    <com.google.android.material.button.MaterialButton
+
+        android:layout_marginTop="@dimen/_10sdp"
+        android:layout_toEndOf="@id/btnIndividualChat"
+        android:id="@+id/btnGroupChat"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/_40sdp"
+        android:backgroundTint="#1E132A"
+        android:text="Group chat"
+        android:textColor="@android:color/white"
+        android:textAllCaps="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:gravity="center"
+        app:cornerRadius="24dp"
+        app:icon="@drawable/group_person"
+        app:iconTint="#1A8BCE"
+        app:iconGravity="textStart"
+        app:strokeColor="#803362AB"
+        app:strokeWidth="1dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:layout_marginTop="@dimen/_10sdp"
+        android:layout_toEndOf="@id/btnGroupChat"
+        android:id="@+id/btnRequest"
+        android:layout_width="130dp"
+        android:layout_height="@dimen/_40sdp"
+        android:backgroundTint="#1E132A"
+        android:text="Requests"
+        android:layout_marginHorizontal="@dimen/_14sdp"
+        android:textColor="@android:color/white"
+        android:textAllCaps="false"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:gravity="center"
+        app:cornerRadius="24dp"
+        app:icon="@drawable/person_blue"
+        app:iconTint="#1A8BCE"
+        app:iconGravity="textStart"
+        app:strokeColor="#803362AB"
+        app:strokeWidth="1dp" />
+    </LinearLayout>
+    </HorizontalScrollView>
+    <androidx.recyclerview.widget.RecyclerView
+        android:layout_below="@id/scroll_view"
+        android:id="@+id/rv"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:listitem="@layout/item_chat_card"
+        android:padding="@dimen/_14sdp"/>
+
+</RelativeLayout>

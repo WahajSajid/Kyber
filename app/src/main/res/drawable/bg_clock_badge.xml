@@ -1,0 +1,15 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- outer ring -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#2A39C6"/>
+            <stroke android:width="2dp" android:color="#6C74FF"/>
+        </shape>
+    </item>
+    <!-- inner dot to mimic clock face (optional) -->
+    <item android:width="10dp" android:height="10dp" android:gravity="center">
+        <shape android:shape="oval">
+            <solid android:color="#0E1A2C"/>
+        </shape>
+    </item>
+</layer-list>

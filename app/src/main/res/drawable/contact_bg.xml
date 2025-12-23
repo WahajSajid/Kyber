@@ -1,0 +1,28 @@
+<!-- drawable/component_2.xml -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:width="381dp"
+    android:height="76dp"
+    android:viewportWidth="381"
+    android:viewportHeight="76"
+    tools:ignore="NamespaceTypo">
+    <group>
+        <clip-path
+            android:pathData="M15.5 0.5H365.5C373.784 0.5 380.5 7.21573 380.5 15.5V60.5C380.5 68.7843 373.784 75.5 365.5 75.5H15.5C7.21573 75.5 0.5 68.7843 0.5 60.5V15.5C0.5 7.21573 7.21573 0.5 15.5 0.5Z"
+            />
+        <path
+            android:pathData="M0.5 0.5V75.5H380.5V0.5"
+            android:fillColor="#085CB6F2"
+            />
+    </group>
+    <!-- Stroke path for the rounded rectangle -->
+    <path
+        android:pathData="M15.5 0.5H365.5C373.784 0.5 380.5 7.21573 380.5 15.5V60.5C380.5 68.7843 373.784 75.5 365.5 75.5H15.5C7.21573 75.5 0.5 68.7843 0.5 60.5V15.5C0.5 7.21573 7.21573 0.5 15.5 0.5Z"
+        android:strokeWidth="0.5"
+        android:strokeColor="#486284"
+        android:fillColor="#085CB6F2"
+        />
+</vector>
+
+

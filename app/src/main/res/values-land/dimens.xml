@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <dimen name="fab_margin">48dp</dimen>
+
+<!--    <dimen name="margin_xs" tools:ignore="MissingDefaultResource">6dp</dimen>-->
+<!--    <dimen name="margin_sm" tools:ignore="MissingDefaultResource">10dp</dimen>-->
+<!--    <dimen name="margin_md" tools:ignore="MissingDefaultResource">16dp</dimen>-->
+<!--    <dimen name="margin_lg" tools:ignore="MissingDefaultResource">20dp</dimen>-->
+
+</resources>
