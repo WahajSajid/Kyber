@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginVertical="@dimen/_2sdp">
+
+    <!-- Received Message -->
+    <LinearLayout
+        android:id="@+id/rlMsgRcvd"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/_5sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        android:layout_marginEnd="@dimen/_20sdp"
+        android:layout_marginBottom="@dimen/_5sdp"
+        android:background="@drawable/recv_msg_bg"
+        android:gravity="start"
+        android:minWidth="@dimen/_85sdp"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/_2sdp"
+        android:paddingVertical="@dimen/_2sdp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingStart="@dimen/_4sdp"
+            android:paddingEnd="@dimen/_4sdp">
+
+            <!-- Sender name -->
+            <TextView
+                android:id="@+id/sender_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:fontFamily="@font/roboto_regular"
+                android:maxWidth="@dimen/_250sdp"
+                android:text="~Wahaj"
+                android:textAlignment="textStart"
+                android:textColor="#0047AF"
+                android:textSize="@dimen/_12sdp"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+
+            <TextView
+                android:id="@+id/sender_id"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start"
+                android:layout_marginStart="@dimen/_20sdp"
+                android:fontFamily="@font/roboto_regular"
+                android:maxWidth="@dimen/_250sdp"
+                android:text="kjdfjdf;j;ldfj;lasjdf;aj;"
+                android:textAlignment="textStart"
+                android:textColor="#60FFFFFF"
+                android:textSize="@dimen/_10sdp"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/sender_name"
+                app:layout_constraintTop_toTopOf="parent" />
+
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- Received Media Container -->
+        <FrameLayout
+            android:id="@+id/flMediaRcv"
+            android:layout_width="@dimen/_200sdp"
+            android:layout_height="@dimen/_200sdp"
+            android:visibility="gone">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/ivMediaRcv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#EEEEEE"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/ReceivedMessageRoundedTopCorners" />
+
+            <ImageView
+                android:id="@+id/ivPlayRcv"
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_media_play"
+                android:visibility="gone"
+                app:tint="#FFFFFF" />
+        </FrameLayout>
+
+        <!-- Received Audio Bubble -->
+        <LinearLayout
+            android:id="@+id/rcvAudioContainer"
+            android:layout_width="@dimen/_220sdp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/_8sdp"
+            android:paddingEnd="@dimen/_8sdp"
+            android:paddingTop="@dimen/_4sdp"
+            android:paddingBottom="@dimen/_4sdp"
+            android:visibility="gone">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <FrameLayout
+                    android:id="@+id/ivRcvPlayPause"
+                    android:layout_width="@dimen/_48sdp"
+                    android:layout_height="@dimen/_48sdp"
+                    android:background="@drawable/audio_play_btn_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:layout_constraintBottom_toBottomOf="@id/waveformRcv"
+                    app:layout_constraintEnd_toStartOf="@+id/waveformRcv"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="@id/waveformRcv">
+
+                    <ImageView
+                        android:id="@+id/ivRcvPlayIcon"
+                        android:layout_width="@dimen/_20sdp"
+                        android:layout_height="@dimen/_20sdp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/play_ic"
+                        app:tint="@color/black" />
+                </FrameLayout>
+
+                <app.secure.kyber.Other.WaveformView
+                    android:id="@+id/waveformRcv"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_48sdp"
+                    android:layout_marginStart="@dimen/_8sdp"
+                    android:layout_marginEnd="@dimen/_8sdp"
+                    app:layout_constraintEnd_toStartOf="@+id/tvRcvSpeed"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/ivRcvPlayPause"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toTopOf="@id/tvRcvAudioDuration" />
+
+                <TextView
+                    android:id="@+id/tvRcvSpeed"
+                    android:layout_width="@dimen/_29sdp"
+                    android:layout_height="@dimen/_20sdp"
+                    android:background="@drawable/audio_speed_badge_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:fontFamily="@font/roboto_medium"
+                    android:gravity="center"
+                    android:text="1x"
+                    android:textColor="@color/black"
+                    android:textSize="@dimen/_11sdp"
+                    app:layout_constraintBottom_toBottomOf="@id/waveformRcv"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/waveformRcv"
+                    app:layout_constraintTop_toTopOf="@id/waveformRcv" />
+
+                <TextView
+                    android:id="@+id/tvRcvAudioDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_2sdp"
+                    android:text="0:00"
+                    android:fontFamily="@font/roboto_regular"
+                    android:textSize="@dimen/_11sdp"
+                    android:textColor="#60FFFFFF"
+                    app:layout_constraintStart_toStartOf="@id/waveformRcv"
+                    app:layout_constraintTop_toBottomOf="@id/waveformRcv"
+                    app:layout_constraintBottom_toBottomOf="parent" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </LinearLayout>
+
+
+        <!-- Received message text -->
+        <TextView
+            android:id="@+id/tvMsgRcv"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:layout_marginEnd="@dimen/_6sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:maxWidth="@dimen/_250sdp"
+            android:text="Hi"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_16sdp"
+            android:visibility="visible"/>
+
+        <TextView
+            android:id="@+id/tvRcvReaction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="-8dp"
+            android:background="@drawable/reaction_bg"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/receivedMessageTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/_5sdp"
+        android:layout_marginTop="@dimen/_3sdp"
+        android:orientation="horizontal"
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
+        app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd">
+
+        <TextView
+            android:id="@+id/tvRcvTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/_4sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="2:30 PM"
+            android:textColor="#60FFFFFF"
+            android:textSize="@dimen/_10sdp" />
+
+        <ImageView
+            android:layout_width="@dimen/_10sdp"
+            android:layout_height="@dimen/_10sdp"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/privacy"
+            app:tint="#60FFFFFF" />
+    </LinearLayout>
+
+    <!-- Sent Message -->
+    <LinearLayout
+        android:id="@+id/rlMsgSent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/_20sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        android:layout_marginEnd="@dimen/_5sdp"
+        android:layout_marginBottom="@dimen/_5sdp"
+        android:background="@drawable/sent_msg_bg"
+        android:gravity="end"
+        android:minWidth="@dimen/_91sdp"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/_2sdp"
+        android:paddingVertical="@dimen/_2sdp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Sent Media Container -->
+        <FrameLayout
+            android:id="@+id/flMediaSent"
+            android:layout_width="@dimen/_200sdp"
+            android:layout_height="@dimen/_200sdp"
+            android:visibility="gone">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/ivMediaSent"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#CCCCCC"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/SentMessageRoundedTopCorners" />
+
+            <ImageView
+                android:id="@+id/ivPlaySent"
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:layout_gravity="center"
+                android:src="@android:drawable/ic_media_play"
+                android:visibility="gone"
+                app:tint="#FFFFFF" />
+        </FrameLayout>
+
+        <!-- Sent Audio Bubble -->
+        <LinearLayout
+            android:id="@+id/sentAudioContainer"
+            android:layout_width="@dimen/_220sdp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="@dimen/_8sdp"
+            android:paddingEnd="@dimen/_8sdp"
+            android:paddingTop="@dimen/_8sdp"
+            android:paddingBottom="@dimen/_4sdp"
+            android:visibility="gone">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_53sdp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <FrameLayout
+                    android:id="@+id/ivSentPlayPause"
+                    android:layout_width="@dimen/_48sdp"
+                    android:layout_height="@dimen/_48sdp"
+                    android:background="@drawable/audio_play_btn_bg_sent"
+                    android:clickable="true"
+                    android:focusable="true"
+                    app:layout_constraintEnd_toStartOf="@+id/tvSentSpeed"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toStartOf="parent">
+
+                    <ImageView
+                        android:id="@+id/ivSentPlayIcon"
+                        android:layout_width="@dimen/_20sdp"
+                        android:layout_height="@dimen/_20sdp"
+                        android:layout_gravity="center"
+                        android:src="@drawable/play_ic"
+                        app:tint="@color/black" />
+                </FrameLayout>
+
+                <TextView
+                    android:id="@+id/tvSentSpeed"
+                    android:layout_width="@dimen/_32sdp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginStart="@dimen/_10sdp"
+                    android:background="@drawable/speed_sent_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:fontFamily="@font/roboto_medium"
+                    android:gravity="center"
+                    android:text="1x"
+                    app:layout_constraintTop_toTopOf="@id/ivSentPlayPause"
+                    app:layout_constraintBottom_toBottomOf="@id/ivSentPlayPause"
+                    android:textColor="@color/black"
+                    android:textSize="@dimen/_11sdp"
+                    app:layout_constraintEnd_toStartOf="@+id/waveformSent"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/ivSentPlayPause" />
+
+
+                <app.secure.kyber.Other.WaveformView
+                    android:id="@+id/waveformSent"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginStart="@dimen/_8sdp"
+                    android:layout_marginEnd="@dimen/_8sdp"
+                    android:layout_weight="1"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/tvSentSpeed" />
+
+                <TextView
+                    android:id="@+id/tvSentAudioDuration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="0:00"
+                    android:layout_marginTop="@dimen/_5sdp"
+                    android:fontFamily="@font/roboto_regular"
+                    android:textSize="@dimen/_11sdp"
+                    android:textColor="#60FFFFFF"
+                    app:layout_constraintStart_toStartOf="@id/tvSentSpeed"
+                    app:layout_constraintEnd_toEndOf="@id/tvSentSpeed"
+                    app:layout_constraintTop_toBottomOf="@id/tvSentSpeed"
+
+                    />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+        </LinearLayout>
+
+
+        <!-- Sent message text -->
+        <TextView
+            android:id="@+id/tvSentMsg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="start"
+            android:layout_marginStart="@dimen/_6sdp"
+            android:layout_marginEnd="@dimen/_6sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:maxWidth="@dimen/_250sdp"
+            android:text="H"
+            android:textAlignment="textStart"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_16sdp"
+            android:visibility="visible"/>
+
+        <TextView
+            android:id="@+id/tvSentReaction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginEnd="8dp"
+            android:layout_marginTop="-8dp"
+            android:background="@drawable/reaction_bg"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Sent message time + icon -->
+    <LinearLayout
+        android:id="@+id/sentMessageTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_3sdp"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
+        app:layout_constraintTop_toBottomOf="@id/rlMsgSent">
+
+        <TextView
+            android:id="@+id/tvSentTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/_4sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="10:30 AM"
+            android:textColor="#60FFFFFF"
+            android:textSize="@dimen/_10sdp" />
+
+        <ImageView
+            android:layout_width="@dimen/_10sdp"
+            android:layout_height="@dimen/_10sdp"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/privacy"
+            app:tint="#60FFFFFF" />
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -8,6 +8,12 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: MessageEntity): Long
 
+    @Update
+    suspend fun update(message: MessageEntity)
+
+    @Delete
+    suspend fun delete(message: MessageEntity)
+
     @Query("SELECT * FROM messages ORDER BY time ASC")
     suspend fun getAll(): List<MessageEntity>
 

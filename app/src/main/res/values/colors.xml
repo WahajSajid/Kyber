@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="primary_color">#FF2176FF</color>
@@ -25,7 +25,6 @@
     <color name="avatar_text">#000000</color> <!-- letter color -->
 
 
-
     <!-- background surface -->
     <color name="surface_dark">#0f0b17</color>
 
@@ -40,6 +39,26 @@
     <!-- tab text colors (selector defined separately) -->
     <color name="tab_text_selected">#FFFFFF</color>
     <color name="tab_text_unselected">#969A9F</color>
+
+    <color name="btn_selected_color">#300047AF</color>
+    <color name="btn_unselected_color">#1E132A</color>
+    <color name="blue_primary">#2176FF</color>
+    <color name="gray">#C0C0C0</color>
+    <color name="hint_color">#969A9F</color>
+    <color name="gray_800">#858687</color>
+
+    <color name="switch_track_color" tools:ignore="ReferenceType,ResourceCycle">@drawable/switch_track_color</color>
+
+
+    <color name="deselected_contact_name_color">#CBD5E1</color>
+    <color name="contact_id_color">#64748B</color>
+    <color name="selected_contact_name_color">#FFFFFF</color>
+
+    <color name="deselected_anonymous_text_color">#FFFFFF</color>
+    <color name="selected_anonymous_text_color">#9967FF</color>
+
+
+
 
 
 </resources>

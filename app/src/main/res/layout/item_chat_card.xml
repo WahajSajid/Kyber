@@ -4,14 +4,14 @@
     android:layout_width="match_parent"
     android:layout_height="84dp"
     android:background="@drawable/contact_bg"
-    android:padding="10dp"
+    android:padding="@dimen/_10sdp"
     android:layout_marginTop="@dimen/_10sdp">
 
     <!-- Avatar + small clock badge -->
     <FrameLayout
         android:id="@+id/avatarHolder"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+        android:layout_width="@dimen/_56sdp"
+        android:layout_height="@dimen/_56sdp"
         android:background="@drawable/bg_avatar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -22,17 +22,17 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:src="@drawable/ic_person"
-            android:padding="5dp"
+            android:padding="@dimen/_5sdp"
             android:contentDescription="@string/app_name"
             />
 
         <!-- little clock badge -->
         <View
             android:id="@+id/clockBadge"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="@dimen/_16sdp"
+            android:layout_height="@dimen/_16sdp"
             android:layout_gravity="top|end"
-            android:layout_margin="2dp"
+            android:layout_margin="@dimen/_2sdp"
             android:background="@drawable/clock"/>
     </FrameLayout>
 
@@ -43,7 +43,7 @@
         android:layout_height="wrap_content"
         android:text="Bryan"
         android:fontFamily="@font/roboto_regular"
-        android:textSize="18sp"
+        android:textSize="@dimen/_18sdp"
         android:textColor="#E0F1FF"
         android:layout_marginStart="@dimen/_10sdp"
         app:layout_constraintStart_toEndOf="@id/avatarHolder"
@@ -57,7 +57,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="What do you think?"
-        android:textSize="14sp"
+        android:textSize="@dimen/_14sdp"
         android:textColor="#A8ADBD"
         android:fontFamily="@font/roboto_regular"
         app:layout_constraintStart_toStartOf="@id/tvName"
@@ -79,7 +79,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="18 min remain"
-            android:textSize="12sp"
+            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
             android:textColor="#A8ADBD"/>
 
@@ -88,7 +88,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="  -  "
-            android:textSize="12sp"
+            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
             android:textColor="#A8ADBD"/>
 
@@ -98,7 +98,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="4:30 PM"
-            android:textSize="12sp"
+            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
             android:textColor="#A8ADBD"/>
     </LinearLayout>
@@ -107,14 +107,14 @@
     <TextView
         android:visibility="gone"
         android:id="@+id/badgeUnread"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        android:layout_width="@dimen/_22sdp"
+        android:layout_height="@dimen/_22sdp"
         android:background="@drawable/bg_unread_pill"
         android:gravity="center"
         android:text="2"
         android:textColor="#FFFFFF"
         android:fontFamily="@font/roboto_medium"
-        android:textSize="12sp"
+        android:textSize="@dimen/_12sdp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="@id/avatarHolder"/>
 </androidx.constraintlayout.widget.ConstraintLayout>

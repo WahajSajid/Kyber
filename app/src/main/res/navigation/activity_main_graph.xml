@@ -9,20 +9,26 @@
         android:id="@+id/chatListFragment"
         android:name="app.secure.kyber.fragments.ChatListFragment"
         android:label="fragment_chat_list"
-        tools:layout="@layout/fragment_chat_list" >
+        tools:layout="@layout/fragment_chat_list">
 
         <action
             android:id="@+id/action_chatListFragment_to_chatFragment"
             app:destination="@id/chatFragment" />
+        <action
+            android:id="@+id/action_chatListFragment_to_groupChatListFragment"
+            app:destination="@id/groupChatListFragment" />
     </fragment>
     <fragment
         android:id="@+id/chatFragment"
         android:name="app.secure.kyber.fragments.ChatFragment"
         android:label="fragment_chat"
-        tools:layout="@layout/fragment_chat" >
+        tools:layout="@layout/fragment_chat">
         <action
             android:id="@+id/action_chatFragment_to_chatDetailsFragment"
             app:destination="@id/chatDetailsFragment" />
+        <action
+            android:id="@+id/action_chatFragment_to_groupDetailsFragment"
+            app:destination="@id/groupDetailsFragment" />
     </fragment>
     <fragment
         android:id="@+id/netwokFragment"
@@ -33,7 +39,7 @@
         android:id="@+id/contactsFragment"
         android:name="app.secure.kyber.fragments.ContactsFragment"
         android:label="fragment_contacts"
-        tools:layout="@layout/fragment_contacts" >
+        tools:layout="@layout/fragment_contacts">
 
     </fragment>
     <fragment
@@ -49,7 +55,7 @@
         android:id="@+id/chatDetailsFragment"
         android:name="app.secure.kyber.fragments.ChatDetailsFragment"
         android:label="fragment_chat_details"
-        tools:layout="@layout/fragment_chat_details" >
+        tools:layout="@layout/fragment_chat_details">
         <action
             android:id="@+id/action_chatDetailsFragment_to_sharedMediaFragment"
             app:destination="@id/sharedMediaFragment" />
@@ -59,4 +65,42 @@
         android:name="app.secure.kyber.fragments.SharedMediaFragment"
         android:label="fragment_shared_media"
         tools:layout="@layout/fragment_shared_media" />
+    <fragment
+        android:id="@+id/groupChatListFragment"
+        android:name="app.secure.kyber.fragments.GroupChatListFragment"
+        android:label="fragment_group_chat_list"
+        tools:layout="@layout/fragment_group_chat_list" >
+        <action
+            android:id="@+id/action_groupChatListFragment_to_chatListFragment"
+            app:destination="@id/chatListFragment" />
+        <action
+            android:id="@+id/action_groupChatListFragment_to_chatFragment"
+            app:destination="@id/chatFragment" />
+        <action
+            android:id="@+id/action_groupChatListFragment_to_createGroupFragment"
+            app:destination="@id/createGroupFragment" />
+    </fragment>
+
+
+
+    <fragment
+        android:id="@+id/createGroupFragment"
+        android:name="app.secure.kyber.fragments.CreateGroupFragment"
+        android:label="fragment_create_group"
+        tools:layout="@layout/fragment_create_group" >
+        <action
+            android:id="@+id/action_createGroupFragment_to_groupChatListFragment"
+            app:destination="@id/groupChatListFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/groupDetailsFragment"
+        android:name="app.secure.kyber.fragments.GroupDetailsFragment"
+        android:label="fragment_group_details"
+        tools:layout="@layout/fragment_group_details" >
+        <action
+            android:id="@+id/action_groupDetailsFragment_to_sharedMediaFragment"
+            app:destination="@id/sharedMediaFragment" />
+    </fragment>
+
+
 </navigation>

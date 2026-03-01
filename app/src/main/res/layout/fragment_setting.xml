@@ -21,7 +21,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <!-- Top bar / profile area -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/cltop"
                 android:layout_width="match_parent"
@@ -39,12 +38,10 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
 
-                    <!-- Circular avatar with centered letter and a small overlapping edit (pencil) badge -->
                     <FrameLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content">
 
-                        <!-- Avatar circle with letter -->
                         <TextView
                             android:id="@+id/avatar_letter"
                             android:layout_width="@dimen/_67sdp"
@@ -56,7 +53,6 @@
                             android:textColor="@color/avatar_text"
                             android:textSize="@dimen/_20sdp" />
 
-                        <!-- Edit badge (small blue circle with white pencil), positioned bottom-end -->
                         <ImageView
                             android:id="@+id/avatar_edit"
                             android:layout_width="@dimen/_20sdp"
@@ -72,7 +68,6 @@
 
                 </FrameLayout>
 
-
                 <androidx.constraintlayout.widget.ConstraintLayout
                     android:id="@+id/details_layout"
                     android:layout_width="wrap_content"
@@ -82,8 +77,6 @@
                     app:layout_constraintStart_toEndOf="@id/profile_picture"
                     app:layout_constraintTop_toTopOf="@id/profile_picture">
 
-
-                    <!-- Name -->
                     <TextView
                         android:id="@+id/tvNameDis"
                         android:layout_width="@dimen/_150sdp"
@@ -99,7 +92,6 @@
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintTop_toTopOf="parent" />
 
-
                     <TextView
                         android:id="@+id/tvName"
                         android:layout_width="@dimen/_160sdp"
@@ -114,8 +106,6 @@
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintTop_toBottomOf="@id/tvNameDis" />
 
-
-                    <!-- Last update (right). badge is separate so you can style it. -->
                     <LinearLayout
                         android:id="@+id/last_update_group"
                         android:layout_width="wrap_content"
@@ -157,7 +147,6 @@
                             android:src="@drawable/group_1171276116" />
                     </LinearLayout>
 
-
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
                 <com.google.android.material.button.MaterialButton
@@ -180,7 +169,6 @@
                     app:strokeColor="@color/primary_color"
                     app:strokeWidth="@dimen/_1sdp" />
 
-
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnShare"
                     android:layout_width="@dimen/_35sdp"
@@ -201,16 +189,13 @@
                     app:strokeColor="@color/primary_color"
                     app:strokeWidth="@dimen/_1sdp" />
 
-
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <!-- Main content area -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_15sdp">
 
-                <!-- Top grid: 2 columns x 2 rows of feature cards -->
                 <GridLayout
                     android:id="@+id/top_grid"
                     android:layout_width="match_parent"
@@ -224,7 +209,6 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
 
-                    <!-- Card 1 -->
                     <include
                         android:id="@+id/auto_lock_card"
                         layout="@layout/item_top_card"
@@ -235,7 +219,6 @@
                         android:layout_columnWeight="1"
                         android:tag="auto_lock" />
 
-                    <!-- Card 2 -->
                     <include
                         android:id="@+id/disappearing_chat_card"
                         layout="@layout/item_top_card"
@@ -246,7 +229,6 @@
                         android:layout_columnWeight="1"
                         android:tag="disappearing_chat" />
 
-                    <!-- Card 3 -->
                     <include
                         android:id="@+id/search_privacy_card"
                         layout="@layout/item_top_card"
@@ -257,7 +239,6 @@
                         android:layout_columnWeight="1"
                         android:tag="search_privacy" />
 
-                    <!-- Card 4 -->
                     <include
                         android:id="@+id/encryption_timer_card"
                         layout="@layout/item_top_card"
@@ -269,7 +250,6 @@
                         android:tag="encryption_timer" />
                 </GridLayout>
 
-                <!-- Subscription section -->
                 <LinearLayout
                     android:id="@+id/subscription_card"
                     android:layout_width="0dp"
@@ -359,7 +339,6 @@
                                 app:layout_constraintStart_toEndOf="@+id/start_icon"
                                 app:layout_constraintTop_toTopOf="@id/start_icon" />
 
-
                         </androidx.constraintlayout.widget.ConstraintLayout>
 
                     </LinearLayout>
@@ -374,7 +353,6 @@
                         android:textSize="@dimen/_14sdp" />
                 </LinearLayout>
 
-                <!-- First List section -->
                 <LinearLayout
                     android:id="@+id/list_container"
                     android:layout_width="0dp"
@@ -386,7 +364,6 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toBottomOf="@id/subscription_card">
 
-                    <!-- Security item -->
                     <LinearLayout
                         android:id="@+id/item_security"
                         android:layout_width="match_parent"
@@ -412,7 +389,6 @@
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>
 
-                    <!-- Notifications -->
                     <LinearLayout
                         android:id="@+id/item_notifications"
                         android:layout_width="match_parent"
@@ -440,8 +416,6 @@
 
                 </LinearLayout>
 
-
-                <!-- Second List section -->
                 <LinearLayout
                     android:id="@+id/list2_container"
                     android:layout_width="0dp"
@@ -453,7 +427,6 @@
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toBottomOf="@id/list_container">
 
-                    <!-- Help -->
                     <LinearLayout
                         android:id="@+id/item_help"
                         android:layout_width="match_parent"
@@ -479,7 +452,6 @@
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>
 
-                    <!-- Invite friends -->
                     <LinearLayout
                         android:id="@+id/item_invite"
                         android:layout_width="match_parent"
@@ -505,7 +477,6 @@
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>
 
-                    <!-- Delete Account -->
                     <LinearLayout
                         android:id="@+id/item_delete"
                         android:layout_width="match_parent"

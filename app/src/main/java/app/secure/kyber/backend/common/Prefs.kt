@@ -12,6 +12,9 @@ object Prefs {
 
     private const val KEY_LICENSE = "license"
 
+    private const val DISAPPEARING_MESSAGES_STATUS = "Off"
+    private const val MUTE_NOTIFICATION_STATUS = "Always"
+
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -22,6 +25,21 @@ object Prefs {
             apply()
         }
     }
+
+    fun setDisappearingMessagesStatus(ctx: Context, value: String?){
+        prefs(ctx).edit().apply{
+            if (value == null) remove(DISAPPEARING_MESSAGES_STATUS) else putString(DISAPPEARING_MESSAGES_STATUS, value)
+            apply()
+        }
+    }
+
+    fun setMuteNotificationStatus(ctx: Context, value: String?){
+        prefs(ctx).edit().apply{
+            if (value == null) remove(MUTE_NOTIFICATION_STATUS) else putString(MUTE_NOTIFICATION_STATUS, value)
+            apply()
+        }
+    }
+
 
     fun setPublicKey(ctx: Context, value: String?) {
         prefs(ctx).edit().apply {
@@ -57,6 +75,9 @@ object Prefs {
     fun getName(ctx: Context): String? = prefs(ctx).getString(KEY_NAME, null)
     fun getPassword(ctx: Context): String? = prefs(ctx).getString(KEY_PASSWORD, null)
     fun getLicense(ctx: Context): String? = prefs(ctx).getString(KEY_LICENSE, null)
+    fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(DISAPPEARING_MESSAGES_STATUS, null)
+    fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(MUTE_NOTIFICATION_STATUS, null)
+
 
     // Utilities
     fun clear(ctx: Context) = prefs(ctx).edit().clear().apply()

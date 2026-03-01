@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+    <RelativeLayout
+        android:id="@+id/contact_item"
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="@dimen/_8sdp"
+        android:background="@drawable/deselected_contact_bg"
+        android:padding="@dimen/_12sdp">
+
+        <!-- Avatar -->
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/ivAvatar"
+            android:layout_width="@dimen/_48sdp"
+            android:layout_height="@dimen/_48sdp"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:src="@drawable/anonymous_icon"
+            android:padding="@dimen/_2sdp" />
+
+        <!-- User Info -->
+        <LinearLayout
+            android:id="@+id/llUserInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="@dimen/_12sdp"
+            android:layout_toEndOf="@id/ivAvatar"
+            android:layout_toStartOf="@id/btnAdd"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Andrew Black"
+                android:textColor="@color/deselected_contact_name_color"
+                android:textSize="@dimen/_16sdp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="ID:K2EDENT2"
+                android:textColor="#8B7BA8"
+                android:textSize="@dimen/_12sdp" />
+
+        </LinearLayout>
+
+        <!-- Add/Remove Button -->
+        <ImageView
+            android:id="@+id/btnAdd"
+            android:layout_width="@dimen/_32sdp"
+            android:layout_height="@dimen/_32sdp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:padding="@dimen/_6sdp"
+            android:src="@drawable/deselected_contact_ic"
+            android:contentDescription="Add Member" />
+
+    </RelativeLayout>
+

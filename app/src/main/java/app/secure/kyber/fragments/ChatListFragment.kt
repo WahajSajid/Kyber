@@ -18,6 +18,8 @@ import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import app.secure.kyber.ApplicationClass
+import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
 import app.secure.kyber.adapters.ChatListAdapter
 import app.secure.kyber.adapters.ContactListAdapter
@@ -33,6 +35,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import kotlin.getValue
 
+@Suppress("DEPRECATION")
 @AndroidEntryPoint
 class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
@@ -41,8 +44,9 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private var serverPort by mutableStateOf("8080")
 
     private lateinit var binding: FragmentChatListBinding
-    private lateinit var navController : NavController
+    private lateinit var navController: NavController
     private lateinit var chatListAdapter: ChatListAdapter
+    private lateinit var myApp: MyApp
 
     private val vm: MessagesViewModel by viewModels {
         // quick factory — wire up Room
@@ -50,7 +54,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         val repo = MessageRepository(db.messageDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                MessagesViewModel(repo,"") as T
+                MessagesViewModel(repo, "") as T
         }
     }
 
@@ -62,7 +66,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         binding = FragmentChatListBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -71,20 +75,31 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         super.onViewCreated(view, savedInstanceState)
         navController = view.findNavController()
         unionClient = UnionClient()
+        myApp = requireActivity().application as MyApp
 
 
         onionAppConnection()
 
         setListAdapter()
+
+        //Click listener for the group btn
+        binding.btnGroupChat.setOnClickListener {
+            myApp.tabBtnState = "group_chat"
+            navController.navigate(R.id.action_chatListFragment_to_groupChatListFragment)
+        }
+
+
     }
 
 
     fun onionAppConnection() {
-        if(Prefs.getPublicKey(requireContext())==null || Prefs.getPublicKey(requireContext())!!.isEmpty()){
+        if (Prefs.getPublicKey(requireContext()) == null || Prefs.getPublicKey(requireContext())!!
+                .isEmpty()
+        ) {
             val exportedIdentity = unionClient.exportIdentity()
-            Prefs.setUnionId(requireContext(),exportedIdentity["unionId"])
-            Prefs.setPublicKey(requireContext(),exportedIdentity["publicKey"])
-        }else{
+            Prefs.setUnionId(requireContext(), exportedIdentity["unionId"])
+            Prefs.setPublicKey(requireContext(), exportedIdentity["publicKey"])
+        } else {
             val m: Map<String, String> = mapOf(
                 "unionId" to Prefs.getUnionId(requireContext())!!,
                 "publicKey" to Prefs.getPublicKey(requireContext())!!
@@ -95,6 +110,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         connectToServer()
 
     }
+
     private fun connectToServer() {
         lifecycleScope.launch {
             val result = unionClient.connect(
@@ -106,15 +122,17 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                     UnionClient.ConnectionState.CONNECTED -> {
                         // Successfully connected
 
-                     //   Snackbar.make(binding.root, "Server Connected Successfully", Snackbar.LENGTH_SHORT).show()
+                        //   Snackbar.make(binding.root, "Server Connected Successfully", Snackbar.LENGTH_SHORT).show()
                         recieveMessage()
                     }
+
                     UnionClient.ConnectionState.ERROR -> {
                         // Handle connection error
-                       // Snackbar.make(binding.root, "Error Connecting Server", Snackbar.LENGTH_SHORT).show()
+                        // Snackbar.make(binding.root, "Error Connecting Server", Snackbar.LENGTH_SHORT).show()
                     }
+
                     else -> { /* Handle other states */
-                       // Snackbar.make(binding.root, "Something went wrong", Snackbar.LENGTH_SHORT).show()
+                        // Snackbar.make(binding.root, "Something went wrong", Snackbar.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -130,7 +148,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
-    private fun recieveMessage(){
+    private fun recieveMessage() {
 
         unionClient.setMessageCallback { message ->
 
@@ -147,13 +165,13 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private fun setListAdapter() {
         val recyclerview = binding.rv
         recyclerview.setHasFixedSize(false)
-        chatListAdapter = ChatListAdapter(requireContext(),onItemClick={
-            chatModel ->
+        chatListAdapter = ChatListAdapter(requireContext(), onItemClick = { chatModel ->
             val args = bundleOf(
                 "contact_id" to chatModel.id,
-                "contact_name" to chatModel.name
+                "contact_name" to chatModel.name,
+                "coming_from" to "chat_list"
             )
-            navController.navigate(R.id.action_chatListFragment_to_chatFragment,args)
+            navController.navigate(R.id.action_chatListFragment_to_chatFragment, args)
         })
 
 
@@ -169,10 +187,9 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
 
 
-
 //        val emptyDataObserver = EmptyDataObserver(recyclerview, empty_data_parent)
 //        chatListAdapter.registerAdapterDataObserver(emptyDataObserver)
     }
 
 
-    }
+}

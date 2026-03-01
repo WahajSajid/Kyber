@@ -1,31 +1,24 @@
 package app.secure.kyber.fragments
 
 import android.app.AlertDialog
-import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
-import android.util.Log
 import android.util.TypedValue
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.activities.MainActivity
-import app.secure.kyber.databinding.DisappearingMessagesDialogBinding
-import app.secure.kyber.databinding.FragmentChatBinding
+import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
 import kotlin.math.roundToInt
-
 
 class ChatDetailsFragment : Fragment() {
     private lateinit var binding: FragmentChatDetailsBinding
@@ -43,164 +36,31 @@ class ChatDetailsFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        // Inflate the layout for this fragment
         binding = FragmentChatDetailsBinding.inflate(inflater, container, false)
-
         navController = requireActivity().findNavController(R.id.main_fragment)
-
 
         (requireActivity() as MainActivity).setAppChatUser("Chat Details")
         binding.tvName.text = contactName
         binding.tvHandle.text = targetUnionId
         binding.avatar.text = contactName.first().toString()
+        binding.disappearingMessagesState.text =
+            Prefs.getDisappearingMessageStatus(requireContext())
+        binding.muteNotificationsStatus.text = Prefs.getMuteNotificationStatus(requireContext())
 
 
-        //Setup the click listeners
         binding.disappearingMessagesLayout.setOnClickListener {
-
-            Log.d("### Disappearing Messages Clicked ###", "Yes")
-
-
-            //Setup the alert dialog
-            val disappearingMessagesDialogView =
-                LayoutInflater.from(requireContext())
-                    .inflate(R.layout.disappearing_messages_dialog, null)
-            val disappearingMessagesDialog =
-                AlertDialog.Builder(requireContext()).setView(disappearingMessagesDialogView)
-                    .create()
-            disappearingMessagesDialog.window?.setBackgroundDrawable(
-                ContextCompat.getDrawable(
-                    requireContext(),
-                    R.drawable.disappearing_messages_dialog_bg
-                )
-            )
-
-            // Remove any default padding the window may add around your content
-            disappearingMessagesDialog.window?.decorView?.setPadding(0, 0, 0, 0)
-            disappearingMessagesDialog.show()
-
-
-            //Handle dialog view options click
-
-            //24 Hours Option click
-            disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-                .setOnClickListener {
-                    update24HoursOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<LinearLayout>(R.id.layout_24Hours)
-                .setOnClickListener {
-                    update24HoursOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<TextView>(R.id.opt_24h)
-                .setOnClickListener {
-                    update24HoursOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-
-
-            //7 Days Option Click
-            disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-                .setOnClickListener {
-                    update7DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<LinearLayout>(R.id.layout_7Days)
-                .setOnClickListener {
-                    update7DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<TextView>(R.id.opt_7d)
-                .setOnClickListener {
-                    update7DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-
-
-            //30 Days Option Click
-            disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-                .setOnClickListener {
-                    update30DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<LinearLayout>(R.id.layout_30Days)
-                .setOnClickListener {
-                    update30DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<TextView>(R.id.opt_30d)
-                .setOnClickListener {
-                    update30DaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-
-
-            //Always option click
-            disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-                .setOnClickListener {
-                    updateAlwaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<LinearLayout>(R.id.layout_always)
-                .setOnClickListener {
-                    updateAlwaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<TextView>(R.id.opt_always)
-                .setOnClickListener {
-                    updateAlwaysOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-
-
-            //Off option click
-            disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-                .setOnClickListener {
-                    updateOffOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<LinearLayout>(R.id.layout_off)
-                .setOnClickListener {
-                    updateOffOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-            disappearingMessagesDialogView.findViewById<TextView>(R.id.opt_off)
-                .setOnClickListener {
-                    updateOffOption(disappearingMessagesDialogView, disappearingMessagesDialog)
-                }
-
+            showDisappearingMessagesDialog()
         }
 
         binding.nicknameLayout.setOnClickListener {
-            Log.d("### Nickname layout clicked ###", "Yes")
-            //Setup the alert dialog
-            val nickNameDialogView =
-                LayoutInflater.from(context).inflate(R.layout.nick_name_dialog, null)
-            val nickNameDialog = AlertDialog.Builder(context).setView(nickNameDialogView).create()
-            nickNameDialog.window?.setBackgroundDrawable(
-                ContextCompat.getDrawable(
-                    requireContext(),
-                    R.drawable.nick_name_dialog_bg
-                )
-            )
-
-            // Remove any default padding the window may add around your content
-            nickNameDialog.window?.decorView?.setPadding(0, 0, 0, 0)
-            nickNameDialog.show()
-
+            showNicknameDialog()
         }
 
         binding.muteNotificationsLayout.setOnClickListener {
-
-            Log.d("### Mute Notifications Layout clicked ###", "Yes")
-            val muteNotificationsDialogView =
-                LayoutInflater.from(context).inflate(R.layout.mute_notifications, null)
-            val muteNotificationsDialog =
-                AlertDialog.Builder(context).setView(muteNotificationsDialogView).create()
-            muteNotificationsDialog.window?.setBackgroundDrawable(
-                ContextCompat.getDrawable(
-                    requireContext(),
-                    R.drawable.mute_notifications_dialog_bg
-                )
-            )
-
-            // Remove any default padding the window may add around your content
-            muteNotificationsDialog.window?.decorView?.setPadding(0, 0, 0, 0)
-            muteNotificationsDialog.show()
+            showMuteNotificationsDialog()
         }
 
-
-        val args = bundleOf(
-            "name" to contactName
-        )
-        //Shared Media Options click listeners
+        val args = bundleOf("name" to contactName)
         binding.sharedMediaLayout.setOnClickListener {
             navController.navigate(R.id.action_chatDetailsFragment_to_sharedMediaFragment, args)
         }
@@ -208,185 +68,231 @@ class ChatDetailsFragment : Fragment() {
             navController.navigate(R.id.action_chatDetailsFragment_to_sharedMediaFragment, args)
         }
 
+        binding.blockLayout.setOnClickListener { showBlockDialog() }
+        binding.blockText.setOnClickListener { showBlockDialog() }
 
-        //Block Options Click listeners
-        binding.blockLayout.setOnClickListener {
-            showBlockDialog()
-        }
-        binding.blockText.setOnClickListener {
-            showBlockDialog()
-        }
-
-
-        //Wipe Chat Options click listeners
-        binding.wipeChatLayout.setOnClickListener {
-            showWipeChatDialog()
-        }
-        binding.wipeChatText.setOnClickListener {
-            showWipeChatDialog()
-        }
-
+        binding.wipeChatLayout.setOnClickListener { showWipeChatDialog() }
+        binding.wipeChatText.setOnClickListener { showWipeChatDialog() }
 
         return binding.root
     }
 
+    private fun showDisappearingMessagesDialog() {
+        val dialogView =
+            LayoutInflater.from(context).inflate(R.layout.disappearing_messages_dialog, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(
+                requireContext(),
+                R.drawable.disappearing_messages_dialog_bg
+            )
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        dialog.show()
+
+        val options = mapOf(
+            R.id.layout_24Hours to ("24 Hours" to R.id.radio_24h),
+            R.id.layout_7Days to ("7 Days" to R.id.radio_7Days),
+            R.id.layout_30Days to ("30 Days" to R.id.radio_30Days),
+            R.id.layout_always to ("Always" to R.id.radio_always),
+            R.id.layout_off to ("Off" to R.id.radio_off)
+        )
+
+        val radioButtons = options.values.map { dialogView.findViewById<ImageView>(it.second) }
+
+        updateSelectionDisappearingMessages(radioButtons)
+
+        options.forEach { (layoutId, pair) ->
+            dialogView.findViewById<LinearLayout>(layoutId).setOnClickListener {
+                Prefs.setDisappearingMessagesStatus(requireContext(), pair.first)
+                updateSelection(pair.second, radioButtons, dialog)
+                binding.disappearingMessagesState.text = pair.first
+            }
+        }
+    }
+
+
+    fun updateSelectionDisappearingMessages(radioButtons: List<ImageView>) {
+
+        val status = Prefs.getDisappearingMessageStatus(requireContext())
+        when (status) {
+            "24 Hours" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_checked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[4].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "7 Days" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_checked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[4].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "30 Days" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_checked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[4].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "Always" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_checked)
+                radioButtons[4].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "Off" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[4].setImageResource(R.drawable.radio_checked)
+            }
+
+            else -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[4].setImageResource(R.drawable.radio_checked)
+            }
+
+        }
+    }
+
+
+    fun updateMuteNotificationStatus(radioButtons: List<ImageView>) {
+
+        val status = Prefs.getMuteNotificationStatus(requireContext())
+        when (status) {
+            "1 Hour" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_checked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "12 Hours" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_checked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "7 Days" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_checked)
+                radioButtons[3].setImageResource(R.drawable.radio_unchecked)
+            }
+
+            "Always" -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_checked)
+            }
+
+            else -> {
+                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[1].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[2].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[3].setImageResource(R.drawable.radio_checked)
+            }
+
+        }
+    }
+
+    fun updateSelection(
+        selectedRadioId: Int,
+        radioButtons: List<ImageView>,
+        dialog: AlertDialog
+    ) {
+
+        radioButtons.forEach {
+            if (it.id != selectedRadioId) it.setImageResource(R.drawable.radio_unchecked)
+            else it.setImageResource(R.drawable.radio_checked)
+        }
+//            dialogView.findViewById<ImageButton>(selectedRadioId).setImageResource(R.drawable.radio_checked)
+        dialog.dismiss()
+    }
+
+    private fun showNicknameDialog() {
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.nick_name_dialog, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(
+                requireContext(),
+                R.drawable.nick_name_dialog_bg
+            )
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        dialog.show()
+    }
+
+    private fun showMuteNotificationsDialog() {
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.mute_notifications, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(
+                requireContext(),
+                R.drawable.mute_notifications_dialog_bg
+            )
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        dialog.show()
+
+        val options = mapOf(
+            R.id.opt_1 to ("1 Hour" to R.id.opt_1_radio),
+            R.id.opt_2 to ("12 Hours" to R.id.opt_2_radio),
+            R.id.opt_3 to ("7 Days" to R.id.opt_3_radio),
+            R.id.opt_4 to ("Always" to R.id.opt_4_radio),
+        )
+
+
+        val radioButtons = options.values.map { dialogView.findViewById<ImageView>(it.second) }
+
+        updateMuteNotificationStatus(radioButtons)
+
+        options.forEach { (layoutId, pair) ->
+            dialogView.findViewById<LinearLayout>(layoutId).setOnClickListener {
+                Prefs.setMuteNotificationStatus(requireContext(), pair.first)
+                updateSelection(pair.second, radioButtons, dialog)
+                binding.muteNotificationsStatus.text = pair.first
+            }
+        }
+    }
 
     private fun showBlockDialog() {
-        //Setup the alert dialog
-        val blockDialogView =
-            LayoutInflater.from(context).inflate(R.layout.block_dialog, null)
-        val blockDialog = AlertDialog.Builder(context).setView(blockDialogView).create()
-        blockDialog.window?.setBackgroundDrawable(
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.block_dialog, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
             ContextCompat.getDrawable(
                 requireContext(),
                 R.drawable.block_dialog_bg
             )
         )
-
-        // Remove any default padding the window may add around your content
-        blockDialog.window?.decorView?.setPadding(0, 0, 0, 0)
-        blockDialog.show()
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        dialog.show()
     }
 
     private fun showWipeChatDialog() {
-        //Setup the alert dialog
-        val wipeChatDialogView =
-            LayoutInflater.from(context).inflate(R.layout.wipe_chat_dialog, null)
-        val wipeChatDialog = AlertDialog.Builder(context).setView(wipeChatDialogView).create()
-        wipeChatDialog.window?.setBackgroundDrawable(
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.wipe_chat_dialog, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
             ContextCompat.getDrawable(
                 requireContext(),
                 R.drawable.wipe_chat_bg
             )
         )
-
-        // Remove any default padding the window may add around your content
-        wipeChatDialog.window?.decorView?.setPadding(0, 0, 0, 0)
-        wipeChatDialog.show()
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        dialog.show()
     }
-
-
-    fun dpToPx(dp: Int): Int {
-        return TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics
-        ).roundToInt()
-    }
-
-
-    private fun update24HoursOption(
-        disappearingMessagesDialogView: View,
-        disappearingMessagesDialog: AlertDialog
-    ) {
-        // Update the disappearing messages state
-        binding.disappearingMessagesState.text = "24 Hours"
-
-
-        //update the button drawables
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-            .setImageResource(R.drawable.radio_checked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-            .setImageResource(R.drawable.radio_unchecked)
-
-        disappearingMessagesDialog.dismiss()
-    }
-
-    private fun update7DaysOption(
-        disappearingMessagesDialogView: View,
-        disappearingMessagesDialog: AlertDialog
-    ) {
-        // Update the disappearing messages state
-        binding.disappearingMessagesState.text = "7 Days"
-
-
-        //update the button drawables
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-            .setImageResource(R.drawable.radio_checked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-            .setImageResource(R.drawable.radio_unchecked)
-
-        disappearingMessagesDialog.dismiss()
-    }
-
-
-    private fun update30DaysOption(
-        disappearingMessagesDialogView: View,
-        disappearingMessagesDialog: AlertDialog
-    ) {
-        // Update the disappearing messages state
-        binding.disappearingMessagesState.text = "30 Days"
-
-
-        //update the button drawables
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-            .setImageResource(R.drawable.radio_checked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-            .setImageResource(R.drawable.radio_unchecked)
-
-        disappearingMessagesDialog.dismiss()
-    }
-
-    private fun updateAlwaysOption(
-        disappearingMessagesDialogView: View,
-        disappearingMessagesDialog: AlertDialog
-    ) {
-        // Update the disappearing messages state
-        binding.disappearingMessagesState.text = "Always"
-
-
-        //update the button drawables
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-            .setImageResource(R.drawable.radio_checked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-            .setImageResource(R.drawable.radio_unchecked)
-
-        disappearingMessagesDialog.dismiss()
-    }
-
-    private fun updateOffOption(
-        disappearingMessagesDialogView: View,
-        disappearingMessagesDialog: AlertDialog
-    ) {
-        // Update the disappearing messages state
-        binding.disappearingMessagesState.text = "Off"
-
-
-        //update the button drawables
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_24h)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_7Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_30Days)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_always)
-            .setImageResource(R.drawable.radio_unchecked)
-        disappearingMessagesDialogView.findViewById<ImageButton>(R.id.radio_off)
-            .setImageResource(R.drawable.radio_checked)
-
-        disappearingMessagesDialog.dismiss()
-    }
-
 }

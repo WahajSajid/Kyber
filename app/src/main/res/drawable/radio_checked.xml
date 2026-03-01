@@ -1,37 +1,32 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-  Radio checked drawable: circular outline with centered check mark.
-  This file intentionally omits any filled background color (per your request).
-  Use it as the "checked" drawable in your selector (e.g. radio_button_selector.xml).
--->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="@dimen/_30sdp"
-    android:height="@dimen/_30sdp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+<!-- drawable/list_header.xml -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="21dp"
+    android:height="21dp"
+    android:viewportWidth="21"
+    android:viewportHeight="21">
 
-    <!-- Outer circular ring (stroke only) -->
-    <path
-        android:name="outer_ring"
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#969A9F"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M12,2
-                          A10,10 0 1,1 11.999,2z" />
+    <group>
+        <clip-path
+            android:pathData="M10.5 0.5C16.0228 0.5 20.5 4.97715 20.5 10.5C20.5 16.0228 16.0228 20.5 10.5 20.5C4.97715 20.5 0.5 16.0228 0.5 10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z" />
+        <path
+            android:pathData="M0.5 0.5V20.5H20.5V0.5"
+            android:fillColor="#085CB6F2" />
+    </group>
 
-    <!-- Centered check mark (solid) -->
-    <!-- Path shaped and scaled to look like the check in your image -->
     <path
-        android:name="check_mark"
-        android:fillColor="#FFFFFFFF"
-        android:strokeColor="@android:color/transparent"
-        android:pathData="M7.0,12.5
-                          L9.6,15.2
-                          L16.8,8.0
-                          L15.1,6.4
-                          L9.6,12.0
-                          L8.0,10.6
-                          Z" />
+        android:pathData="M10.5 0.5C16.0228 0.5 20.5 4.97715 20.5 10.5C20.5 16.0228 16.0228 20.5 10.5 20.5C4.97715 20.5 0.5 16.0228 0.5 10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z"
+        android:strokeWidth="1"
+        android:strokeColor="#4DFFFFFF" />
+
+    <!-- Checkmark centered in the 21x21 viewport -->
+    <group
+        android:translateX="6"
+        android:translateY="6.975">
+        <path
+            android:fillColor="#FEF7FF"
+            android:pathData="M3,7.05L0,4.05L1.05,3L3,4.95L7.95,0L9,1.05L3,7.05Z" />
+    </group>
+
 </vector>

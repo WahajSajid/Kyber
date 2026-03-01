@@ -4,6 +4,7 @@ plugins {
     id 'com.google.dagger.hilt.android'
     id 'com.google.devtools.ksp'
     id 'kotlin-parcelize'
+    alias(libs.plugins.google.gms.google.services)
 
 }
 
@@ -45,6 +46,16 @@ android {
 
 dependencies {
 
+
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.0"
+    implementation 'androidx.core:core-ktx:1.17.0'
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'com.google.android.material:material:1.13.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'androidx.activity:activity-ktx:1.12.3'
+    implementation 'com.github.bumptech.glide:glide:5.0.5'
+
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
     implementation libs.material
@@ -52,9 +63,15 @@ dependencies {
     implementation libs.androidx.navigation.fragment.ktx
     implementation libs.androidx.navigation.ui.ktx
     implementation libs.androidx.camera.lifecycle
+    implementation libs.androidx.camera.camera2
     implementation libs.androidx.emoji2.emojipicker
-    implementation libs.androidx.espresso.web
     implementation libs.firebase.crashlytics.buildtools
+    implementation libs.firebase.database
+    implementation libs.androidx.scenecore
+    implementation libs.androidx.activity
+    implementation libs.androidx.camera.view
+    implementation libs.androidx.ui.tooling
+    implementation libs.protolite.well.known.types
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
@@ -106,4 +123,3 @@ dependencies {
     ksp "androidx.room:room-compiler:2.6.1"
 
 }
-

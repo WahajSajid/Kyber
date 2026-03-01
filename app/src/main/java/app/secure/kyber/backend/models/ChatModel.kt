@@ -1,10 +1,14 @@
 package app.secure.kyber.backend.models
 
+import androidx.room.Ignore
+
 data class ChatModel(
-    val id: String?=null,
-    val name: String?=null,
-    val lastMessage: String?=null,
-    val time: String?=null,
-    val unreadCount: Int?=null,
-    val avatarRes: String?=null
+    var id: String?=null,
+    var name: String?=null,
+    var lastMessage: String?=null,
+    var time: String?=null,
+    @Ignore
+    var unreadCount: Int?=null,
+    @Ignore
+    var avatarRes: String?=null
 )

@@ -9,14 +9,14 @@
 
     <TextView
         android:id="@+id/appname"
-        android:layout_marginTop="40dp"
+        android:layout_marginTop="@dimen/_40sdp"
         android:layout_centerHorizontal="true"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textAlignment="center"
         android:text="@string/intor3_txt"
         android:fontFamily="@font/roboto_semibold"
-        android:textSize="28sp"
+        android:textSize="@dimen/_28sdp"
         android:textColor="@color/white"/>
 
 

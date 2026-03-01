@@ -37,9 +37,9 @@
             android:layout_height="@dimen/_40sdp"
             android:layout_gravity="center"
             android:src="@drawable/notification_icon"
-            android:tint="@color/white"
             android:layout_marginBottom="@dimen/_12sdp"
-            android:contentDescription="bell" />
+            android:contentDescription="bell"
+            app:tint="@color/white" />
 
         <!-- Description -->
         <TextView
@@ -49,9 +49,9 @@
             android:text="Turn off alerts for this chat. You\n will still receive messages but\n without sound or vibration."
             android:textColor="@color/white"
             android:textSize="@dimen/_13sdp"
-            android:lineSpacingExtra="2dp"
+            android:lineSpacingExtra="@dimen/_2sdp"
             android:gravity="center"
-            android:layout_marginBottom="18dp" />
+            android:layout_marginBottom="@dimen/_18sdp" />
 
         <!-- Top divider -->
         <View
@@ -87,11 +87,11 @@
                     android:textColor="@color/white"
                     android:textSize="@dimen/_18sdp" />
 
-                <RadioButton
+                <ImageView
                     android:id="@+id/opt_1_radio"
-                    android:layout_width="@dimen/_40sdp"
-                    android:layout_height="@dimen/_40sdp"
-                    android:button="@drawable/radio_button_selector"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
                     android:buttonTint="@null"
                     android:contentDescription="radio" />
             </LinearLayout>
@@ -122,11 +122,11 @@
                     android:textColor="@color/white"
                     android:textSize="@dimen/_18sdp" />
 
-                <RadioButton
+                <ImageView
                     android:id="@+id/opt_2_radio"
-                    android:layout_width="@dimen/_40sdp"
-                    android:layout_height="@dimen/_40sdp"
-                    android:button="@drawable/radio_button_selector"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
                     android:buttonTint="@null"
                     android:contentDescription="radio" />
             </LinearLayout>
@@ -157,11 +157,11 @@
                     android:textColor="@color/white"
                     android:textSize="@dimen/_18sdp" />
 
-                <RadioButton
+                <ImageView
                     android:id="@+id/opt_3_radio"
-                    android:layout_width="@dimen/_40sdp"
-                    android:layout_height="@dimen/_40sdp"
-                    android:button="@drawable/radio_button_selector"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
                     android:buttonTint="@null"
                     android:contentDescription="radio" />
             </LinearLayout>
@@ -192,11 +192,11 @@
                     android:textColor="@color/white"
                     android:textSize="@dimen/_18sdp" />
 
-                <RadioButton
+                <ImageView
                     android:id="@+id/opt_4_radio"
-                    android:layout_width="@dimen/_40sdp"
-                    android:layout_height="@dimen/_40sdp"
-                    android:button="@drawable/radio_button_selector"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
                     android:buttonTint="@null"
                     android:contentDescription="radio" />
             </LinearLayout>

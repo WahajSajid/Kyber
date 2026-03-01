@@ -1,8 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Unchecked: outer ring only -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <size android:width="@dimen/_28sdp" android:height="@dimen/_28sdp" />
-    <solid android:color="@android:color/transparent" />
-    <stroke android:width="2dp" android:color="#969A9F"/> <!-- default stroke color -->
-</shape>
+
+    <!-- drawable/list_header.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="21dp"
+android:height="21dp"
+android:viewportWidth="21"
+android:viewportHeight="21"
+    >
+<group>
+    <clip-path
+        android:pathData="M10.5 0.5C16.0228 0.5 20.5 4.97715 20.5 10.5C20.5 16.0228 16.0228 20.5 10.5 20.5C4.97715 20.5 0.5 16.0228 0.5 10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z"
+        />
+    <path
+        android:pathData="M0.5 0.5V20.5H20.5V0.5"
+        android:fillColor="#085CB6F2"
+        />
+</group>
+<path
+    android:pathData="M10.5 0.5C16.0228 0.5 20.5 4.97715 20.5 10.5C20.5 16.0228 16.0228 20.5 10.5 20.5C4.97715 20.5 0.5 16.0228 0.5 10.5C0.5 4.97715 4.97715 0.5 10.5 0.5Z"
+    android:strokeWidth="1"
+    android:strokeColor="#4DFFFFFF"
+    />
+</vector>

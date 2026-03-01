@@ -1,0 +1,694 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/actionMenuRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/_16sdp"
+    android:visibility="visible">
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         EMOJI REACTION BAR
+         ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/emojiReactionBar"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/_56sdp"
+        android:background="@drawable/emoji_bar_bg"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="@dimen/_12sdp"
+        android:paddingVertical="@dimen/_8sdp"
+        android:elevation="@dimen/_4sdp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/messagePreviewContainer">
+
+        <!-- Emoji 1 -->
+        <TextView
+            android:id="@+id/emoji1"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:text="👌"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- Emoji 2 -->
+        <TextView
+            android:id="@+id/emoji2"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:text="😊"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- Emoji 3 -->
+        <TextView
+            android:id="@+id/emoji3"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:text="😂"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- Emoji 4 -->
+        <TextView
+            android:id="@+id/emoji4"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:text="😍"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- Emoji 5 -->
+        <TextView
+            android:id="@+id/emoji5"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:text="💜"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- Emoji 6 -->
+        <TextView
+            android:id="@+id/emoji6"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:text="🎮"
+            android:textSize="@dimen/_24sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+        <!-- More Emoji Button -->
+        <ImageButton
+            android:id="@+id/emojiMore"
+            android:layout_width="@dimen/_40sdp"
+            android:layout_height="@dimen/_40sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:src="@drawable/add_emoji_bg"
+            android:textSize="@dimen/_20sdp"
+            android:gravity="center"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless" />
+
+    </LinearLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         MESSAGE PREVIEW CONTAINER (SENT & RECEIVED MESSAGE BUBBLES)
+         ═══════════════════════════════════════════════════════════════ -->
+    <FrameLayout
+        android:id="@+id/messagePreviewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="visible"
+        android:paddingHorizontal="@dimen/_12sdp"
+        android:paddingVertical="@dimen/_8sdp"
+        android:elevation="@dimen/_4sdp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/actionMenuContainer">
+
+        <!-- ────────────────────────────────────────────────────────
+             RECEIVED MESSAGE BUBBLE
+             ──────────────────────────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/previewRcvdMsgBubble"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="@dimen/_5sdp"
+            android:layout_marginEnd="@dimen/_20sdp"
+            android:layout_gravity="start"
+            android:orientation="vertical"
+            android:gravity="start"
+            android:minWidth="@dimen/_85sdp"
+            android:layout_marginStart="@dimen/_5sdp"
+            android:paddingVertical="@dimen/_2sdp"
+            android:paddingHorizontal="@dimen/_2sdp"
+            android:background="@drawable/recv_msg_bg"
+            android:visibility="visible">
+
+            <!-- Received Text -->
+            <TextView
+                android:id="@+id/previewRcvdText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="@dimen/_250sdp"
+                android:text="H"
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="16sp"
+                android:layout_gravity="start"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="@dimen/_6sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:textAlignment="textStart"
+                android:visibility="visible" />
+
+            <!-- Received Media -->
+            <FrameLayout
+                android:id="@+id/previewRcvdMediaFrame"
+                android:layout_width="@dimen/_200sdp"
+                android:layout_height="@dimen/_200sdp"
+                android:visibility="gone">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/previewRcvdMedia"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:background="#EEEEEE"
+                    app:shapeAppearanceOverlay="@style/ReceivedMessageRoundedTopCorners" />
+
+                <ImageView
+                    android:id="@+id/previewRcvdVideoIcon"
+                    android:layout_width="@dimen/_24sdp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_play"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF" />
+            </FrameLayout>
+
+            <!-- Received Media Caption -->
+            <TextView
+                android:id="@+id/previewRcvdMediaCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="@dimen/_250sdp"
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="16sp"
+                android:layout_gravity="start"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="@dimen/_6sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:textAlignment="textStart"
+                android:visibility="gone" />
+
+            <!-- Received Audio -->
+            <LinearLayout
+                android:id="@+id/previewRcvdAudioContainer"
+                android:layout_width="@dimen/_240sdp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/_8sdp"
+                android:paddingEnd="@dimen/_8sdp"
+                android:paddingTop="@dimen/_8sdp"
+                android:paddingBottom="@dimen/_4sdp"
+                android:visibility="gone">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <FrameLayout
+                        android:id="@+id/previewRcvdPlayPause"
+                        android:layout_width="@dimen/_48sdp"
+                        android:layout_height="@dimen/_48sdp"
+                        android:background="@drawable/audio_play_btn_bg"
+                        android:clickable="false"
+                        android:focusable="false"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toStartOf="@+id/previewRcvdWaveform"
+                        app:layout_constraintHorizontal_bias="0.5"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent">
+
+                        <ImageView
+                            android:id="@+id/previewRcvdPlayIcon"
+                            android:layout_width="@dimen/_20sdp"
+                            android:layout_height="@dimen/_20sdp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/play_ic"
+                            app:tint="@color/black" />
+                    </FrameLayout>
+
+                    <app.secure.kyber.Other.WaveformView
+                        android:id="@+id/previewRcvdWaveform"
+                        android:layout_width="0dp"
+                        android:layout_height="@dimen/_24sdp"
+                        android:layout_marginStart="@dimen/_8sdp"
+                        android:layout_marginEnd="@dimen/_8sdp"
+                        app:layout_constraintEnd_toStartOf="@+id/previewRcvdSpeed"
+                        app:layout_constraintStart_toEndOf="@+id/previewRcvdPlayPause"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toTopOf="@+id/previewRcvdAudioDuration" />
+
+                    <TextView
+                        android:id="@+id/previewRcvdSpeed"
+                        android:layout_width="@dimen/_36sdp"
+                        android:layout_height="@dimen/_26sdp"
+                        android:background="@drawable/audio_speed_badge_bg"
+                        android:clickable="false"
+                        android:focusable="false"
+                        android:fontFamily="@font/roboto_medium"
+                        android:text="1x"
+                        android:gravity="center"
+                        android:textColor="@color/black"
+                        android:textSize="@dimen/_12sdp"
+                        app:layout_constraintBottom_toBottomOf="@id/previewRcvdWaveform"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toEndOf="@+id/previewRcvdWaveform"
+                        app:layout_constraintTop_toTopOf="@id/previewRcvdWaveform" />
+
+                    <TextView
+                        android:id="@+id/previewRcvdAudioDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_2sdp"
+                        android:text="0:00"
+                        android:fontFamily="@font/roboto_regular"
+                        android:textSize="@dimen/_12sdp"
+                        android:textColor="#60FFFFFF"
+                        app:layout_constraintTop_toBottomOf="@id/previewRcvdWaveform"
+                        app:layout_constraintStart_toStartOf="@id/previewRcvdWaveform"
+                        app:layout_constraintBottom_toBottomOf="parent" />
+
+                    <LinearLayout
+                        android:id="@+id/previewRcvdAudioTimeLayout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="@dimen/_8sdp"
+                        android:orientation="horizontal"
+                        app:layout_constraintBottom_toBottomOf="@+id/previewRcvdAudioDuration"
+                        app:layout_constraintTop_toTopOf="@id/previewRcvdAudioDuration"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        android:gravity="end|center_vertical">
+
+                        <TextView
+                            android:id="@+id/previewRcvdAudioTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="2:30 PM"
+                            android:textSize="@dimen/_10sdp"
+                            android:textColor="#60FFFFFF"
+                            android:fontFamily="@font/roboto_regular"
+                            android:layout_marginEnd="@dimen/_4sdp" />
+
+                        <ImageView
+                            android:layout_width="@dimen/_10sdp"
+                            android:layout_height="@dimen/_11sdp"
+                            android:layout_gravity="center_vertical"
+                            android:src="@drawable/privacy"
+                            app:tint="#60FFFFFF" />
+                    </LinearLayout>
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- ────────────────────────────────────────────────────────
+             SENT MESSAGE BUBBLE
+             ──────────────────────────────────────────────────────── -->
+        <LinearLayout
+            android:id="@+id/previewSentMsgBubble"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginVertical="@dimen/_5sdp"
+            android:layout_marginStart="@dimen/_20sdp"
+            android:orientation="vertical"
+            android:gravity="end"
+            android:minWidth="@dimen/_91sdp"
+            android:layout_marginEnd="@dimen/_5sdp"
+            android:paddingVertical="@dimen/_2sdp"
+            android:paddingHorizontal="@dimen/_2sdp"
+            android:background="@drawable/sent_msg_bg"
+            android:visibility="gone">
+
+            <!-- Sent Text -->
+            <TextView
+                android:id="@+id/previewSentText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="@dimen/_250sdp"
+                android:text="H"
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="16sp"
+                android:layout_gravity="start"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="@dimen/_6sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:textAlignment="textStart"
+                android:visibility="gone" />
+
+            <!-- Sent Media -->
+            <FrameLayout
+                android:id="@+id/previewSentMediaFrame"
+                android:layout_width="@dimen/_200sdp"
+                android:layout_height="@dimen/_200sdp"
+                android:visibility="gone">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/previewSentMedia"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:background="#CCCCCC"
+                    app:shapeAppearanceOverlay="@style/SentMessageRoundedTopCorners" />
+
+                <ImageView
+                    android:id="@+id/previewSentVideoIcon"
+                    android:layout_width="@dimen/_24sdp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_play"
+                    android:visibility="gone"
+                    app:tint="#FFFFFF" />
+            </FrameLayout>
+
+            <!-- Sent Media Caption -->
+            <TextView
+                android:id="@+id/previewSentMediaCaption"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="@dimen/_250sdp"
+                android:fontFamily="@font/roboto_regular"
+                android:textSize="16sp"
+                android:layout_gravity="start"
+                android:textColor="#FFFFFF"
+                android:layout_marginStart="@dimen/_6sdp"
+                android:layout_marginEnd="@dimen/_6sdp"
+                android:textAlignment="textStart"
+                android:visibility="gone" />
+
+            <!-- Sent Audio -->
+            <LinearLayout
+                android:id="@+id/previewSentAudioContainer"
+                android:layout_width="@dimen/_240sdp"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="@dimen/_8sdp"
+                android:paddingEnd="@dimen/_8sdp"
+                android:paddingTop="@dimen/_8sdp"
+                android:paddingBottom="@dimen/_4sdp"
+                android:visibility="gone">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_52sdp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:id="@+id/previewSentPlayPause"
+                        android:layout_width="@dimen/_48sdp"
+                        android:layout_height="@dimen/_48sdp"
+                        android:background="@drawable/audio_play_btn_bg_sent"
+                        android:clickable="false"
+                        android:focusable="false"
+                        app:layout_constraintEnd_toStartOf="@+id/previewSentSpeed"
+                        app:layout_constraintHorizontal_bias="0.5"
+                        app:layout_constraintStart_toStartOf="parent">
+
+                        <ImageView
+                            android:id="@+id/previewSentPlayIcon"
+                            android:layout_width="@dimen/_20sdp"
+                            android:layout_height="@dimen/_20sdp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/play_ic"
+                            app:tint="@color/black"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent"
+                            app:layout_constraintBottom_toBottomOf="parent" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+
+                    <TextView
+                        android:id="@+id/previewSentSpeed"
+                        android:layout_width="@dimen/_36sdp"
+                        android:layout_height="@dimen/_26sdp"
+                        android:layout_marginStart="@dimen/_10sdp"
+                        android:background="@drawable/speed_sent_bg"
+                        android:clickable="false"
+                        android:focusable="false"
+                        android:fontFamily="@font/roboto_medium"
+                        android:gravity="center"
+                        android:text="1x"
+                        android:textColor="@color/black"
+                        android:textSize="@dimen/_12sdp"
+                        app:layout_constraintTop_toTopOf="@id/previewSentPlayPause"
+                        app:layout_constraintBottom_toBottomOf="@id/previewSentPlayPause"
+                        app:layout_constraintEnd_toStartOf="@+id/previewSentWaveform"
+                        app:layout_constraintHorizontal_bias="0.5"
+                        app:layout_constraintStart_toEndOf="@+id/previewSentPlayPause" />
+
+                    <app.secure.kyber.Other.WaveformView
+                        android:id="@+id/previewSentWaveform"
+                        android:layout_width="0dp"
+                        android:layout_height="@dimen/_24sdp"
+                        android:layout_marginStart="@dimen/_8sdp"
+                        android:layout_marginEnd="@dimen/_8sdp"
+                        android:layout_weight="1"
+                        app:layout_constraintBottom_toBottomOf="@id/previewSentSpeed"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintHorizontal_bias="0.5"
+                        app:layout_constraintStart_toEndOf="@+id/previewSentSpeed" />
+
+                    <TextView
+                        android:id="@+id/previewSentAudioDuration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_2sdp"
+                        android:text="0:00"
+                        android:fontFamily="@font/roboto_regular"
+                        android:textSize="@dimen/_12sdp"
+                        android:textColor="#60FFFFFF"
+                        app:layout_constraintStart_toStartOf="@id/previewSentSpeed"
+                        app:layout_constraintEnd_toEndOf="@id/previewSentSpeed"
+                        app:layout_constraintTop_toBottomOf="@id/previewSentSpeed" />
+
+                    <LinearLayout
+                        android:id="@+id/previewSentAudioTimeLayout"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="@dimen/_8sdp"
+                        android:orientation="horizontal"
+                        app:layout_constraintBottom_toBottomOf="@+id/previewSentAudioDuration"
+                        app:layout_constraintTop_toTopOf="@id/previewSentAudioDuration"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        android:gravity="end|center_vertical">
+
+                        <TextView
+                            android:id="@+id/previewSentAudioTime"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="10:30 AM"
+                            android:textSize="@dimen/_10sdp"
+                            android:textColor="#60FFFFFF"
+                            android:fontFamily="@font/roboto_regular"
+                            android:layout_marginEnd="@dimen/_4sdp" />
+
+                        <ImageView
+                            android:layout_width="@dimen/_10sdp"
+                            android:layout_height="@dimen/_11sdp"
+                            android:layout_gravity="center_vertical"
+                            android:src="@drawable/privacy"
+                            app:tint="#60FFFFFF" />
+                    </LinearLayout>
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         ACTION MENU CONTAINER
+         ═══════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/actionMenuContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/action_menu_bg"
+        android:orientation="vertical"
+        android:elevation="@dimen/_8sdp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Reply Button -->
+        <LinearLayout
+            android:id="@+id/btnReply"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/reply"
+                android:contentDescription="reply"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Reply"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+        </LinearLayout>
+
+        <!-- Forward Button -->
+        <LinearLayout
+            android:id="@+id/btnForward"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/forward"
+                android:contentDescription="forward"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Forward"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+        </LinearLayout>
+
+        <!-- Copy Button -->
+        <LinearLayout
+            android:id="@+id/btnCopy"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/copy_ic"
+                android:contentDescription="copy"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Copy"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+        </LinearLayout>
+
+        <!-- Info Button -->
+        <LinearLayout
+            android:id="@+id/btnInfo"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/info_icon"
+                android:contentDescription="Info"
+                app:tint="@color/white" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Info"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+        </LinearLayout>
+
+        <!-- Delete Button -->
+        <LinearLayout
+            android:id="@+id/btnDelete"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/trash_icon"
+                android:contentDescription="delete"
+                app:tint="#FF4444" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Delete"
+                android:textColor="#FF4444"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

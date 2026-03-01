@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+    <!--
+    Warning: Using more than one drop shadow effect is not supported, only the last visible one will be used as elevation.
+    -->
+
+    <!-- drawable/button.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="78dp"
+android:height="35dp"
+android:viewportWidth="78"
+android:viewportHeight="35"
+    >
+<group>
+    <clip-path
+        android:pathData="M5 0H73C75.7614 0 78 2.23858 78 5V30C78 32.7614 75.7614 35 73 35H5C2.23858 35 0 32.7614 0 30V5C0 2.23858 2.23858 0 5 0Z"
+        />
+    <group
+        android:pivotX="39"
+        android:pivotY="17.5"
+        android:scaleX="2"
+        android:scaleY="2"
+        >
+        <path
+            android:pathData="M0 0V35H78V0"
+            >
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="19.5"
+                    android:startY="17.5"
+                    android:endX="58.5"
+                    android:endY="17.5"
+                    >
+                    <item
+                        android:color="#4F46E5"
+                        android:offset="0"
+                        />
+                    <item
+                        android:color="#9333EA"
+                        android:offset="1"
+                        />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</group>
+</vector>

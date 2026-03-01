@@ -15,11 +15,11 @@
         android:layout_height="wrap_content"
         android:text="Enter Display Name"
         android:fontFamily="@font/roboto_semibold"
-        android:textSize="24sp"
+        android:textSize="@dimen/_24sdp"
         android:textColor="@color/secondary_text_color"/>
 
     <TextView
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="@dimen/_4sdp"
         android:layout_below="@id/secondxt"
         android:id="@+id/tvtermsDef"
         android:layout_centerHorizontal="true"
@@ -27,7 +27,7 @@
         android:layout_height="wrap_content"
         android:text="Use your real name or any alias — change it\nanytime."
         android:fontFamily="@font/roboto_regular"
-        android:textSize="12sp"
+        android:textSize="@dimen/_12sdp"
         android:textAlignment="center"
         android:layout_gravity="center|bottom"
         android:textColor="#DADADA"/>
@@ -38,17 +38,17 @@
         android:layout_height="wrap_content"
         android:layout_below="@id/secondxt"
         android:layout_centerHorizontal="true"
-        android:layout_marginTop="60dp"
+        android:layout_marginTop="@dimen/_60sdp"
         android:focusable="true"
         android:focusableInTouchMode="true"
         app:boxBackgroundColor="@color/opacity_10_black_color"
         app:boxBackgroundMode="outline"
-        app:boxCornerRadiusBottomEnd="12dp"
-        app:boxCornerRadiusBottomStart="12dp"
-        app:boxCornerRadiusTopEnd="12dp"
-        app:boxCornerRadiusTopStart="12dp"
+        app:boxCornerRadiusBottomEnd="@dimen/_12sdp"
+        app:boxCornerRadiusBottomStart="@dimen/_12sdp"
+        app:boxCornerRadiusTopEnd="@dimen/_12sdp"
+        app:boxCornerRadiusTopStart="@dimen/_12sdp"
         app:boxStrokeColor="@color/inputfield_outline_color"
-        app:boxStrokeWidth="1dp"
+        app:boxStrokeWidth="@dimen/_1sdp"
         app:errorIconDrawable="@null"
         app:hintEnabled="false"
        >
@@ -64,7 +64,7 @@
             android:maxLines="1"
             android:textColor="@color/white"
             android:textColorHint="@color/opacity_70_white_color"
-            android:textSize="14sp">
+            android:textSize="@dimen/_14sdp">
 
             <requestFocus />
         </com.google.android.material.textfield.TextInputEditText>
@@ -78,12 +78,12 @@
         app:backgroundTint="@color/primary_color"
         android:layout_width="match_parent"
         android:fontFamily="@font/roboto_semibold"
-        android:textSize="18sp"
-        android:layout_height="60dp"
-        app:cornerRadius="10dp"
+        android:textSize="@dimen/_18sdp"
+        android:layout_height="@dimen/_60sdp"
+        app:cornerRadius="@dimen/_10sdp"
         android:layout_marginTop="20dp"
         android:layout_alignParentBottom="true"
-        android:layout_marginBottom="20dp"
+        android:layout_marginBottom="@dimen/_20sdp"
         android:text="Continue"
-        android:layout_marginHorizontal="20dp"/>
+        android:layout_marginHorizontal="@dimen/_20sdp"/>
 </RelativeLayout>

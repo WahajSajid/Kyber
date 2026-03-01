@@ -1,0 +1,16 @@
+<!-- drawable/user_1.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="22dp"
+android:height="22dp"
+android:viewportWidth="22"
+android:viewportHeight="22"
+    >
+<group>
+    <clip-path
+        android:pathData="M0 0H22V22H0V0Z"
+        />
+</group>
+</vector>
+

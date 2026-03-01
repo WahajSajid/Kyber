@@ -27,7 +27,7 @@ import kotlin.getValue
 
 class ContactsFragment : Fragment(R.layout.fragment_contacts) {
     private lateinit var binding: FragmentContactsBinding
-    private lateinit var navController : NavController
+    private lateinit var navController: NavController
 
     private lateinit var contactListModel: List<ContactModel>
 
@@ -61,10 +61,10 @@ class ContactsFragment : Fragment(R.layout.fragment_contacts) {
 
         navController = view.findNavController()
 
-        binding.btnCreateContact.setOnClickListener {
-            ContactBottomSheet.newInstance().show(parentFragmentManager, ContactBottomSheet.TAG)
-
-        }
+//        binding.btnCreateContact.setOnClickListener {
+//            ContactBottomSheet.newInstance().show(parentFragmentManager, ContactBottomSheet.TAG)
+//
+//        }
 
         setListAdapter()
     }
@@ -73,12 +73,12 @@ class ContactsFragment : Fragment(R.layout.fragment_contacts) {
     private fun setListAdapter() {
         val recyclerview = binding.rvContacts
         recyclerview.setHasFixedSize(false)
-        contactListAdapter = ContactListAdapter(requireContext(),onItemClick={
-            contactEntity ->
+        contactListAdapter = ContactListAdapter(requireContext(), onItemClick = { contactEntity ->
 
             val args = bundleOf(
                 "contact_id" to contactEntity.id,
-                "contact_name" to contactEntity.name
+                "contact_name" to contactEntity.name,
+                "coming_from" to "chat_list"
             )
             findNavController().navigate(R.id.chatFragment, args)
 

@@ -33,7 +33,7 @@
                 />
 
             <TextView
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="@dimen/_1sdp"
                 android:layout_centerHorizontal="true"
                 android:layout_below="@id/ivLogo"
                 android:layout_width="wrap_content"
@@ -52,8 +52,8 @@
                 android:layout_height="wrap_content"
                 android:text="@string/connect_vpn"
                 android:fontFamily="@font/roboto_regular"
-                android:textSize="16sp"
-                android:paddingBottom="30dp"
+                android:textSize="@dimen/_16sdp"
+                android:paddingBottom="@dimen/_30sdp"
                 android:textColor="@color/white"/>
 
         </RelativeLayout>

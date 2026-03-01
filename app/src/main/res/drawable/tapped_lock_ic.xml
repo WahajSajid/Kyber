@@ -1,0 +1,29 @@
+<vector xmlns:aapt="http://schemas.android.com/aapt" xmlns:android="http://schemas.android.com/apk/res/android" android:autoMirrored="true" android:height="53dp" android:viewportHeight="53" android:viewportWidth="53" android:width="53dp">
+      
+    <path android:fillAlpha="0.3" android:pathData="M26.5,0L26.5,0A26.5,26.5 0,0 1,53 26.5L53,26.5A26.5,26.5 0,0 1,26.5 53L26.5,53A26.5,26.5 0,0 1,0 26.5L0,26.5A26.5,26.5 0,0 1,26.5 0z">
+            
+        <aapt:attr name="android:fillColor">
+                  
+            <gradient android:endX="57.386" android:endY="50.137" android:startX="-0.966" android:startY="53" android:type="linear">
+                        
+                <item android:color="#FF0047AF" android:offset="0"/>
+                        
+                <item android:color="#FF354658" android:offset="0.5"/>
+                        
+                <item android:color="#FF486284" android:offset="0.75"/>
+                        
+                <item android:color="#FF3362AB" android:offset="1"/>
+                      
+            </gradient>
+                
+        </aapt:attr>
+          
+    </path>
+      
+    <path android:fillColor="#00000000" android:pathData="M25.125,14.375L27.875,14.375A3,3 0,0 1,30.875 17.375L30.875,27.417A3,3 0,0 1,27.875 30.417L25.125,30.417A3,3 0,0 1,22.125 27.417L22.125,17.375A3,3 0,0 1,25.125 14.375z" android:strokeColor="#F1F2F6" android:strokeLineJoin="round" android:strokeWidth="2"/>
+      
+    <path android:fillColor="#00000000" android:pathData="M16.75,26.042C16.75,28.628 17.777,31.108 19.606,32.936C21.434,34.765 23.914,35.792 26.5,35.792C29.086,35.792 31.566,34.765 33.394,32.936C35.223,31.108 36.25,28.628 36.25,26.042" android:strokeColor="#F1F2F6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeWidth="2"/>
+      
+    <path android:fillColor="#00000000" android:pathData="M26.5,40.625V37.708" android:strokeColor="#F1F2F6" android:strokeLineCap="round" android:strokeLineJoin="round" android:strokeWidth="2"/>
+    
+</vector>

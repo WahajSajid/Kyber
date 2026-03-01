@@ -1,27 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root_constraint"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg"
     tools:context=".activities.MainActivity">
 
     <com.google.android.material.appbar.AppBarLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
         android:id="@+id/app_bar"
-        app:elevation="0dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:background="@android:color/transparent"
+        android:theme="@style/Theme.Kyber.AppBarOverlay"
+        app:elevation="0dp"
         app:layout_constraintTop_toTopOf="parent"
-        android:theme="@style/Theme.Kyber.AppBarOverlay">
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/toolbar"
-            android:layout_marginEnd="@dimen/_5sdp"
-            android:layout_marginStart="@dimen/_5sdp"
             android:layout_width="match_parent"
             android:layout_height="@dimen/_52sdp"
+            android:layout_marginStart="@dimen/_5sdp"
+            android:layout_marginEnd="@dimen/_5sdp"
             android:background="@android:color/transparent"
             android:elevation="0dp"
             app:titleTextColor="@color/white">
@@ -38,13 +42,24 @@
 
             <ImageView
                 android:id="@+id/ivBack"
-                android:layout_width="@dimen/_32sdp"
-                android:layout_height="@dimen/_32sdp"
+                android:layout_width="@dimen/_20sdp"
+                android:layout_height="@dimen/_20sdp"
                 android:layout_gravity="start|center_vertical"
                 android:layout_marginStart="@dimen/_8sdp"
                 android:scaleType="fitCenter"
-                app:tint="@color/white"
-                android:src="@drawable/ic_back_button"
+                android:src="@drawable/iphone_back_btn"
+                android:visibility="gone"
+                app:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/chat_tittle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="@dimen/_25sdp"
+                android:text="Wahaj"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_25sdp"
+                android:textStyle="bold"
                 android:visibility="gone" />
 
             <LinearLayout
@@ -60,24 +75,24 @@
                     android:layout_height="@dimen/_52sdp"
                     android:layout_gravity="start|center_vertical"
                     android:layout_marginStart="@dimen/_8sdp"
-                    android:scaleType="fitXY"
                     android:padding="@dimen/_8sdp"
+                    android:scaleType="fitXY"
                     android:src="@drawable/logo_trans_bg"
                     android:visibility="visible"
                     app:tint="@null" />
+
                 <TextView
                     android:id="@+id/titletoolbar"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_gravity="center"
                     android:fontFamily="@font/roboto_semibold"
                     android:text="KYBER CHAT"
-                    android:layout_gravity="center"
                     android:textColor="@color/white"
-                    android:textSize="18sp" />
+                    android:textSize="@dimen/_18sdp" />
             </LinearLayout>
 
             <ImageView
-                android:visibility="visible"
                 android:id="@+id/ivAdd"
                 android:layout_width="@dimen/_40sdp"
                 android:layout_height="@dimen/_40sdp"
@@ -86,21 +101,22 @@
                 android:padding="@dimen/xXXSmallPadding"
                 android:scaleType="fitCenter"
                 android:src="@drawable/add_chat"
+                android:visibility="visible"
                 app:tint="@null" />
 
             <ImageView
-                android:visibility="gone"
                 android:id="@+id/ivCall"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="@dimen/_30sdp"
+                android:layout_height="@dimen/_30sdp"
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="@dimen/xXSmallPadding"
                 android:padding="@dimen/xXXSmallPadding"
                 android:scaleType="fitCenter"
                 android:src="@drawable/call"
-                app:tint="@null" />
-            <ImageView
                 android:visibility="gone"
+                app:tint="@null" />
+
+            <ImageView
                 android:id="@+id/ivContactDots"
                 android:layout_width="@dimen/_40sdp"
                 android:layout_height="@dimen/_40sdp"
@@ -109,9 +125,10 @@
                 android:padding="@dimen/xXXSmallPadding"
                 android:scaleType="fitCenter"
                 android:src="@drawable/contact_dots"
-                app:tint="@null" />
-            <ImageView
                 android:visibility="gone"
+                app:tint="@null" />
+
+            <ImageView
                 android:id="@+id/ivAddContact"
                 android:layout_width="@dimen/_40sdp"
                 android:layout_height="@dimen/_40sdp"
@@ -120,19 +137,19 @@
                 android:padding="@dimen/xXXSmallPadding"
                 android:scaleType="fitCenter"
                 android:src="@drawable/contact_add"
+                android:visibility="gone"
                 app:tint="@null" />
 
-
             <ImageView
-                android:visibility="gone"
                 android:id="@+id/ivVideo"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="@dimen/_38sdp"
+                android:layout_height="@dimen/_38sdp"
                 android:layout_gravity="end|center_vertical"
                 android:layout_marginEnd="@dimen/xXSmallPadding"
                 android:padding="@dimen/xXXSmallPadding"
                 android:scaleType="fitCenter"
                 android:src="@drawable/video"
+                android:visibility="gone"
                 app:tint="@null" />
 
         </androidx.appcompat.widget.Toolbar>
@@ -142,19 +159,20 @@
     <fragment
         android:id="@+id/main_fragment"
         android:name="androidx.navigation.fragment.NavHostFragment"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_below="@id/app_bar"
-        android:layout_above="@id/bottomNavigationView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         app:defaultNavHost="true"
-        app:navGraph="@navigation/activity_main_graph" />
+        app:navGraph="@navigation/activity_main_graph"
+        app:layout_constraintTop_toBottomOf="@id/app_bar"
+        app:layout_constraintBottom_toTopOf="@id/bottomNavigationView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigationView"
-        android:layout_width="match_parent"
-        android:layout_height="@dimen/_100sdp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        app:itemActiveIndicatorStyle="@drawable/bottom_nav_bar_bg_png"
         android:background="@drawable/bottom_nav_bar_bg_png"
         app:itemIconSize="@dimen/bottom_navigation_icon_size"
         app:itemIconTint="@color/bnv_tab_item_foreground"
@@ -163,6 +181,9 @@
         app:itemTextColor="@color/bnv_tab_item_foreground"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav_menu"
-        />
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:itemActiveIndicatorStyle="@null" />
 
-</RelativeLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -8,8 +8,7 @@
         android:src="@drawable/main_mid_gradient_bg"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType= "centerCrop"
-        />
+        android:scaleType="centerCrop" />
 
     <RelativeLayout
         android:layout_width="match_parent"
@@ -22,7 +21,7 @@
             android:layout_width="@dimen/_168sdp"
             android:layout_height="@dimen/_177sdp"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="100dp"
+            android:layout_marginTop="@dimen/_100sdp"
             android:scaleType="fitXY"
             android:src="@drawable/license_key" />
 
@@ -32,11 +31,11 @@
             android:layout_height="wrap_content"
             android:layout_below="@id/ivLogo"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="10dp"
+            android:layout_marginTop="@dimen/_10sdp"
             android:fontFamily="@font/roboto_bold"
             android:text="Active License Key"
             android:textColor="@color/primary_text_color"
-            android:textSize="26sp" />
+            android:textSize="@dimen/_26sdp" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilPwd"
@@ -44,20 +43,19 @@
             android:layout_height="wrap_content"
             android:layout_below="@id/appname"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="40dp"
+            android:layout_marginTop="@dimen/_40sdp"
             android:focusable="true"
             android:focusableInTouchMode="true"
             app:boxBackgroundColor="@color/opacity_10_black_color"
             app:boxBackgroundMode="outline"
-            app:boxCornerRadiusBottomEnd="12dp"
-            app:boxCornerRadiusBottomStart="12dp"
-            app:boxCornerRadiusTopEnd="12dp"
-            app:boxCornerRadiusTopStart="12dp"
+            app:boxCornerRadiusBottomEnd="@dimen/_12sdp"
+            app:boxCornerRadiusBottomStart="@dimen/_12sdp"
+            app:boxCornerRadiusTopEnd="@dimen/_12sdp"
+            app:boxCornerRadiusTopStart="@dimen/_12sdp"
             app:boxStrokeColor="@color/inputfield_outline_color"
-            app:boxStrokeWidth="1dp"
+            app:boxStrokeWidth="@dimen/_1sdp"
             app:errorIconDrawable="@null"
-            app:hintEnabled="false"
-            >
+            app:hintEnabled="false">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etPwd"
@@ -70,7 +68,7 @@
                 android:maxLines="1"
                 android:textColor="@color/white"
                 android:textColorHint="@color/opacity_70_white_color"
-                android:textSize="14sp">
+                android:textSize="@dimen/_14sdp">
 
                 <requestFocus />
             </com.google.android.material.textfield.TextInputEditText>
@@ -78,68 +76,71 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <TextView
-            android:layout_marginTop="@dimen/_15sdp"
-            android:layout_centerHorizontal="true"
-            android:layout_below="@id/tilPwd"
             android:id="@+id/termsfirst"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="To enhance your privacy, please use the "
-            android:fontFamily="@font/roboto_regular"
-            android:textSize="14sp"
-            android:textAlignment="center"
-            android:textColor="@color/secondary_text_color"/>
-        <LinearLayout
-
-            android:id="@+id/tilDesc"
-            android:layout_below="@id/termsfirst"
-            android:layout_width="wrap_content"
+            android:layout_below="@id/tilPwd"
             android:layout_centerHorizontal="true"
-            android:layout_height="wrap_content">
+            android:layout_marginTop="@dimen/_15sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="To enhance your privacy, please use the "
+            android:textAlignment="center"
+            android:textColor="@color/secondary_text_color"
+            android:textSize="@dimen/_14sdp" />
+
+        <LinearLayout
+            android:id="@+id/tilDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/termsfirst"
+            android:layout_centerHorizontal="true">
+
             <TextView
                 android:id="@+id/terms"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="provided  "
                 android:fontFamily="@font/roboto_regular"
-                android:textSize="14sp"
+                android:text="provided  "
                 android:textAlignment="center"
-                android:textColor="@color/secondary_text_color"/>
+                android:textColor="@color/secondary_text_color"
+                android:textSize="@dimen/_14sdp" />
+
             <TextView
                 android:id="@+id/weblink"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/weblink"
                 android:fontFamily="@font/roboto_semibold"
-                android:textSize="14sp"
+                android:text="@string/weblink"
                 android:textAlignment="center"
-                android:textColor="@color/primary_text_color"/>
+                android:textColor="@color/primary_text_color"
+                android:textSize="@dimen/_14sdp" />
 
             <TextView
                 android:id="@+id/lasttxt"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text=" to enter your license key."
                 android:fontFamily="@font/roboto_regular"
-                android:textSize="14sp"
+                android:text=" to enter your license key."
                 android:textAlignment="center"
-                android:textColor="@color/secondary_text_color"/>
+                android:textColor="@color/secondary_text_color"
+                android:textSize="@dimen/_14sdp" />
         </LinearLayout>
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPwd"
-            android:layout_below="@id/tilDesc"
             android:layout_width="@dimen/_300sdp"
             android:layout_height="@dimen/_56sdp"
+            android:layout_below="@id/tilDesc"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="50dp"
-            android:layout_marginBottom="20dp"
+            android:layout_marginTop="@dimen/_50sdp"
+            android:layout_marginBottom="@dimen/_20sdp"
             android:background="@drawable/btn_gradient"
             android:fontFamily="@font/roboto_semibold"
             android:text="Continue"
             android:textColor="@color/white"
-            android:textSize="16sp"
+            android:textSize="@dimen/_16sdp"
             app:backgroundTint="@null"
-            app:cornerRadius="10dp" />
+            app:cornerRadius="@dimen/_10sdp" />
 
     </RelativeLayout>
 

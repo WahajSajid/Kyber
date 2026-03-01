@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+    <!-- drawable/overlay_ove.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="367dp"
+android:height="66dp"
+android:viewportWidth="367"
+android:viewportHeight="66"
+    >
+<group>
+    <clip-path
+        android:pathData="M12 0H355C361.627 0 367 5.37258 367 12V54C367 60.6274 361.627 66 355 66H12C5.37258 66 0 60.6274 0 54V12C0 5.37258 5.37258 0 12 0Z"
+        />
+    <path
+        android:pathData="M0 0V66H367V0"
+        android:fillColor="#CC0F172A"
+        />
+</group>
+</vector>
+
+

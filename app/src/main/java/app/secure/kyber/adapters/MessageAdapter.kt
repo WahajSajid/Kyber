@@ -1,100 +1,409 @@
 package app.secure.kyber.adapters
 
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.media.MediaPlayer
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.RelativeLayout
 import android.widget.TextView
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.net.toUri
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
-import app.secure.kyber.backend.models.MessageModel
 import app.secure.kyber.roomdb.MessageEntity
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.RequestOptions
+import org.json.JSONArray
 import java.util.Locale
 
 class MessageAdapter(
     private val myId: String,
-    private val onClick: (MessageEntity) -> Unit = {}
+    private val onClick: (MessageEntity) -> Unit = {},
+    private val onLongClick: (View, MessageEntity) -> Unit = { _, _ -> }
 ) : ListAdapter<MessageEntity, MessageAdapter.VH>(DIFF) {
 
     companion object {
         val DIFF = object : DiffUtil.ItemCallback<MessageEntity>() {
-            override fun areItemsTheSame(old: MessageEntity, new: MessageEntity) = old.id == new.id
-            override fun areContentsTheSame(old: MessageEntity, new: MessageEntity) = old == new
-
-            // optional partial update payload example (uncomment if needed)
-            // override fun getChangePayload(oldItem: Message, newItem: Message): Any? =
-            //     if (oldItem.text != newItem.text) "payload_text" else null
+            override fun areItemsTheSame(a: MessageEntity, b: MessageEntity) = a.id == b.id
+            override fun areContentsTheSame(a: MessageEntity, b: MessageEntity) = a == b
         }
+        private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
     }
 
-    init {
-        setHasStableIds(true)   // smooth animations
-    }
+    private var activePlayer:    MediaPlayer? = null
+    private var activeUri:       String?      = null
+    private var activeHolder:    VH?          = null
+    private var activeHandler:   Handler?     = null
+    private var activeSpeedIdx:  Int          = 0
+
+    init { setHasStableIds(true) }
+
     override fun getItemId(position: Int) = getItem(position).id.hashCode().toLong()
 
-    inner class VH(view: View) : RecyclerView.ViewHolder(view) {
-        private val tv = view.findViewById<TextView>(R.id.tvSentMsg)
-        private val tvMsgRcv = view.findViewById<TextView>(R.id.tvMsgRcv)
+    fun releasePlayer() { stopPlayback(resetUi = true) }
 
-        private val tvRcvTime = view.findViewById<TextView>(R.id.tvRcvTime)
-        private val tvSendTime = view.findViewById<TextView>(R.id.tvSentTime)
-        private val rlSendMsg = view.findViewById<LinearLayout>(R.id.rlMsgSent)
-        private val rlRecieveMsg = view.findViewById<LinearLayout>(R.id.rlMsgRcvd)
+    class VH(view: View) : RecyclerView.ViewHolder(view) {
+        val tvSent        : TextView      = view.findViewById(R.id.tvSentMsg)
+        val tvRcv         : TextView      = view.findViewById(R.id.tvMsgRcv)
+        val tvSentTime    : TextView      = view.findViewById(R.id.tvSentTime)
+        val tvRcvTime     : TextView      = view.findViewById(R.id.tvRcvTime)
+        val rlSent        : LinearLayout  = view.findViewById(R.id.rlMsgSent)
+        val rlRcvd        : LinearLayout  = view.findViewById(R.id.rlMsgRcvd)
 
+        val sentMedia     : FrameLayout   = view.findViewById(R.id.sent_message_media)
+        val rcvdMedia     : FrameLayout   = view.findViewById(R.id.received_message_media)
+        val ivSentMedia   : ImageView     = view.findViewById(R.id.ivSentMedia)
+        val ivRcvMedia    : ImageView     = view.findViewById(R.id.ivRcvMedia)
+        val ivSentPlay    : ImageView     = view.findViewById(R.id.ivSentPlay)
+        val ivRcvPlay     : ImageView     = view.findViewById(R.id.ivRcvPlay)
 
+        val sentAudio       : LinearLayout = view.findViewById(R.id.sentAudioContainer)
+        val ivSentPlayPause : ConstraintLayout  = view.findViewById(R.id.ivSentPlayPause)
+        val ivSentPlayIcon  : ImageView    = view.findViewById(R.id.ivSentPlayIcon)
+        val waveformSent    : WaveformView = view.findViewById(R.id.waveformSent)
+        val tvSentSpeed     : TextView     = view.findViewById(R.id.tvSentSpeed)
+        val tvSentDuration  : TextView     = view.findViewById(R.id.tvSentAudioDuration)
 
-        fun bind(item: MessageEntity) {
-            if (item.isSent){
-                rlSendMsg.visibility = View.VISIBLE
-                rlRecieveMsg.visibility = View.GONE
-                tv.text = item.msg
-                tvSendTime.text = convertDatetime(item.time)
+        val rcvAudio        : LinearLayout = view.findViewById(R.id.rcvAudioContainer)
+        val ivRcvPlayPause  : FrameLayout  = view.findViewById(R.id.ivRcvPlayPause)
+        val ivRcvPlayIcon   : ImageView    = view.findViewById(R.id.ivRcvPlayIcon)
+        val waveformRcv     : WaveformView = view.findViewById(R.id.waveformRcv)
+        val tvRcvSpeed      : TextView     = view.findViewById(R.id.tvRcvSpeed)
+        val tvRcvDuration   : TextView     = view.findViewById(R.id.tvRcvAudioDuration)
+        val sentMessageTimeLayout: LinearLayout = view.findViewById(R.id.sent_message_time_layout)
+        val receivedMessageTimeLayout: LinearLayout = view.findViewById(R.id.received_message_time_layout)
+        val sentTimeAudio: TextView = view.findViewById(R.id.tvSentTimeAudio)
+        val rcvTimeAudio: TextView = view.findViewById(R.id.tvRcvTimeAudio)
 
+        val tvSentReaction : TextView = view.findViewById(R.id.tvSentReaction)
+        val tvRcvReaction : TextView = view.findViewById(R.id.tvRcvReaction)
 
-            }else{
-
-                rlSendMsg.visibility = View.GONE
-                rlRecieveMsg.visibility = View.VISIBLE
-                tvMsgRcv.text = item.msg
-                tvRcvTime.text = convertDatetime(item.time)
-            }
-            // color/right-left, etc. can use senderId == myId
-            itemView.setOnClickListener { onClick(item) }
-        }
-
-        // If you use payloads:
-        // fun bindTextOnly(item: Message) { tv.text = item.text }
+        fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
+        fun playIcon(sent: Boolean)       = if (sent) ivSentPlayIcon  else ivRcvPlayIcon
+        fun waveform(sent: Boolean)       = if (sent) waveformSent    else waveformRcv
+        fun speedBadge(sent: Boolean)     = if (sent) tvSentSpeed     else tvRcvSpeed
+        fun durationLabel(sent: Boolean)  = if (sent) tvSentDuration  else tvRcvDuration
+        fun reaction(sent: Boolean)       = if (sent) tvSentReaction  else tvRcvReaction
     }
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val v = LayoutInflater.from(parent.context)
-            .inflate(R.layout.msg_list_item, parent, false)
-        return VH(v)
-    }
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+        VH(LayoutInflater.from(parent.context).inflate(R.layout.msg_list_item, parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        holder.bind(getItem(position))
+        val item    = getItem(position)
+        val type    = item.type.uppercase(Locale.US)
+        val isSent  = item.isSent
+        val isMedia = type == "IMAGE" || type == "VIDEO"
+        val isAudio = type == "AUDIO"
+
+        holder.rlSent.isVisible = isSent
+        holder.rlRcvd.isVisible = !isSent
+
+        when {
+            isAudio -> bindAudio(holder, item, isSent)
+            isMedia -> bindMedia(holder, item, isSent, type)
+            else    -> bindText(holder, item, isSent)
+        }
+
+        holder.tvSentTime.text = convertDatetime(item.time)
+        holder.tvRcvTime.text  = convertDatetime(item.time)
+        if (holder.sentTimeAudio != null) holder.sentTimeAudio.text = convertDatetime(item.time)
+        if (holder.rcvTimeAudio != null) holder.rcvTimeAudio.text = convertDatetime(item.time)
+
+        // ===== REACTION HANDLING - THIS IS THE KEY PART =====
+        val reactionView = holder.reaction(isSent)
+        if (item.reaction.isNotEmpty()) {
+            reactionView.text = item.reaction
+            reactionView.visibility = View.VISIBLE
+        } else {
+            reactionView.visibility = View.GONE
+        }
+
+        holder.itemView.setOnClickListener { onClick(item) }
+        holder.itemView.setOnLongClickListener {
+            onLongClick(it, item)
+            true
+        }
     }
 
-    fun convertDatetime(rawMillis:String): String? {
+    private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
+        h.sentAudio.isVisible = false
+        h.rcvAudio.isVisible  = false
+        h.sentMedia.isVisible = false
+        h.rcvdMedia.isVisible = false
+        h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+        if (h.sentMessageTimeLayout != null) h.sentMessageTimeLayout.visibility = View.VISIBLE
+        if (h.receivedMessageTimeLayout != null) h.receivedMessageTimeLayout.visibility = View.VISIBLE
 
-        val instantFromMillis = Instant.ofEpochMilli(rawMillis.toLong())
-
-//        val outFmt = DateTimeFormatter.ofPattern("dd-MMM-uuuu h:mm a").withZone(ZoneId.systemDefault())
-        val outFmt = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
-        val pretty = outFmt.format(instantFromMillis)
-        return pretty
+        if (sent) {
+            h.tvSent.isVisible = true
+            h.tvSent.text       = item.msg
+            h.tvRcv.isVisible  = false
+        } else {
+            h.tvRcv.isVisible  = true
+            h.tvRcv.text        = item.msg
+            h.tvSent.isVisible = false
+        }
     }
 
-    // If you used payloads:
-    // override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
-    //     if ("payload_text" in payloads) holder.bindTextOnly(getItem(position))
-    //     else super.onBindViewHolder(holder, position, payloads)
-    // }
+    private fun bindMedia(h: VH, item: MessageEntity, sent: Boolean, type: String) {
+        h.sentAudio.isVisible = false
+        h.rcvAudio.isVisible  = false
+        h.tvSent.isVisible    = false
+        h.tvRcv.isVisible     = false
+        h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+
+        val uriStr = item.uri ?: item.msg
+        val uri    = try { uriStr.toUri() } catch (_: Exception) { null }
+
+        if (sent) {
+            h.sentMedia.isVisible  = true
+            h.rcvdMedia.isVisible  = false
+            h.ivSentMedia.isVisible = true
+            h.ivSentPlay.isVisible  = type == "VIDEO"
+            if (uri != null) Glide.with(h.itemView.context).load(uri)
+                .apply(RequestOptions.centerCropTransform()).into(h.ivSentMedia)
+
+            val caption = item.msg
+            if (caption.isNotBlank() && caption != "photo" && caption != "video") {
+                h.tvSent.text = caption; h.tvSent.isVisible = true
+            }
+            h.ivSentMedia.setOnClickListener { onClick(item) }
+            h.ivSentPlay.setOnClickListener  { onClick(item) }
+        } else {
+            h.rcvdMedia.isVisible  = true
+            h.sentMedia.isVisible  = false
+            h.ivRcvMedia.isVisible  = true
+            h.ivRcvPlay.isVisible   = type == "VIDEO"
+            if (uri != null) Glide.with(h.itemView.context).load(uri)
+                .apply(RequestOptions.centerCropTransform()).into(h.ivRcvMedia)
+
+            val caption = item.msg
+            if (caption.isNotBlank() && caption != "photo" && caption != "video") {
+                h.tvRcv.text = caption; h.tvRcv.isVisible = true
+            }
+            h.ivRcvMedia.setOnClickListener { onClick(item) }
+            h.ivRcvPlay.setOnClickListener  { onClick(item) }
+        }
+    }
+
+    private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
+        h.tvSent.isVisible    = false
+        h.tvRcv.isVisible     = false
+        h.sentMedia.isVisible = false
+        h.rcvdMedia.isVisible = false
+        h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+        if (h.sentMessageTimeLayout != null) h.sentMessageTimeLayout.visibility = View.GONE
+        if (h.receivedMessageTimeLayout != null) h.receivedMessageTimeLayout.visibility = View.GONE
+
+        h.sentAudio.isVisible = sent
+        h.rcvAudio.isVisible  = !sent
+
+        val uriStr = item.uri ?: return
+        val amplitudes = decodeAmplitudes(item.ampsJson)
+        h.waveform(sent).setAmplitudes(amplitudes)
+        val totalMs = getTotalDuration(h.itemView.context, uriStr)
+        h.durationLabel(sent).text = formatDuration(totalMs)
+
+        if (activeUri == uriStr) {
+            syncPlayingUi(h, sent)
+        } else {
+            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.waveform(sent).setProgress(0f)
+            h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
+        }
+
+        h.playPauseFrame(sent).setOnClickListener {
+            if (activeUri == uriStr) {
+                val player = activePlayer
+                if (player != null && player.isPlaying) {
+                    player.pause()
+                    activeHandler?.removeCallbacksAndMessages(null)
+                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                } else if (player != null) {
+                    player.start()
+                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+                    startProgressUpdater(h, sent, uriStr)
+                }
+            } else {
+                stopPlayback(resetUi = true)
+                startPlayback(h, sent, uriStr)
+            }
+        }
+
+        h.waveform(sent).setOnSeekListener { progress ->
+            if (activeUri == uriStr) {
+                activePlayer?.let { player ->
+                    val seekTo = (progress * player.duration).toInt()
+                    player.seekTo(seekTo)
+                    h.waveform(sent).setProgress(progress)
+                }
+            } else {
+                startPlayback(h, sent, uriStr)
+                activePlayer?.let { player ->
+                    val seekTo = (progress * player.duration).toInt()
+                    player.seekTo(seekTo)
+                }
+            }
+        }
+
+        h.speedBadge(sent).setOnClickListener {
+            activeSpeedIdx = if (activeUri == uriStr) {
+                (activeSpeedIdx + 1) % SPEED_STEPS.size
+            } else 0
+            val speed = SPEED_STEPS[activeSpeedIdx]
+            h.speedBadge(sent).text = speed.toLabel()
+            if (activeUri == uriStr) applySpeed(speed)
+        }
+    }
+
+    private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
+        val player = try {
+            MediaPlayer().apply {
+                setDataSource(h.itemView.context, uriStr.toUri())
+                prepare()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return
+        }
+        activePlayer   = player
+        activeUri      = uriStr
+        activeHolder   = h
+        activeSpeedIdx = 0
+        applySpeed(SPEED_STEPS[0])
+        player.start()
+        h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+        h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
+        h.durationLabel(sent).text = formatDuration(player.duration)
+        startProgressUpdater(h, sent, uriStr)
+        player.setOnCompletionListener {
+            activeHandler?.removeCallbacksAndMessages(null)
+            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.waveform(sent).setProgress(0f)
+            h.durationLabel(sent).text = formatDuration(player.duration)
+
+            val currentPos = h.bindingAdapterPosition
+            activePlayer  = null
+            activeUri     = null
+            activeHolder  = null
+
+            if (currentPos != -1) {
+                playNextAudioIfAvailable(currentPos)
+            }
+        }
+    }
+
+    private fun playNextAudioIfAvailable(currentPos: Int) {
+        for (i in (currentPos + 1) until itemCount) {
+            val nextItem = getItem(i)
+            if (nextItem.type.uppercase(Locale.US) == "AUDIO") {
+                notifyItemChanged(i, "START_PLAYBACK")
+                break
+            }
+        }
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
+        if (payloads.contains("START_PLAYBACK")) {
+            val item = getItem(position)
+            val isSent = item.isSent
+            val uriStr = item.uri ?: return
+            startPlayback(holder, isSent, uriStr)
+        } else {
+            super.onBindViewHolder(holder, position, payloads)
+        }
+    }
+
+    private fun startProgressUpdater(h: VH, sent: Boolean, uriStr: String) {
+        val handler = Handler(Looper.getMainLooper())
+        activeHandler = handler
+        handler.post(object : Runnable {
+            override fun run() {
+                val player = activePlayer ?: return
+                if (activeUri != uriStr) return
+                if (player.isPlaying) {
+                    val progress = player.currentPosition.toFloat() / player.duration
+                    h.waveform(sent).setProgress(progress)
+                    h.durationLabel(sent).text = formatDuration(player.duration - player.currentPosition)
+                }
+                handler.postDelayed(this, 50)
+            }
+        })
+    }
+
+    private fun syncPlayingUi(h: VH, sent: Boolean) {
+        val player = activePlayer ?: return
+        h.playIcon(sent).setImageResource(
+            if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+        )
+        h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
+        if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
+    }
+
+    private fun stopPlayback(resetUi: Boolean) {
+        activeHandler?.removeCallbacksAndMessages(null)
+        activePlayer?.stop()
+        activePlayer?.release()
+        activePlayer = null
+        if (resetUi) {
+            activeHolder?.let { h ->
+                val pos = h.bindingAdapterPosition
+                if (pos != -1) {
+                    val sent = getItem(pos).isSent
+                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                    h.waveform(sent).setProgress(0f)
+                }
+            }
+        }
+        activeUri    = null
+        activeHolder = null
+    }
+
+    private fun applySpeed(speed: Float) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            activePlayer?.let { it.playbackParams = it.playbackParams.setSpeed(speed) }
+        }
+    }
+
+    private fun Float.toLabel() = if (this == 1.0f) "1x" else "${this}x"
+
+    private fun decodeAmplitudes(json: String?): List<Float> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(json)
+            List(arr.length()) { i -> arr.getDouble(i).toFloat() }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    private fun formatDuration(ms: Int): String {
+        val totalSec = (ms / 1000).coerceAtLeast(0)
+        return String.format(Locale.getDefault(), "%d:%02d", totalSec / 60, totalSec % 60)
+    }
+
+    private fun getTotalDuration(context: Context, uriStr: String): Int {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uriStr.toUri())
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
+        } catch (e: Exception) { 0 } finally { retriever.release() }
+    }
+
+    private fun convertDatetime(time: String): String {
+        return try {
+            val formatter = java.text.SimpleDateFormat("hh:mm a", Locale.getDefault())
+            formatter.format(java.util.Date(time.toLong()))
+        } catch (e: Exception) { "" }
+    }
 }

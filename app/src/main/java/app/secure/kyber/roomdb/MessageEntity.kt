@@ -9,5 +9,9 @@ data class MessageEntity(
     val msg: String,
     val senderId: String,
     val time: String,
-    val isSent: Boolean
+    val isSent: Boolean,
+    val type: String = "TEXT",
+    val uri: String? = null,
+    val ampsJson: String = "",
+    var reaction: String = ""
 )

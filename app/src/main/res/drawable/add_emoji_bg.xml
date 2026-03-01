@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:aapt="http://schemas.android.com/aapt"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:autoMirrored="true"
+    android:height="58dp"
+    android:viewportHeight="58"
+    android:viewportWidth="58"
+    android:width="58dp">
+
+    <!-- Circular gradient background -->
+    <path android:pathData="M29,14L29,14A15,15 0,0 1,44 29L44,29A15,15 0,0 1,29 44L29,44A15,15 0,0 1,14 29L14,29A15,15 0,0 1,29 14z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="29"
+                android:endY="44"
+                android:startX="29"
+                android:startY="14"
+                android:type="linear">
+                <item android:color="#CC111736" android:offset="0"/>
+                <item android:color="#CC31429C" android:offset="1"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!--
+        Plus icon — redrawn so its centre sits at (29, 29).
+
+        Original coords ranged from 1→16.167, centred at 8.583.
+        Shift = 29 − 8.583 = 20.417
+
+        Horizontal bar: y = 8.583 + 20.417 = 29
+                        x1 = 1    + 20.417 = 21.417
+                        x2 = 16.167 + 20.417 = 36.584
+
+        Vertical bar:   x = 8.583 + 20.417 = 29
+                        y1 = 1    + 20.417 = 21.417
+                        y2 = 16.167 + 20.417 = 36.584
+    -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M21.417,29H36.584M29,21.417V36.584"
+        android:strokeColor="#F1F2F6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="2"/>
+
+</vector>

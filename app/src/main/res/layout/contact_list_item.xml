@@ -58,7 +58,7 @@
             android:layout_height="wrap_content"
             android:text="Bryan"
             android:fontFamily="@font/roboto_regular"
-            android:textSize="18sp"
+            android:textSize="@dimen/_18sdp"
             android:textColor="@color/white"
             android:layout_marginStart="@dimen/_15sdp"
             android:ellipsize="end"

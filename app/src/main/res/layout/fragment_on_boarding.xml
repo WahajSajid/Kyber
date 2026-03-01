@@ -15,14 +15,14 @@
         />
     <TextView
         android:id="@+id/appname"
-        android:layout_marginTop="5dp"
+        android:layout_marginTop="@dimen/_5sdp"
         android:layout_centerHorizontal="true"
         android:layout_below="@id/ivinto1"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Kyber Chat "
         android:fontFamily="@font/roboto_semibold"
-        android:textSize="28sp"
+        android:textSize="@dimen/_28sdp"
         android:textColor="@color/primary_color"/>
 
     <TextView
@@ -33,7 +33,7 @@
         android:layout_height="wrap_content"
         android:text="Securing your conversations\nwith end-to-end encryption."
         android:fontFamily="@font/roboto_semibold"
-        android:textSize="24sp"
+        android:textSize="@dimen/_24sdp"
         android:textAlignment="center"
         android:textColor="@color/secondary_text_color"/>
 

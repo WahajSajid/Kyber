@@ -9,4 +9,19 @@
         <item name="fontFamily">@font/roboto_regular</item>
     </style>
 
+
+    <style name="SentMessageRoundedTopCorners">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/_12sdp</item>
+        <item name="cornerSizeTopRight">@dimen/_12sdp</item>
+        <item name="cornerSizeBottomLeft">@dimen/_12sdp</item>
+    </style>
+
+    <style name="ReceivedMessageRoundedTopCorners">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">@dimen/_12sdp</item>
+        <item name="cornerSizeTopRight">@dimen/_12sdp</item>
+        <item name="cornerSizeBottomRight">@dimen/_12sdp</item>
+    </style>
+
 </resources>
