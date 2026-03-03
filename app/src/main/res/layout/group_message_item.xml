@@ -5,9 +5,10 @@
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     android:layout_marginVertical="@dimen/_2sdp">
 
-    <!-- Received Message -->
     <LinearLayout
         android:id="@+id/rlMsgRcvd"
         android:layout_width="wrap_content"
@@ -25,7 +26,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/emoji_reaction_bar_received">
 
 
         <androidx.constraintlayout.widget.ConstraintLayout
@@ -35,7 +36,6 @@
             android:paddingStart="@dimen/_4sdp"
             android:paddingEnd="@dimen/_4sdp">
 
-            <!-- Sender name -->
             <TextView
                 android:id="@+id/sender_name"
                 android:layout_width="wrap_content"
@@ -71,7 +71,6 @@
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
-        <!-- Received Media Container -->
         <FrameLayout
             android:id="@+id/flMediaRcv"
             android:layout_width="@dimen/_200sdp"
@@ -96,7 +95,6 @@
                 app:tint="#FFFFFF" />
         </FrameLayout>
 
-        <!-- Received Audio Bubble -->
         <LinearLayout
             android:id="@+id/rcvAudioContainer"
             android:layout_width="@dimen/_220sdp"
@@ -184,7 +182,6 @@
         </LinearLayout>
 
 
-        <!-- Received message text -->
         <TextView
             android:id="@+id/tvMsgRcv"
             android:layout_width="wrap_content"
@@ -242,7 +239,47 @@
             app:tint="#60FFFFFF" />
     </LinearLayout>
 
-    <!-- Sent Message -->
+
+    <TextView
+        android:id="@+id/tvReceivedReaction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="-8dp"
+        android:background="@drawable/reaction_bg"
+        android:paddingHorizontal="4dp"
+        android:textSize="@dimen/_12sdp"
+        android:text="👌"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd"
+        app:layout_constraintEnd_toEndOf="@id/rlMsgRcvd"
+        tools:ignore="MissingConstraints" />
+
+    <include
+        layout="@layout/msg_action_menu"
+        android:id="@+id/actionMenuReceived"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:elevation="@dimen/_16sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        android:layout_marginBottom="@dimen/_5sdp"
+        app:layout_constraintTop_toBottomOf="@id/receivedMessageTime"
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <include
+        layout="@layout/emoji_reaction_bar"
+        android:id="@+id/emoji_reaction_bar_received"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:elevation="@dimen/_16sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        app:layout_constraintBottom_toTopOf="@id/rlMsgRcvd"
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd" />
+
+
     <LinearLayout
         android:id="@+id/rlMsgSent"
         android:layout_width="wrap_content"
@@ -260,9 +297,8 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="1.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/emoji_reaction_bar_sent">
 
-        <!-- Sent Media Container -->
         <FrameLayout
             android:id="@+id/flMediaSent"
             android:layout_width="@dimen/_200sdp"
@@ -287,7 +323,6 @@
                 app:tint="#FFFFFF" />
         </FrameLayout>
 
-        <!-- Sent Audio Bubble -->
         <LinearLayout
             android:id="@+id/sentAudioContainer"
             android:layout_width="@dimen/_220sdp"
@@ -344,7 +379,6 @@
                     app:layout_constraintHorizontal_bias="0.5"
                     app:layout_constraintStart_toEndOf="@+id/ivSentPlayPause" />
 
-
                 <app.secure.kyber.Other.WaveformView
                     android:id="@+id/waveformSent"
                     android:layout_width="0dp"
@@ -367,16 +401,12 @@
                     android:textColor="#60FFFFFF"
                     app:layout_constraintStart_toStartOf="@id/tvSentSpeed"
                     app:layout_constraintEnd_toEndOf="@id/tvSentSpeed"
-                    app:layout_constraintTop_toBottomOf="@id/tvSentSpeed"
-
-                    />
+                    app:layout_constraintTop_toBottomOf="@id/tvSentSpeed" />
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
         </LinearLayout>
 
-
-        <!-- Sent message text -->
         <TextView
             android:id="@+id/tvSentMsg"
             android:layout_width="wrap_content"
@@ -392,21 +422,8 @@
             android:textSize="@dimen/_16sdp"
             android:visibility="visible"/>
 
-        <TextView
-            android:id="@+id/tvSentReaction"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:layout_marginEnd="8dp"
-            android:layout_marginTop="-8dp"
-            android:background="@drawable/reaction_bg"
-            android:paddingHorizontal="4dp"
-            android:textSize="14sp"
-            android:visibility="gone" />
-
     </LinearLayout>
 
-    <!-- Sent message time + icon -->
     <LinearLayout
         android:id="@+id/sentMessageTime"
         android:layout_width="wrap_content"
@@ -433,4 +450,46 @@
             android:src="@drawable/privacy"
             app:tint="#60FFFFFF" />
     </LinearLayout>
+
+
+    <TextView
+        android:id="@+id/tvSentReaction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="-8dp"
+        android:background="@drawable/reaction_bg"
+        android:paddingHorizontal="4dp"
+        android:textSize="@dimen/_12sdp"
+        android:text="👌"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/rlMsgSent"
+        app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
+        tools:ignore="MissingConstraints" />
+
+    <include
+        layout="@layout/msg_action_menu"
+        android:id="@+id/actionMenuSent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:elevation="@dimen/_16sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        android:layout_marginBottom="@dimen/_5sdp"
+        app:layout_constraintTop_toBottomOf="@id/sentMessageTime"
+        app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
+        app:layout_constraintBottom_toBottomOf="parent" />
+
+    <include
+        layout="@layout/emoji_reaction_bar"
+        android:id="@+id/emoji_reaction_bar_sent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:elevation="@dimen/_16sdp"
+        android:layout_marginTop="@dimen/_5sdp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/rlMsgSent"
+        app:layout_constraintEnd_toEndOf="@id/rlMsgSent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

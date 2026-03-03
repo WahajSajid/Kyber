@@ -3,13 +3,11 @@ package app.secure.kyber.adapters
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
-import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -17,6 +15,7 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import app.secure.kyber.Other.WaveformView
@@ -30,7 +29,10 @@ import java.util.Locale
 class MessageAdapter(
     private val myId: String,
     private val onClick: (MessageEntity) -> Unit = {},
-    private val onLongClick: (View, MessageEntity) -> Unit = { _, _ -> }
+    private val onLongClick: (View, MessageEntity) -> Unit = { _, _ -> },
+    private val onEmojiSelected: (MessageEntity, String) -> Unit = { _, _ -> },
+    private val onMoreEmojisClicked: (MessageEntity) -> Unit = {},
+    private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮")
 ) : ListAdapter<MessageEntity, MessageAdapter.VH>(DIFF) {
 
     companion object {
@@ -41,17 +43,23 @@ class MessageAdapter(
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
     }
 
-    private var activePlayer:    MediaPlayer? = null
-    private var activeUri:       String?      = null
-    private var activeHolder:    VH?          = null
-    private var activeHandler:   Handler?     = null
-    private var activeSpeedIdx:  Int          = 0
+    private var activePlayer: MediaPlayer? = null
+    private var activeUri: String? = null
+    private var activeHolder: VH? = null
+    private var activeHandler: android.os.Handler? = null
+    private var activeSpeedIdx: Int = 0
+    private var openMenuPosition: Int = -1
 
     init { setHasStableIds(true) }
 
     override fun getItemId(position: Int) = getItem(position).id.hashCode().toLong()
 
     fun releasePlayer() { stopPlayback(resetUi = true) }
+
+    fun updateRecentEmojis(newList: List<String>) {
+        this.recentEmojis = newList
+        notifyDataSetChanged()
+    }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val tvSent        : TextView      = view.findViewById(R.id.tvSentMsg)
@@ -81,13 +89,24 @@ class MessageAdapter(
         val waveformRcv     : WaveformView = view.findViewById(R.id.waveformRcv)
         val tvRcvSpeed      : TextView     = view.findViewById(R.id.tvRcvSpeed)
         val tvRcvDuration   : TextView     = view.findViewById(R.id.tvRcvAudioDuration)
-        val sentMessageTimeLayout: LinearLayout = view.findViewById(R.id.sent_message_time_layout)
-        val receivedMessageTimeLayout: LinearLayout = view.findViewById(R.id.received_message_time_layout)
-        val sentTimeAudio: TextView = view.findViewById(R.id.tvSentTimeAudio)
-        val rcvTimeAudio: TextView = view.findViewById(R.id.tvRcvTimeAudio)
+        val sentMessageTimeLayout: LinearLayout? = view.findViewById(R.id.sent_message_time_layout)
+        val receivedMessageTimeLayout: LinearLayout? = view.findViewById(R.id.received_message_time_layout)
+        val sentTimeAudio: TextView? = view.findViewById(R.id.tvSentTimeAudio)
+        val rcvTimeAudio: TextView? = view.findViewById(R.id.tvRcvTimeAudio)
 
         val tvSentReaction : TextView = view.findViewById(R.id.tvSentReaction)
-        val tvRcvReaction : TextView = view.findViewById(R.id.tvRcvReaction)
+        val tvRcvReaction : TextView = view.findViewById(R.id.tvReceivedReaction)
+
+        // Changed to View to prevent ClassCastExceptions from included layouts
+        val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
+        val actionMenuReceived: View = view.findViewById(R.id.actionMenuReceived)
+        val sentEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_sent)
+        val receivedEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_received)
+
+        val rvRecentEmojisSent: RecyclerView = sentEmojiBar.findViewById(R.id.rvRecentEmojis)
+        val rvRecentEmojisReceived: RecyclerView = receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
+        val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
+        val btnMoreReceived: ImageButton = receivedEmojiBar.findViewById(R.id.emojiMore)
 
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean)       = if (sent) ivSentPlayIcon  else ivRcvPlayIcon
@@ -95,6 +114,10 @@ class MessageAdapter(
         fun speedBadge(sent: Boolean)     = if (sent) tvSentSpeed     else tvRcvSpeed
         fun durationLabel(sent: Boolean)  = if (sent) tvSentDuration  else tvRcvDuration
         fun reaction(sent: Boolean)       = if (sent) tvSentReaction  else tvRcvReaction
+        fun emojiBar(sent: Boolean)       = if (sent) sentEmojiBar    else receivedEmojiBar
+        fun actionMenu(sent: Boolean)     = if (sent) actionMenuSent  else actionMenuReceived
+        fun rvEmojis(sent: Boolean)       = if (sent) rvRecentEmojisSent else rvRecentEmojisReceived
+        fun btnMore(sent: Boolean)        = if (sent) btnMoreSent     else btnMoreReceived
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -110,6 +133,32 @@ class MessageAdapter(
         holder.rlSent.isVisible = isSent
         holder.rlRcvd.isVisible = !isSent
 
+        val isMenuOpen = position == openMenuPosition
+        if (isMenuOpen) {
+            holder.emojiBar(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
+            holder.actionMenu(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
+        } else {
+            holder.emojiBar(isSent).visibility = View.GONE
+            holder.actionMenu(isSent).visibility = View.GONE
+        }
+
+        val currentReaction = item.reaction
+        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
+            val finalEmoji = if (emoji == currentReaction) "" else emoji
+            onEmojiSelected(item, finalEmoji)
+            closeMenu()
+        }
+
+        holder.rvEmojis(isSent).apply {
+            layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
+            adapter = emojiAdapter
+        }
+
+        holder.btnMore(isSent).setOnClickListener {
+            onMoreEmojisClicked(item)
+            closeMenu()
+        }
+
         when {
             isAudio -> bindAudio(holder, item, isSent)
             isMedia -> bindMedia(holder, item, isSent, type)
@@ -118,10 +167,9 @@ class MessageAdapter(
 
         holder.tvSentTime.text = convertDatetime(item.time)
         holder.tvRcvTime.text  = convertDatetime(item.time)
-        if (holder.sentTimeAudio != null) holder.sentTimeAudio.text = convertDatetime(item.time)
-        if (holder.rcvTimeAudio != null) holder.rcvTimeAudio.text = convertDatetime(item.time)
+        holder.sentTimeAudio?.text = convertDatetime(item.time)
+        holder.rcvTimeAudio?.text = convertDatetime(item.time)
 
-        // ===== REACTION HANDLING - THIS IS THE KEY PART =====
         val reactionView = holder.reaction(isSent)
         if (item.reaction.isNotEmpty()) {
             reactionView.text = item.reaction
@@ -130,10 +178,76 @@ class MessageAdapter(
             reactionView.visibility = View.GONE
         }
 
-        holder.itemView.setOnClickListener { onClick(item) }
+        holder.itemView.setOnClickListener {
+            if (openMenuPosition != -1) closeMenu()
+            else onClick(item)
+        }
+
         holder.itemView.setOnLongClickListener {
-            onLongClick(it, item)
+            if (openMenuPosition != position) {
+                showMenuWithAnimation(position)
+            }
             true
+        }
+
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnReply)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnDelete)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnCopy)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnForward)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnInfo)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+    }
+
+    override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
+        if (payloads.isEmpty()) {
+            onBindViewHolder(holder, position)
+            return
+        }
+
+        if (payloads.contains("START_PLAYBACK")) {
+            val item = getItem(position)
+            val isSent = item.isSent
+            val uriStr = item.uri ?: return
+            startPlayback(holder, isSent, uriStr)
+            return
+        }
+
+        if (payloads.contains("SHOW_MENU") || payloads.contains("HIDE_MENU")) {
+            // First apply data binding to ensure UI states (including VISIBLE state) are set properly
+            onBindViewHolder(holder, position)
+
+            if (payloads.contains("SHOW_MENU")) {
+                val item = getItem(position)
+                val isSent = item.isSent
+
+                // Using .post ensures the Views are properly measured by ConstraintLayout before scaling
+                holder.emojiBar(isSent).post {
+                    holder.emojiBar(isSent).apply {
+                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
+                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
+                    }
+                }
+                holder.actionMenu(isSent).post {
+                    holder.actionMenu(isSent).apply {
+                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
+                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showMenuWithAnimation(position: Int) {
+        val oldPos = openMenuPosition
+        openMenuPosition = position
+        if (oldPos != -1 && oldPos != position) notifyItemChanged(oldPos, "HIDE_MENU")
+        notifyItemChanged(position, "SHOW_MENU")
+    }
+
+    private fun closeMenu() {
+        if (openMenuPosition != -1) {
+            val pos = openMenuPosition
+            openMenuPosition = -1
+            notifyItemChanged(pos, "HIDE_MENU")
         }
     }
 
@@ -143,12 +257,12 @@ class MessageAdapter(
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
-        if (h.sentMessageTimeLayout != null) h.sentMessageTimeLayout.visibility = View.VISIBLE
-        if (h.receivedMessageTimeLayout != null) h.receivedMessageTimeLayout.visibility = View.VISIBLE
+        h.sentMessageTimeLayout?.visibility = View.VISIBLE
+        h.receivedMessageTimeLayout?.visibility = View.VISIBLE
 
         if (sent) {
             h.tvSent.isVisible = true
-            h.tvSent.text       = item.msg
+            h.tvSent.text        = item.msg
             h.tvRcv.isVisible  = false
         } else {
             h.tvRcv.isVisible  = true
@@ -204,8 +318,8 @@ class MessageAdapter(
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
-        if (h.sentMessageTimeLayout != null) h.sentMessageTimeLayout.visibility = View.GONE
-        if (h.receivedMessageTimeLayout != null) h.receivedMessageTimeLayout.visibility = View.GONE
+        h.sentMessageTimeLayout?.visibility = View.GONE
+        h.receivedMessageTimeLayout?.visibility = View.GONE
 
         h.sentAudio.isVisible = sent
         h.rcvAudio.isVisible  = !sent
@@ -315,19 +429,8 @@ class MessageAdapter(
         }
     }
 
-    override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
-        if (payloads.contains("START_PLAYBACK")) {
-            val item = getItem(position)
-            val isSent = item.isSent
-            val uriStr = item.uri ?: return
-            startPlayback(holder, isSent, uriStr)
-        } else {
-            super.onBindViewHolder(holder, position, payloads)
-        }
-    }
-
     private fun startProgressUpdater(h: VH, sent: Boolean, uriStr: String) {
-        val handler = Handler(Looper.getMainLooper())
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
         activeHandler = handler
         handler.post(object : Runnable {
             override fun run() {

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     tools:context=".fragments.SharedMediaFragment"
-    android:padding="@dimen/_20sdp"
+   android:padding="@dimen/_10sdp"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -11,17 +11,14 @@
 
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/tab_layout"
-        android:layout_width="@dimen/_370sdp"
-        android:layout_height="@dimen/_48sdp"
-        app:tabGravity="fill"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_40sdp"
         app:tabMode="fixed"
+        app:tabGravity="fill"
+        app:tabIndicatorGravity="center"
         app:tabIndicator="@null"
         app:tabRippleColor="@android:color/transparent"
-        android:background="@drawable/bg_tab_container"
-        app:tabPaddingStart="@dimen/_4sdp"
-        app:tabPaddingEnd="@dimen/_4sdp"
-        app:tabPaddingTop="@dimen/_4sdp"
-        app:tabPaddingBottom="@dimen/_4sdp" />
+        android:background="@drawable/bg_tab_container" />
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/view_pager"

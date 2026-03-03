@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -22,9 +23,6 @@ import android.view.animation.TranslateAnimation
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResult
@@ -34,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.core.view.isVisible
 import androidx.emoji2.emojipicker.EmojiPickerView
 import androidx.emoji2.emojipicker.RecentEmojiProviderAdapter
 import androidx.fragment.app.Fragment
@@ -69,8 +68,6 @@ import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.GroupMessagesViewModel
 import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.RequestOptions
 import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -112,8 +109,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     // ── Mic touch tracking for lock popup + locked recording bar ─────────────
     private var micDownRawY       = 0f
     private var micDownRawX       = 0f
-    private val LOCK_THRESHOLD    = 120f   // px — swipe UP this far to lock
-    private val CANCEL_THRESHOLD  = 180f   // px — swipe LEFT this far to cancel
+    private val lockThreshold    = 120f   // px — swipe UP this far to lock
+    private val cancelThreshold  = 180f   // px — swipe LEFT this far to cancel
     private var isRecordingLocked = false  // true after user swipes up to lock
     private var isRecordingPaused = false  // true when pause tapped in locked bar
     private var lockPopupVisible  = false
@@ -128,6 +125,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var selectedMsg: MessageEntity? = null
     private var selectedGroupMsg: GroupMessageEntity? = null
+
+    private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
 
     // ── Long press runnable: fires after 400ms hold to actually start recording ──
     private val longPressRunnable = Runnable {
@@ -189,14 +188,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val list = result.data!!.getParcelableArrayListExtra<SelectedMediaParcelable>(
-                MediaPreviewActivity.EXTRA_RESULT_ITEMS
-            )
+            val list = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data!!.getParcelableArrayListExtra(MediaPreviewActivity.EXTRA_RESULT_ITEMS, SelectedMediaParcelable::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data!!.getParcelableArrayListExtra<SelectedMediaParcelable>(MediaPreviewActivity.EXTRA_RESULT_ITEMS)
+            }
             if (!list.isNullOrEmpty()) {
                 val unionId = Prefs.getUnionId(requireContext()).toString()
                 val name    = Prefs.getName(requireContext()).toString()
                 for (item in list) {
-                    val caption = if (item.caption.isNullOrBlank()) {
+                    val caption = if (item.caption.isBlank()) {
                         if (item.type == "VIDEO") "video" else "photo"
                     } else item.caption
 
@@ -259,6 +261,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         emojiPickerContainer = binding.emojiPickerContainer
         recentEmojiProvider  = CustomRecentEmojiProvider(requireContext())
 
+        loadRecentEmojis()
 
         if (comingFrom == "group_chat_list") {
             //Get the group creation date
@@ -278,8 +281,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
 
-        setupActionMenu()
-
 
         // ── Emoji picker ──────────────────────────────────────────────────────
         emojiPickerView = EmojiPickerView(requireContext()).apply {
@@ -289,16 +290,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             )
             setRecentEmojiProvider(RecentEmojiProviderAdapter(recentEmojiProvider))
             setOnEmojiPickedListener { emoji ->
-                val editable = messageEdit.text ?: return@setOnEmojiPickedListener
-                val start = messageEdit.selectionStart.coerceAtLeast(0)
-                val end   = messageEdit.selectionEnd.coerceAtLeast(start)
-                editable.replace(start, end, emoji.emoji)
-                recentEmojiProvider.addRecentEmoji(emoji.emoji)
+                if (selectedMsg != null || selectedGroupMsg != null) {
+                    handleReaction(emoji.emoji)
+                    updateRecentEmojiList(emoji.emoji)
+                    hideEmojiPicker()
+                } else {
+                    val editable = messageEdit.text ?: return@setOnEmojiPickedListener
+                    val start = messageEdit.selectionStart.coerceAtLeast(0)
+                    val end   = messageEdit.selectionEnd.coerceAtLeast(start)
+                    editable.replace(start, end, emoji.emoji)
+                    recentEmojiProvider.addRecentEmoji(emoji.emoji)
+                    updateRecentEmojiList(emoji.emoji)
+                }
             }
         }
         emojiPickerContainer.addView(emojiPickerView)
 
         binding.tilMsg.setEndIconOnClickListener {
+            selectedMsg = null
+            selectedGroupMsg = null
             if (isEmojiPickerVisible) {
                 hideEmojiPicker()
                 showKeyboard(messageEdit)
@@ -328,19 +338,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             when {
                 kbVisible -> {
                     if (isEmojiPickerVisible) hideEmojiPicker()
-                    binding.ivSend.visibility   = View.VISIBLE
-                    binding.ivCamera.visibility = View.GONE
-                    binding.ivMic.visibility    = View.GONE
+                    binding.ivSend.isVisible   = true
+                    binding.ivCamera.isVisible = false
+                    binding.ivMic.isVisible    = false
                 }
                 isEmojiPickerVisible -> {
-                    binding.ivSend.visibility   = View.VISIBLE
-                    binding.ivCamera.visibility = View.GONE
-                    binding.ivMic.visibility    = View.GONE
+                    binding.ivSend.isVisible   = true
+                    binding.ivCamera.isVisible = false
+                    binding.ivMic.isVisible    = false
                 }
                 else -> {
-                    binding.ivSend.visibility   = View.GONE
-                    binding.ivCamera.visibility = View.VISIBLE
-                    binding.ivMic.visibility    = View.VISIBLE
+                    binding.ivSend.isVisible   = false
+                    binding.ivCamera.isVisible = true
+                    binding.ivMic.isVisible    = true
                 }
             }
         }
@@ -350,7 +360,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
-                        binding.actionMenu.actionMenuRoot.visibility == View.VISIBLE -> hideActionMenu()
                         isRecordingLocked -> cancelAudioRecording()
                         isEmojiPickerVisible -> hideEmojiPicker()
                         else -> { isEnabled = false; requireActivity().onBackPressedDispatcher.onBackPressed() }
@@ -384,20 +393,20 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val deltaX = micDownRawX - event.rawX  // positive = moved left
 
                     // 1. Cancel on swipe-left
-                    if (deltaX > CANCEL_THRESHOLD) {
+                    if (deltaX > cancelThreshold) {
                         cancelAudioRecording()
                         return@setOnTouchListener true
                     }
 
                     // 2. Lock on swipe-up
-                    if (deltaY > LOCK_THRESHOLD) {
-                        lockRecording(unionId, name)
+                    if (deltaY > lockThreshold) {
+                        lockRecording()
                         return@setOnTouchListener true
                     }
 
                     // 3. Animate lock popup as user swipes up
                     if (deltaY > 20f && lockPopupVisible) {
-                        val progress = (deltaY / LOCK_THRESHOLD).coerceIn(0f, 1f)
+                        val progress = (deltaY / lockThreshold).coerceIn(0f, 1f)
 
                         val scale = 1f + 0.4f * progress
                         binding.ivLockIcon.scaleX = scale
@@ -411,7 +420,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
                     // 4. Dim the "slide to cancel" hint as user swipes left
                     if (deltaX > 20f) {
-                        val progress = (deltaX / CANCEL_THRESHOLD).coerceIn(0f, 1f)
+                        val progress = (deltaX / cancelThreshold).coerceIn(0f, 1f)
                         binding.tvSlideToCancel.alpha = 1f - progress
                     }
 
@@ -459,18 +468,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
         // ── Menu / Add ────────────────────────────────────────────────────────
         binding.ivAdd.setOnClickListener {
-            if (binding.contentMenu.visibility == View.VISIBLE) {
-                binding.contentMenu.visibility = View.GONE
+            if (binding.contentMenu.isVisible) {
+                binding.contentMenu.isVisible = false
                 binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
             } else {
                 binding.bottomSheet.setBackgroundResource(R.drawable.bottom_sheet)
-                binding.contentMenu.visibility = View.VISIBLE
+                binding.contentMenu.isVisible = true
             }
         }
 
         binding.ivGallery.setOnClickListener {
             openPicker()
-            binding.contentMenu.visibility = View.GONE
+            binding.contentMenu.isVisible = false
             binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
         }
 
@@ -541,71 +550,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         updatePreviewVisibility()
     }
 
-    private fun setupActionMenu() {
-        binding.blurOverlay.setOnClickListener { hideActionMenu() }
-
-        val menu = binding.actionMenu
-        val emojis = listOf(menu.emoji1, menu.emoji2, menu.emoji3, menu.emoji4, menu.emoji5, menu.emoji6)
-
-        // Setup emoji reactions
-        emojis.forEach { emojiTv ->
-            emojiTv.setOnClickListener {
-                val reaction = emojiTv.text.toString()
-                handleReaction(reaction)
-                hideActionMenu()
-            }
-        }
-
-        // More emojis button - shows emoji picker
-        menu.emojiMore.setOnClickListener {
-            hideActionMenu()
-            hideKeyboard(messageEdit)
-            messageEdit.postDelayed({ showEmojiPicker() }, 150)
-        }
-
-        // Reply button
-        menu.btnReply.setOnClickListener {
-            handleReply()
-            hideActionMenu()
-        }
-
-        // Forward button
-        menu.btnForward.setOnClickListener {
-            handleForward()
-            hideActionMenu()
-        }
-
-        // Copy button
-        menu.btnCopy.setOnClickListener {
-            val text = selectedMsg?.msg ?: selectedGroupMsg?.msg ?: ""
-            if (text.isNotEmpty() && text != "photo" && text != "video" && !text.startsWith("Voice Message")) {
-                val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("KyberMsg", text))
-                Toast.makeText(requireContext(), "Copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-            hideActionMenu()
-        }
-
-        // Info button
-        menu.btnInfo.setOnClickListener {
-            handleInfo()
-            hideActionMenu()
-        }
-
-        // Delete button
-        menu.btnDelete.setOnClickListener {
-            handleDelete()
-            hideActionMenu()
-        }
-    }
-
     private fun handleReaction(emoji: String) {
         lifecycleScope.launch {
             if (comingFrom == "group_chat_list") {
                 selectedGroupMsg?.let { msg ->
                     msg.reaction = emoji
                     vm1.updateMessage(msg)
-                    // Explicitly update Firebase reaction through GroupManager
                     groupManager.updateReaction(groupId, msg.messageId, emoji)
                 }
             } else {
@@ -614,13 +564,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     vm.updateMessage(msg)
                 }
             }
+            selectedMsg = null
+            selectedGroupMsg = null
         }
     }
 
-    private fun handleReply() {
-        val text = selectedMsg?.msg ?: selectedGroupMsg?.msg ?: return
+    private fun handleReply(text: String) {
         lifecycleScope.launch {
-            messageEdit.setText(">> \"$text\"\n")
+            messageEdit.setText(String.format(">> \"%s\"\n", text))
             messageEdit.requestFocus()
             showKeyboard(messageEdit)
         }
@@ -630,39 +581,23 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         Toast.makeText(requireContext(), "Forward feature - select contacts", Toast.LENGTH_SHORT).show()
     }
 
-    private fun handleInfo() {
-        val msg = selectedMsg ?: selectedGroupMsg ?: return
-        val time = if (msg is MessageEntity) {
-            convertDatetime(msg.time)
-        } else {
-            convertDatetime((msg as GroupMessageEntity).time)
-        }
-
-        val senderInfo = if (msg is GroupMessageEntity) {
-            "Sender: ${msg.senderName}\nID: ${msg.senderId}\n"
-        } else {
-            ""
-        }
-
-//        val infoMessage = "${senderInfo}Time: $time\nType: ${msg.type}\nStatus: Delivered"
-//        Toast.makeText(requireContext(), infoMessage, Toast.LENGTH_LONG).show()
+    private fun handleInfo(msg: Any) {
+        val time = if (msg is MessageEntity) convertDatetime(msg.time) else convertDatetime((msg as GroupMessageEntity).time)
+        val senderInfo = if (msg is GroupMessageEntity) String.format("Sender: %s\nID: %s\n", msg.senderName, msg.senderId) else ""
+        val infoMessage = String.format("%sTime: %s\nStatus: Delivered", senderInfo, time)
+        Toast.makeText(requireContext(), infoMessage, Toast.LENGTH_LONG).show()
     }
 
-    private fun handleDelete() {
+    private fun handleDelete(msg: Any) {
         lifecycleScope.launch {
-            if (comingFrom == "group_chat_list") {
-                selectedGroupMsg?.let { msg ->
-                    vm1.deleteMessage(msg)
-                    groupManager.deleteMessage(groupId, msg.messageId)
-                    updateLastMessageForGroup(groupId)
-                    Toast.makeText(requireContext(), "Message deleted", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                selectedMsg?.let { msg ->
-                    vm.deleteMessage(msg)
-                    Toast.makeText(requireContext(), "Message deleted", Toast.LENGTH_SHORT).show()
-                }
+            if (msg is GroupMessageEntity) {
+                vm1.deleteMessage(msg)
+                groupManager.deleteMessage(groupId, msg.messageId)
+                updateLastMessageForGroup(groupId)
+            } else if (msg is MessageEntity) {
+                vm.deleteMessage(msg)
             }
+            Toast.makeText(requireContext(), "Message deleted", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -675,266 +610,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 timeSpan = latest?.time?.toLongOrNull() ?: System.currentTimeMillis()
             )
             vm2.saveGroup(updatedGroup)
-            // Update Firebase
-            groupManager.updateLastMessage(
-                groupId,
-                updatedGroup.lastMessage,
-                updatedGroup.timeSpan.toString(),
-                latest?.senderId ?: ""
-            )
+            groupManager.updateLastMessage(groupId, updatedGroup.lastMessage, updatedGroup.timeSpan.toString(), latest?.senderId ?: "")
         }
     }
 
-    private fun showActionMenu(view: View, msg: MessageEntity?, groupMsg: GroupMessageEntity?) {
-        selectedMsg = msg
-        selectedGroupMsg = groupMsg
-
-        // Show blur overlay and menu
-        binding.blurOverlay.visibility = View.VISIBLE
-        binding.actionMenu.actionMenuRoot.visibility = View.VISIBLE
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // DETERMINE IF MESSAGE IS SENT OR RECEIVED
-        // ═══════════════════════════════════════════════════════════════════════
-
-        val messageText = msg?.msg ?: groupMsg?.msg ?: ""
-        val messageType = (msg?.type ?: groupMsg?.type ?: "TEXT").uppercase()
-        val messageUri = msg?.uri ?: groupMsg?.uri
-        val messageTime = msg?.time ?: groupMsg?.time ?: ""
-        val messageAmpsJson = msg?.ampsJson ?: groupMsg?.ampsJson
-
-        // Check if message is sent or received
-        val isSent = if (msg != null) {
-            msg.isSent
-        } else if (groupMsg != null) {
-            groupMsg.senderId == Prefs.getUnionId(requireContext()).toString()
-        } else {
-            false
-        }
-
-        // Always show message preview container
-        binding.actionMenu.messagePreviewContainer.visibility = View.VISIBLE
-
-        // Hide all preview bubbles first
-        binding.actionMenu.previewRcvdMsgBubble.visibility = View.GONE
-        binding.actionMenu.previewSentMsgBubble.visibility = View.GONE
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // POPULATE RECEIVED MESSAGE PREVIEW
-        // ═══════════════════════════════════════════════════════════════════════
-        if (!isSent) {
-            binding.actionMenu.previewRcvdMsgBubble.visibility = View.VISIBLE
-
-            // Hide all content first
-            binding.actionMenu.previewRcvdText.visibility = View.GONE
-            binding.actionMenu.previewRcvdMediaFrame.visibility = View.GONE
-            binding.actionMenu.previewRcvdMediaCaption.visibility = View.GONE
-            binding.actionMenu.previewRcvdAudioContainer.visibility = View.GONE
-
-            when (messageType) {
-                "TEXT" -> {
-                    binding.actionMenu.previewRcvdText.text = messageText
-                    binding.actionMenu.previewRcvdText.visibility = View.VISIBLE
-                }
-
-                "IMAGE" -> {
-                    binding.actionMenu.previewRcvdVideoIcon.visibility = View.GONE
-                    binding.actionMenu.previewRcvdMediaFrame.visibility = View.VISIBLE
-
-                    if (!messageUri.isNullOrBlank()) {
-                        try {
-                            Glide.with(binding.root.context)
-                                .load(messageUri.toUri())
-                                .apply(RequestOptions.centerCropTransform())
-                                .into(binding.actionMenu.previewRcvdMedia)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-
-                    if (messageText.isNotBlank() && messageText != "photo") {
-                        binding.actionMenu.previewRcvdMediaCaption.text = messageText
-                        binding.actionMenu.previewRcvdMediaCaption.visibility = View.VISIBLE
-                    }
-                }
-
-                "VIDEO" -> {
-                    binding.actionMenu.previewRcvdVideoIcon.visibility = View.VISIBLE
-                    binding.actionMenu.previewRcvdMediaFrame.visibility = View.VISIBLE
-
-                    if (!messageUri.isNullOrBlank()) {
-                        try {
-                            Glide.with(binding.root.context)
-                                .load(messageUri.toUri())
-                                .apply(RequestOptions.centerCropTransform())
-                                .into(binding.actionMenu.previewRcvdMedia)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-
-                    if (messageText.isNotBlank() && messageText != "video") {
-                        binding.actionMenu.previewRcvdMediaCaption.text = messageText
-                        binding.actionMenu.previewRcvdMediaCaption.visibility = View.VISIBLE
-                    }
-                }
-
-                "AUDIO" -> {
-                    binding.actionMenu.previewRcvdAudioContainer.visibility = View.VISIBLE
-
-                    val amplitudes = decodeAmplitudes(messageAmpsJson)
-                    binding.actionMenu.previewRcvdWaveform.setAmplitudes(amplitudes)
-
-                    val duration = getTotalDuration(requireContext(), messageUri ?: "")
-                    binding.actionMenu.previewRcvdAudioDuration.text = formatDuration(duration)
-                    binding.actionMenu.previewRcvdAudioTime.text = convertDatetime(messageTime)
-                    binding.actionMenu.previewRcvdSpeed.text = "1x"
-                }
-
-                else -> {
-                    binding.actionMenu.previewRcvdText.text = messageText
-                    binding.actionMenu.previewRcvdText.visibility = View.VISIBLE
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // POPULATE SENT MESSAGE PREVIEW
-        // ═══════════════════════════════════════════════════════════════════════
-        else {
-            binding.actionMenu.previewSentMsgBubble.visibility = View.VISIBLE
-
-            // Hide all content first
-            binding.actionMenu.previewSentText.visibility = View.GONE
-            binding.actionMenu.previewSentMediaFrame.visibility = View.GONE
-            binding.actionMenu.previewSentMediaCaption.visibility = View.GONE
-            binding.actionMenu.previewSentAudioContainer.visibility = View.GONE
-
-            when (messageType) {
-                "TEXT" -> {
-                    binding.actionMenu.previewSentText.text = messageText
-                    binding.actionMenu.previewSentText.visibility = View.VISIBLE
-                }
-
-                "IMAGE" -> {
-                    binding.actionMenu.previewSentVideoIcon.visibility = View.GONE
-                    binding.actionMenu.previewSentMediaFrame.visibility = View.VISIBLE
-
-                    if (!messageUri.isNullOrBlank()) {
-                        try {
-                            Glide.with(binding.root.context)
-                                .load(messageUri.toUri())
-                                .apply(RequestOptions.centerCropTransform())
-                                .into(binding.actionMenu.previewSentMedia)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-
-                    if (messageText.isNotBlank() && messageText != "photo") {
-                        binding.actionMenu.previewSentMediaCaption.text = messageText
-                        binding.actionMenu.previewSentMediaCaption.visibility = View.VISIBLE
-                    }
-                }
-
-                "VIDEO" -> {
-                    binding.actionMenu.previewSentVideoIcon.visibility = View.VISIBLE
-                    binding.actionMenu.previewSentMediaFrame.visibility = View.VISIBLE
-
-                    if (!messageUri.isNullOrBlank()) {
-                        try {
-                            Glide.with(binding.root.context)
-                                .load(messageUri.toUri())
-                                .apply(RequestOptions.centerCropTransform())
-                                .into(binding.actionMenu.previewSentMedia)
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }
-
-                    if (messageText.isNotBlank() && messageText != "video") {
-                        binding.actionMenu.previewSentMediaCaption.text = messageText
-                        binding.actionMenu.previewSentMediaCaption.visibility = View.VISIBLE
-                    }
-                }
-
-                "AUDIO" -> {
-                    binding.actionMenu.previewSentAudioContainer.visibility = View.VISIBLE
-
-                    val amplitudes = decodeAmplitudes(messageAmpsJson)
-                    binding.actionMenu.previewSentWaveform.setAmplitudes(amplitudes)
-
-                    val duration = getTotalDuration(requireContext(), messageUri ?: "")
-                    binding.actionMenu.previewSentAudioDuration.text = formatDuration(duration)
-                    binding.actionMenu.previewSentAudioTime.text = convertDatetime(messageTime)
-                    binding.actionMenu.previewSentSpeed.text = "1x"
-                }
-
-                else -> {
-                    binding.actionMenu.previewSentText.text = messageText
-                    binding.actionMenu.previewSentText.visibility = View.VISIBLE
-                }
-            }
-        }
-
-        // ═══════════════════════════════════════════════════════════════════════
-        // END MESSAGE PREVIEW SETUP
-        // ═══════════════════════════════════════════════════════════════════════
-
-        // Position the menu near the message
-        val location = IntArray(2)
-        view.getLocationInWindow(location)
-        val viewY = location[1].toFloat()
-
-        val menu = binding.actionMenu.actionMenuRoot
-        menu.post {
-            val menuHeight = menu.height
-            val menuWidth = menu.width
-            val screenHeight = resources.displayMetrics.heightPixels
-            val screenWidth = resources.displayMetrics.widthPixels
-
-            // Position vertically - centered on screen
-            val posY = (screenHeight / 2.5f).coerceAtLeast(100f)
-
-            // Position horizontally - centered on screen
-            val posX = ((screenWidth - menuWidth) / 2).toFloat().coerceIn(20f, (screenWidth - menuWidth - 20).toFloat())
-
-            menu.y = posY
-            menu.x = posX
-
-            // Animate menu appearance
-            menu.alpha = 0f
-            menu.scaleX = 0.8f
-            menu.scaleY = 0.8f
-            menu.animate()
-                .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(200)
-                .start()
-        }
-    }
-
-    private fun hideActionMenu() {
-        val menu = binding.actionMenu.actionMenuRoot
-        menu.animate()
-            .alpha(0f)
-            .scaleX(0.8f)
-            .scaleY(0.8f)
-            .setDuration(150)
-            .withEndAction {
-                binding.blurOverlay.visibility = View.GONE
-                binding.actionMenu.root.visibility = View.GONE
-                selectedMsg = null
-                selectedGroupMsg = null
-
-                // Reset menu properties for next time
-                menu.alpha = 1f
-                menu.scaleX = 1f
-                menu.scaleY = 1f
-            }
-            .start()
-    }
 
     // ── Audio recording ───────────────────────────────────────────────────────
 
@@ -949,7 +628,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         isRecordingPaused = false
         liveAmplititudes.clear()
 
-        // Reset every animated property so each session starts clean
         binding.ivLockIcon.scaleX           = 1f
         binding.ivLockIcon.scaleY           = 1f
         binding.lockPopup.translationY      = 0f
@@ -957,13 +635,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.tvLockChevrons.translationY = 0f
         binding.tvLockChevrons.alpha        = 0.3f
 
-        binding.bottomSheet.visibility          = View.GONE
-        binding.lockedRecordingBar.visibility   = View.GONE
-        binding.unLockedRecordingBar.visibility = View.VISIBLE
+        binding.bottomSheet.isVisible          = false
+        binding.lockedRecordingBar.isVisible   = false
+        binding.unLockedRecordingBar.isVisible = true
         binding.tvSlideToCancel.alpha           = 1f
 
-        // Fade the lock popup in
-        binding.lockPopup.visibility = View.VISIBLE
+        binding.lockPopup.isVisible = true
         binding.lockPopup.animate().alpha(1f).setDuration(200).start()
         lockPopupVisible = true
 
@@ -974,26 +651,21 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         waveformHandler.post(waveformUpdateRunnable)
     }
 
-    private fun lockRecording(unionId: String, senderName: String) {
+    private fun lockRecording() {
         isRecordingLocked = true
         lockPopupVisible  = false
 
-        // Step 1: snap the lock icon up (picks up seamlessly from drag scale)
         binding.ivLockIcon.animate()
             .scaleX(1.6f)
             .scaleY(1.6f)
             .setDuration(120)
             .withEndAction {
-
-                // Step 2: fly the popup upward and fade it out.
                 binding.lockPopup.animate()
                     .translationY(-300f)
                     .alpha(0f)
                     .setDuration(250)
                     .withEndAction {
-
-                        // Step 3: popup is now fully off-screen and invisible.
-                        binding.lockPopup.visibility            = View.GONE
+                        binding.lockPopup.isVisible            = false
                         binding.lockPopup.translationY          = 0f
                         binding.lockPopup.alpha                 = 1f
                         binding.ivLockIcon.scaleX               = 1f
@@ -1001,9 +673,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         binding.tvLockChevrons.translationY     = 0f
                         binding.tvLockChevrons.alpha            = 0.3f
 
-                        // NOW hide the unlocked bar and show the locked bar
-                        binding.unLockedRecordingBar.visibility = View.GONE
-                        binding.lockedRecordingBar.visibility   = View.VISIBLE
+                        binding.unLockedRecordingBar.isVisible = false
+                        binding.lockedRecordingBar.isVisible   = true
                         binding.ivRecordPause.setImageResource(R.drawable.pause_icon_0)
                         binding.waveformRecording.setAmplitudes(liveAmplititudes.toList())
                     }
@@ -1025,10 +696,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         isRecordingPaused  = false
         lockPopupVisible   = false
 
-        binding.lockedRecordingBar.visibility   = View.GONE
-        binding.unLockedRecordingBar.visibility = View.GONE
-        binding.lockPopup.visibility            = View.GONE
-        binding.bottomSheet.visibility          = View.VISIBLE
+        binding.lockedRecordingBar.isVisible   = false
+        binding.unLockedRecordingBar.isVisible = false
+        binding.lockPopup.isVisible            = false
+        binding.bottomSheet.isVisible          = true
 
         if (filePath.isNullOrBlank()) return
         if (recordingSeconds < 1) { java.io.File(filePath).delete(); return }
@@ -1049,11 +720,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun cancelAudioRecording() {
         audioRecordingManager.cancelRecording()
-
         recordingTimerHandler.removeCallbacks(recordingTimerRunnable)
         waveformHandler.removeCallbacks(waveformUpdateRunnable)
         stopMicPulse()
-
         isRecordingStarted = false
         isRecordingPaused  = false
         lockPopupVisible   = false
@@ -1066,26 +735,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     override fun onAnimationRepeat(a: Animation?) {}
                     override fun onAnimationEnd(a: Animation?) {
                         isRecordingLocked                       = false
-                        binding.lockedRecordingBar.visibility   = View.GONE
-                        binding.unLockedRecordingBar.visibility = View.GONE
+                        binding.lockedRecordingBar.isVisible   = false
+                        binding.unLockedRecordingBar.isVisible = false
                         resetLockPopupState()
-                        binding.bottomSheet.visibility          = View.VISIBLE
+                        binding.bottomSheet.isVisible          = true
                     }
                 })
             }
             binding.lockedRecordingBar.startAnimation(anim)
         } else {
             isRecordingLocked                       = false
-            binding.lockedRecordingBar.visibility   = View.GONE
-            binding.unLockedRecordingBar.visibility = View.GONE
+            binding.lockedRecordingBar.isVisible   = false
+            binding.unLockedRecordingBar.isVisible = false
             resetLockPopupState()
-            binding.bottomSheet.visibility          = View.VISIBLE
+            binding.bottomSheet.isVisible          = true
         }
     }
 
-    /** Resets every animated property on the lock popup to its initial state. */
     private fun resetLockPopupState() {
-        binding.lockPopup.visibility        = View.GONE
+        binding.lockPopup.isVisible        = false
         binding.lockPopup.translationY      = 0f
         binding.lockPopup.alpha             = 1f
         binding.ivLockIcon.scaleX           = 1f
@@ -1115,9 +783,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 liveAmplititudes.clear()
                 liveAmplititudes.addAll(samples)
                 if (isRecordingLocked) {
-                    binding.waveformRecording.setAmplitudes(
-                        if (samples.size > 60) samples.takeLast(60) else samples
-                    )
+                    binding.waveformRecording.setAmplitudes(if (samples.size > 60) samples.takeLast(60) else samples)
                 }
             }
             waveformHandler.postDelayed(this, 100)
@@ -1145,25 +811,27 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val target  = 100
         val sampled = if (amps.size <= target) amps
         else List(target) { i -> amps[(i * (amps.size.toFloat() / target)).toInt().coerceIn(0, amps.size - 1)] }
-        return JSONArray().apply { sampled.forEach { put(Math.round(it * 100) / 100.0) } }.toString()
+        val array = JSONArray()
+        sampled.forEach { array.put(it.toDouble()) }
+        return array.toString()
     }
 
     // ── Standard Chat Helpers ─────────────────────────────────────────────────
 
     private fun showEmojiPicker() {
         isEmojiPickerVisible = true
-        emojiPickerContainer.visibility = View.VISIBLE
-        binding.ivSend.visibility   = View.VISIBLE
-        binding.ivCamera.visibility = View.VISIBLE
-        binding.ivMic.visibility    = View.GONE
+        emojiPickerContainer.isVisible = true
+        binding.ivSend.isVisible   = true
+        binding.ivCamera.isVisible = true
+        binding.ivMic.isVisible    = false
     }
 
     private fun hideEmojiPicker() {
         isEmojiPickerVisible = false
-        emojiPickerContainer.visibility = View.GONE
-        binding.ivSend.visibility   = View.GONE
-        binding.ivCamera.visibility = View.VISIBLE
-        binding.ivMic.visibility    = View.VISIBLE
+        emojiPickerContainer.isVisible = false
+        binding.ivSend.isVisible   = false
+        binding.ivCamera.isVisible = true
+        binding.ivMic.isVisible    = true
     }
 
     override fun onPause() {
@@ -1191,18 +859,39 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun setListGroupMessageAdapter(unionId: String) {
         recyclerview = binding.rvMsg
-        groupMessageAdapter = GroupMessagesAdapter(onClick = { messageEntity ->
-            if (messageEntity.type.uppercase(Locale.getDefault()) != "AUDIO") {
-                val uriStr = messageEntity.uri ?: messageEntity.msg
-                if (!uriStr.isNullOrBlank()) {
-                    startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                        putExtra("uri", uriStr); putExtra("type", messageEntity.type)
-                    })
+        groupMessageAdapter = GroupMessagesAdapter(
+            onClick = { msg ->
+                if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
+                    val uriStr = msg.uri ?: msg.msg
+                    if (uriStr.isNotBlank()) {
+                        startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
+                            putExtra("uri", uriStr); putExtra("type", msg.type)
+                        })
+                    }
                 }
-            }
-        }, onLongClick = { view, messageEntity ->
-            showActionMenu(view, null, messageEntity)
-        }, myId = unionId)
+            },
+            onLongClick = { view, msg ->
+                when (view.id) {
+                    R.id.btnReply -> handleReply(msg.msg)
+                    R.id.btnDelete -> handleDelete(msg)
+                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                    R.id.btnForward -> handleForward()
+                    R.id.btnInfo -> handleInfo(msg)
+                }
+            },
+            onEmojiSelected = { msg, emoji ->
+                selectedGroupMsg = msg
+                handleReaction(emoji)
+                updateRecentEmojiList(emoji)
+            },
+            onMoreEmojisClicked = { msg ->
+                selectedGroupMsg = msg
+                selectedMsg = null
+                showEmojiPicker()
+            },
+            myId = unionId,
+            recentEmojis = recentEmojisList
+        )
 
         vm1.getMessagesForGroupChat(groupId) { liveData ->
             liveData.observe(viewLifecycleOwner) { messages ->
@@ -1217,18 +906,39 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun setListMessageAdapter() {
         recyclerview = binding.rvMsg
-        adapterMsg = MessageAdapter(myId = "me123", onClick = { messageEntity ->
-            if (messageEntity.type?.uppercase(Locale.getDefault()) != "AUDIO") {
-                val uriStr = messageEntity.uri ?: messageEntity.msg
-                if (!uriStr.isNullOrBlank()) {
-                    startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                        putExtra("uri", uriStr); putExtra("type", messageEntity.type ?: "TEXT")
-                    })
+        adapterMsg = MessageAdapter(
+            myId = "me123",
+            onClick = { msg ->
+                if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
+                    val uriStr = msg.uri ?: msg.msg
+                    if (uriStr.isNotBlank()) {
+                        startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
+                            putExtra("uri", uriStr); putExtra("type", msg.type)
+                        })
+                    }
                 }
-            }
-        }, onLongClick = { view, messageEntity ->
-            showActionMenu(view, messageEntity, null)
-        })
+            },
+            onLongClick = { view, msg ->
+                when (view.id) {
+                    R.id.btnReply -> handleReply(msg.msg)
+                    R.id.btnDelete -> handleDelete(msg)
+                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                    R.id.btnForward -> handleForward()
+                    R.id.btnInfo -> handleInfo(msg)
+                }
+            },
+            onEmojiSelected = { msg, emoji ->
+                selectedMsg = msg
+                handleReaction(emoji)
+                updateRecentEmojiList(emoji)
+            },
+            onMoreEmojisClicked = { msg ->
+                selectedMsg = msg
+                selectedGroupMsg = null
+                showEmojiPicker()
+            },
+            recentEmojis = recentEmojisList
+        )
         recyclerview.apply {
             viewLifecycleOwner.lifecycleScope.launch {
                 vm.messagesFlow.collect { list ->
@@ -1238,6 +948,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
             adapter = adapterMsg
         }
+    }
+
+    private fun loadRecentEmojis() {
+        val saved = Prefs.getRecentEmojis(requireContext())
+        if (saved != null) {
+            recentEmojisList.clear()
+            recentEmojisList.addAll(saved)
+        }
+    }
+
+    private fun updateRecentEmojiList(emoji: String) {
+        recentEmojisList.remove(emoji)
+        recentEmojisList.add(0, emoji)
+        if (recentEmojisList.size > 8) {
+            recentEmojisList = recentEmojisList.take(8).toMutableList()
+        }
+        Prefs.setRecentEmojis(requireContext(), recentEmojisList)
+        if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList)
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(recentEmojisList)
     }
 
     private fun openPicker() {
@@ -1261,20 +990,20 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val takeFlags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         val parcelables = ArrayList<SelectedMediaParcelable>(uris.size)
         for (uri in uris) {
-            try { requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags) } catch (e: Exception) {}
-            val mime = try { requireContext().contentResolver.getType(uri) } catch (e: Exception) { null }
+            try { requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags) } catch (_: Exception) {}
+            val mime = try { requireContext().contentResolver.getType(uri) } catch (_: Exception) { null }
             val type = if (mime?.startsWith("video") == true || uri.toString().endsWith(".mp4", true)) "VIDEO" else "IMAGE"
             parcelables.add(SelectedMediaParcelable(uri.toString(), type, ""))
         }
         previewLauncher.launch(Intent(requireContext(), MediaPreviewActivity::class.java).apply {
             putParcelableArrayListExtra(MediaPreviewActivity.EXTRA_ITEMS, parcelables)
         })
-        binding.contentMenu.visibility = View.GONE
+        binding.contentMenu.isVisible = false
         binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
     }
 
     private fun updatePreviewVisibility() {
-        binding.previewContainer.visibility = if (selectedMedias.isEmpty()) View.GONE else View.VISIBLE
+        binding.previewContainer.isVisible = selectedMedias.isNotEmpty()
     }
 
     private fun performSendForSelectedMedia() {
@@ -1342,18 +1071,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             .showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    // ── Helper Functions for Message Preview ──────────────────────────────────
-
-    private fun decodeAmplitudes(json: String?): List<Float> {
-        if (json.isNullOrBlank()) return emptyList()
-        return try {
-            val arr = JSONArray(json)
-            List(arr.length()) { i -> arr.getDouble(i).toFloat() }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
     private fun formatDuration(ms: Int): String {
         val totalSec = (ms / 1000).coerceAtLeast(0)
         return String.format(Locale.getDefault(), "%d:%02d", totalSec / 60, totalSec % 60)
@@ -1367,20 +1084,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             if (uri.scheme == "file") retriever.setDataSource(uri.path)
             else retriever.setDataSource(context, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (e: Exception) {
-            0
-        } finally {
-            try { retriever.release() } catch (_: Exception) {}
-        }
+        } catch (_: Exception) { 0 } finally { try { retriever.release() } catch (_: Exception) {} }
     }
 
     private fun convertDatetime(time: String): String {
         return try {
-            val formatter = java.text.SimpleDateFormat("hh:mm a", Locale.getDefault())
+            val formatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (e: Exception) {
-            ""
-        }
+        } catch (_: Exception) { "" }
     }
 
     private fun formatTimestamp(timeInMillis: Long): String {

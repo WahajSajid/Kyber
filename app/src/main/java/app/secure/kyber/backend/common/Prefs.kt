@@ -2,6 +2,7 @@ package app.secure.kyber.backend.common
 
 import android.content.Context
 import android.content.SharedPreferences
+import org.json.JSONArray
 
 object Prefs {
     private const val FILE = "kyber_prefs"
@@ -11,6 +12,7 @@ object Prefs {
     private const val KEY_PASSWORD = "password"
 
     private const val KEY_LICENSE = "license"
+    private const val KEY_RECENT_EMOJIS = "recent_emojis"
 
     private const val DISAPPEARING_MESSAGES_STATUS = "Off"
     private const val MUTE_NOTIFICATION_STATUS = "Always"
@@ -69,6 +71,11 @@ object Prefs {
         }
     }
 
+    fun setRecentEmojis(ctx: Context, emojis: List<String>) {
+        val json = JSONArray(emojis).toString()
+        prefs(ctx).edit().putString(KEY_RECENT_EMOJIS, json).apply()
+    }
+
     // Getters
     fun getUnionId(ctx: Context): String? = prefs(ctx).getString(KEY_UNION_ID, null)
     fun getPublicKey(ctx: Context): String? = prefs(ctx).getString(KEY_PUBLIC_KEY, null)
@@ -77,6 +84,16 @@ object Prefs {
     fun getLicense(ctx: Context): String? = prefs(ctx).getString(KEY_LICENSE, null)
     fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(DISAPPEARING_MESSAGES_STATUS, null)
     fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(MUTE_NOTIFICATION_STATUS, null)
+
+    fun getRecentEmojis(ctx: Context): List<String>? {
+        val json = prefs(ctx).getString(KEY_RECENT_EMOJIS, null) ?: return null
+        return try {
+            val array = JSONArray(json)
+            List(array.length()) { array.getString(it) }
+        } catch (e: Exception) {
+            null
+        }
+    }
 
 
     // Utilities
