@@ -681,4 +681,9 @@
     <dimen name="_minus59sdp">-59.00dp</dimen>
     <dimen name="_minus60sdp">-60.00dp</dimen>
     <dimen name="fab_margin">16dp</dimen>
+
+
+
+    <dimen name="audio_play_ic_dimen">18dp</dimen>
+
 </resources>

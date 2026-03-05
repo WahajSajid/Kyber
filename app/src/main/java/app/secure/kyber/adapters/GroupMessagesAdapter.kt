@@ -32,7 +32,8 @@ class GroupMessagesAdapter(
     private val onEmojiSelected: (GroupMessageEntity, String) -> Unit = { _, _ -> },
     private val onMoreEmojisClicked: (GroupMessageEntity) -> Unit = {},
     private val myId: String,
-    private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮")
+    private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮"),
+    private val recyclerView: RecyclerView? = null
 ) : ListAdapter<GroupMessageEntity, GroupMessagesAdapter.VH>(DIFF) {
 
     companion object {
@@ -103,7 +104,6 @@ class GroupMessagesAdapter(
         val tvSentReaction : TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction : TextView = view.findViewById(R.id.tvRcvReaction)
 
-        // Changed to View to prevent ClassCastExceptions
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
         val actionMenuReceived: View = view.findViewById(R.id.actionMenuReceived)
         val sentEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_sent)
@@ -132,9 +132,12 @@ class GroupMessagesAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val currentItem = getItem(position)
-        val showTime = if (position < itemCount - 1) {
-            val nextItem = getItem(position + 1)
+        val adapterPosition = holder.bindingAdapterPosition
+        if (adapterPosition == RecyclerView.NO_POSITION) return
+
+        val currentItem = getItem(adapterPosition)
+        val showTime = if (adapterPosition < itemCount - 1) {
+            val nextItem = getItem(adapterPosition + 1)
             convertDatetime(currentItem.time) != convertDatetime(nextItem.time)
         } else {
             true
@@ -150,13 +153,35 @@ class GroupMessagesAdapter(
         holder.sentMessageTime.isVisible = isSent && showTime
         holder.receivedMessageTime.isVisible = !isSent && showTime
 
-        val isMenuOpen = position == openMenuPosition
+        val isMenuOpen = adapterPosition == openMenuPosition
+
+        // Set initial visibility and reset animations
         if (isMenuOpen) {
-            holder.emojiBar(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
-            holder.actionMenu(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
+            holder.emojiBar(isSent).apply {
+                visibility = View.VISIBLE
+                scaleX = 1f
+                scaleY = 1f
+                alpha = 1f
+            }
+            holder.actionMenu(isSent).apply {
+                visibility = View.VISIBLE
+                scaleX = 1f
+                scaleY = 1f
+                alpha = 1f
+            }
         } else {
-            holder.emojiBar(isSent).visibility = View.GONE
-            holder.actionMenu(isSent).visibility = View.GONE
+            holder.emojiBar(isSent).apply {
+                visibility = View.GONE
+                scaleX = 1f
+                scaleY = 1f
+                alpha = 1f
+            }
+            holder.actionMenu(isSent).apply {
+                visibility = View.GONE
+                scaleX = 1f
+                scaleY = 1f
+                alpha = 1f
+            }
         }
 
         val currentReaction = currentItem.reaction
@@ -204,17 +229,39 @@ class GroupMessagesAdapter(
         }
 
         holder.itemView.setOnLongClickListener {
-            if (openMenuPosition != position) {
-                showMenuWithAnimation(position)
+            val currentPos = holder.bindingAdapterPosition
+            if (currentPos != RecyclerView.NO_POSITION && openMenuPosition != currentPos) {
+                showMenuWithAnimation(currentPos)
             }
             true
         }
 
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnReply)?.setOnClickListener { closeMenu(); onLongClick(it, currentItem) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnDelete)?.setOnClickListener { closeMenu(); onLongClick(it, currentItem) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnCopy)?.setOnClickListener { closeMenu(); onLongClick(it, currentItem) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnForward)?.setOnClickListener { closeMenu(); onLongClick(it, currentItem) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnInfo)?.setOnClickListener { closeMenu(); onLongClick(it, currentItem) }
+        setupActionMenuButtons(holder, isSent, currentItem)
+    }
+
+    private fun setupActionMenuButtons(holder: VH, isSent: Boolean, item: GroupMessageEntity) {
+        val menu = holder.actionMenu(isSent)
+
+        menu.findViewById<View>(R.id.btnReply)?.setOnClickListener {
+            closeMenu()
+            onLongClick(it, item)
+        }
+        menu.findViewById<View>(R.id.btnDelete)?.setOnClickListener {
+            closeMenu()
+            onLongClick(it, item)
+        }
+        menu.findViewById<View>(R.id.btnCopy)?.setOnClickListener {
+            closeMenu()
+            onLongClick(it, item)
+        }
+        menu.findViewById<View>(R.id.btnForward)?.setOnClickListener {
+            closeMenu()
+            onLongClick(it, item)
+        }
+        menu.findViewById<View>(R.id.btnInfo)?.setOnClickListener {
+            closeMenu()
+            onLongClick(it, item)
+        }
     }
 
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
@@ -223,35 +270,97 @@ class GroupMessagesAdapter(
             return
         }
 
+        val adapterPosition = holder.bindingAdapterPosition
+        if (adapterPosition == RecyclerView.NO_POSITION) return
+
         if (payloads.contains("START_PLAYBACK")) {
-            val item = getItem(position)
+            val item = getItem(adapterPosition)
             val isSent = item.senderId == myId
             val uriStr = item.uri ?: return
             startPlayback(holder, isSent, uriStr)
             return
         }
 
-        if (payloads.contains("SHOW_MENU") || payloads.contains("HIDE_MENU")) {
-            // First apply data binding to ensure UI states (including VISIBLE state) are set properly
-            onBindViewHolder(holder, position)
+        if (payloads.contains("SHOW_MENU")) {
+            val item = getItem(adapterPosition)
+            val isSent = item.senderId == myId
+            
+            holder.emojiBar(isSent).visibility = View.VISIBLE
+            holder.actionMenu(isSent).visibility = View.VISIBLE
+            
+            animateViewIn(holder.emojiBar(isSent))
+            animateViewIn(holder.actionMenu(isSent))
+            
+            holder.itemView.post {
+                scrollToMakeVisible(holder)
+            }
+        }
 
-            if (payloads.contains("SHOW_MENU")) {
-                val item = getItem(position)
-                val isSent = item.senderId == myId
+        if (payloads.contains("HIDE_MENU")) {
+            val item = getItem(adapterPosition)
+            val isSent = item.senderId == myId
+            
+            animateViewOut(holder.emojiBar(isSent))
+            animateViewOut(holder.actionMenu(isSent))
+        }
+    }
 
-                // Using .post ensures the Views are properly measured by ConstraintLayout before scaling
-                holder.emojiBar(isSent).post {
-                    holder.emojiBar(isSent).apply {
-                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
-                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
-                    }
-                }
-                holder.actionMenu(isSent).post {
-                    holder.actionMenu(isSent).apply {
-                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
-                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
-                    }
-                }
+    private fun animateViewIn(view: View) {
+        view.alpha = 0f
+        view.scaleX = 0.8f
+        view.scaleY = 0.8f
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(200)
+            .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
+            .start()
+    }
+
+    private fun animateViewOut(view: View) {
+        view.animate()
+            .alpha(0f)
+            .scaleX(0.8f)
+            .scaleY(0.8f)
+            .setDuration(150)
+            .withEndAction { 
+                view.visibility = View.GONE
+                view.scaleX = 1f
+                view.scaleY = 1f
+            }
+            .start()
+    }
+
+    private fun scrollToMakeVisible(holder: VH) {
+        val rv = recyclerView ?: return
+        val itemView = holder.itemView
+        
+        val itemPos = holder.bindingAdapterPosition
+        if (itemPos == RecyclerView.NO_POSITION) return
+        
+        itemView.post {
+            val rect = android.graphics.Rect()
+            itemView.getGlobalVisibleRect(rect)
+            
+            val rvRect = android.graphics.Rect()
+            rv.getGlobalVisibleRect(rvRect)
+            
+            val item = getItem(itemPos)
+            val isSent = item.senderId == myId
+            
+            val emojiBar = holder.emojiBar(isSent)
+            val actionMenu = holder.actionMenu(isSent)
+            
+            emojiBar.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            actionMenu.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            
+            if (rect.bottom + actionMenu.measuredHeight > rvRect.bottom) {
+                val scrollAmount = (rect.bottom + actionMenu.measuredHeight) - rvRect.bottom + 100
+                rv.smoothScrollBy(0, scrollAmount)
+            } else if (rect.top - emojiBar.measuredHeight < rvRect.top) {
+                val scrollAmount = rect.top - emojiBar.measuredHeight - rvRect.top - 100
+                rv.smoothScrollBy(0, scrollAmount)
             }
         }
     }
@@ -341,7 +450,7 @@ class GroupMessagesAdapter(
         if (activeUri == uriStr) {
             syncPlayingUi(h, sent)
         } else {
-            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.playIcon(sent).setImageResource(R.drawable.play_ic)
             h.waveform(sent).setProgress(0f)
             h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         }
@@ -352,14 +461,13 @@ class GroupMessagesAdapter(
                 if (player != null && player.isPlaying) {
                     player.pause()
                     activeHandler?.removeCallbacksAndMessages(null)
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                    h.playIcon(sent).setImageResource(R.drawable.play_ic)
                 } else if (player != null) {
                     player.start()
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
                     startProgressUpdater(h, sent, uriStr)
                 }
             } else {
-                stopPlayback(resetUi = true)
                 startPlayback(h, sent, uriStr)
             }
         }
@@ -376,6 +484,7 @@ class GroupMessagesAdapter(
                 activePlayer?.let { player ->
                     val seekTo = (progress * player.duration).toInt()
                     player.seekTo(seekTo)
+                    h.waveform(sent).setProgress(progress)
                 }
             }
         }
@@ -391,6 +500,7 @@ class GroupMessagesAdapter(
     }
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
+        stopPlayback(resetUi = true)
         val player = try {
             MediaPlayer().apply {
                 setDataSource(h.itemView.context, uriStr.toUri())
@@ -406,13 +516,13 @@ class GroupMessagesAdapter(
         activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0])
         player.start()
-        h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+        h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
         h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         h.durationLabel(sent).text = formatDuration(player.duration)
         startProgressUpdater(h, sent, uriStr)
         player.setOnCompletionListener {
             activeHandler?.removeCallbacksAndMessages(null)
-            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.playIcon(sent).setImageResource(R.drawable.play_ic)
             h.waveform(sent).setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
 
@@ -457,7 +567,7 @@ class GroupMessagesAdapter(
     private fun syncPlayingUi(h: VH, sent: Boolean) {
         val player = activePlayer ?: return
         h.playIcon(sent).setImageResource(
-            if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.play_ic
         )
         h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
         if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
@@ -473,7 +583,7 @@ class GroupMessagesAdapter(
                 val pos = h.bindingAdapterPosition
                 if (pos != -1) {
                     val sent = getItem(pos).senderId == myId
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                    h.playIcon(sent).setImageResource(R.drawable.play_ic)
                     h.waveform(sent).setProgress(0f)
                 }
             }

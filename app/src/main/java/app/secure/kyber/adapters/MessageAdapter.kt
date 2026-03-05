@@ -26,6 +26,7 @@ import com.bumptech.glide.request.RequestOptions
 import org.json.JSONArray
 import java.util.Locale
 
+@Suppress("DEPRECATION")
 class MessageAdapter(
     private val myId: String,
     private val onClick: (MessageEntity) -> Unit = {},
@@ -124,7 +125,10 @@ class MessageAdapter(
         VH(LayoutInflater.from(parent.context).inflate(R.layout.msg_list_item, parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val item    = getItem(position)
+        val adapterPosition = holder.bindingAdapterPosition
+        if (adapterPosition == RecyclerView.NO_POSITION) return
+
+        val item    = getItem(adapterPosition)
         val type    = item.type.uppercase(Locale.US)
         val isSent  = item.isSent
         val isMedia = type == "IMAGE" || type == "VIDEO"
@@ -133,14 +137,13 @@ class MessageAdapter(
         holder.rlSent.isVisible = isSent
         holder.rlRcvd.isVisible = !isSent
 
-        val isMenuOpen = position == openMenuPosition
-        if (isMenuOpen) {
-            holder.emojiBar(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
-            holder.actionMenu(isSent).apply { visibility = View.VISIBLE; scaleX = 1f; scaleY = 1f; alpha = 1f }
-        } else {
-            holder.emojiBar(isSent).visibility = View.GONE
-            holder.actionMenu(isSent).visibility = View.GONE
-        }
+        val isMenuOpen = adapterPosition == openMenuPosition
+
+        holder.emojiBar(isSent).visibility =
+            if (isMenuOpen) View.VISIBLE else View.GONE
+
+        holder.actionMenu(isSent).visibility =
+            if (isMenuOpen) View.VISIBLE else View.GONE
 
         val currentReaction = item.reaction
         val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
@@ -184,8 +187,9 @@ class MessageAdapter(
         }
 
         holder.itemView.setOnLongClickListener {
-            if (openMenuPosition != position) {
-                showMenuWithAnimation(position)
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) {
+                showMenuWithAnimation(pos)
             }
             true
         }
@@ -203,8 +207,11 @@ class MessageAdapter(
             return
         }
 
+        val adapterPosition = holder.bindingAdapterPosition
+        if (adapterPosition == RecyclerView.NO_POSITION) return
+
         if (payloads.contains("START_PLAYBACK")) {
-            val item = getItem(position)
+            val item = getItem(adapterPosition)
             val isSent = item.isSent
             val uriStr = item.uri ?: return
             startPlayback(holder, isSent, uriStr)
@@ -213,10 +220,10 @@ class MessageAdapter(
 
         if (payloads.contains("SHOW_MENU") || payloads.contains("HIDE_MENU")) {
             // First apply data binding to ensure UI states (including VISIBLE state) are set properly
-            onBindViewHolder(holder, position)
+            onBindViewHolder(holder, adapterPosition)
 
             if (payloads.contains("SHOW_MENU")) {
-                val item = getItem(position)
+                val item = getItem(adapterPosition)
                 val isSent = item.isSent
 
                 // Using .post ensures the Views are properly measured by ConstraintLayout before scaling
@@ -333,7 +340,7 @@ class MessageAdapter(
         if (activeUri == uriStr) {
             syncPlayingUi(h, sent)
         } else {
-            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
             h.waveform(sent).setProgress(0f)
             h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         }
@@ -344,14 +351,13 @@ class MessageAdapter(
                 if (player != null && player.isPlaying) {
                     player.pause()
                     activeHandler?.removeCallbacksAndMessages(null)
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
                 } else if (player != null) {
                     player.start()
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
                     startProgressUpdater(h, sent, uriStr)
                 }
             } else {
-                stopPlayback(resetUi = true)
                 startPlayback(h, sent, uriStr)
             }
         }
@@ -368,6 +374,7 @@ class MessageAdapter(
                 activePlayer?.let { player ->
                     val seekTo = (progress * player.duration).toInt()
                     player.seekTo(seekTo)
+                    h.waveform(sent).setProgress(progress)
                 }
             }
         }
@@ -383,6 +390,7 @@ class MessageAdapter(
     }
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
+        stopPlayback(resetUi = true)
         val player = try {
             MediaPlayer().apply {
                 setDataSource(h.itemView.context, uriStr.toUri())
@@ -398,13 +406,13 @@ class MessageAdapter(
         activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0])
         player.start()
-        h.playIcon(sent).setImageResource(android.R.drawable.ic_media_pause)
+        h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
         h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         h.durationLabel(sent).text = formatDuration(player.duration)
         startProgressUpdater(h, sent, uriStr)
         player.setOnCompletionListener {
             activeHandler?.removeCallbacksAndMessages(null)
-            h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+            h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
             h.waveform(sent).setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
 
@@ -449,7 +457,7 @@ class MessageAdapter(
     private fun syncPlayingUi(h: VH, sent: Boolean) {
         val player = activePlayer ?: return
         h.playIcon(sent).setImageResource(
-            if (player.isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+            if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.pause_icon_1
         )
         h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
         if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
@@ -465,7 +473,7 @@ class MessageAdapter(
                 val pos = h.bindingAdapterPosition
                 if (pos != -1) {
                     val sent = getItem(pos).isSent
-                    h.playIcon(sent).setImageResource(android.R.drawable.ic_media_play)
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
                     h.waveform(sent).setProgress(0f)
                 }
             }
