@@ -155,32 +155,28 @@ class GroupMessagesAdapter(
 
         val isMenuOpen = adapterPosition == openMenuPosition
 
-        // Set initial visibility and reset animations
+        val emojiBar = holder.emojiBar(isSent)
+        val actionMenu = holder.actionMenu(isSent)
+
         if (isMenuOpen) {
-            holder.emojiBar(isSent).apply {
-                visibility = View.VISIBLE
-                scaleX = 1f
-                scaleY = 1f
-                alpha = 1f
+            if (emojiBar.visibility != View.VISIBLE) {
+                emojiBar.visibility = View.VISIBLE
+                animateViewIn(emojiBar)
             }
-            holder.actionMenu(isSent).apply {
-                visibility = View.VISIBLE
-                scaleX = 1f
-                scaleY = 1f
-                alpha = 1f
+            if (actionMenu.visibility != View.VISIBLE) {
+                actionMenu.visibility = View.VISIBLE
+                animateViewIn(actionMenu)
             }
         } else {
-            holder.emojiBar(isSent).apply {
-                visibility = View.GONE
-                scaleX = 1f
-                scaleY = 1f
-                alpha = 1f
+            if (emojiBar.visibility == View.VISIBLE) {
+                animateViewOut(emojiBar)
+            } else {
+                emojiBar.visibility = View.GONE
             }
-            holder.actionMenu(isSent).apply {
-                visibility = View.GONE
-                scaleX = 1f
-                scaleY = 1f
-                alpha = 1f
+            if (actionMenu.visibility == View.VISIBLE) {
+                animateViewOut(actionMenu)
+            } else {
+                actionMenu.visibility = View.GONE
             }
         }
 
@@ -278,30 +274,6 @@ class GroupMessagesAdapter(
             val isSent = item.senderId == myId
             val uriStr = item.uri ?: return
             startPlayback(holder, isSent, uriStr)
-            return
-        }
-
-        if (payloads.contains("SHOW_MENU")) {
-            val item = getItem(adapterPosition)
-            val isSent = item.senderId == myId
-            
-            holder.emojiBar(isSent).visibility = View.VISIBLE
-            holder.actionMenu(isSent).visibility = View.VISIBLE
-            
-            animateViewIn(holder.emojiBar(isSent))
-            animateViewIn(holder.actionMenu(isSent))
-            
-            holder.itemView.post {
-                scrollToMakeVisible(holder)
-            }
-        }
-
-        if (payloads.contains("HIDE_MENU")) {
-            val item = getItem(adapterPosition)
-            val isSent = item.senderId == myId
-            
-            animateViewOut(holder.emojiBar(isSent))
-            animateViewOut(holder.actionMenu(isSent))
         }
     }
 
@@ -368,15 +340,17 @@ class GroupMessagesAdapter(
     private fun showMenuWithAnimation(position: Int) {
         val oldPos = openMenuPosition
         openMenuPosition = position
-        if (oldPos != -1 && oldPos != position) notifyItemChanged(oldPos, "HIDE_MENU")
-        notifyItemChanged(position, "SHOW_MENU")
+        if (oldPos != -1 && oldPos != position) {
+            notifyItemChanged(oldPos)
+        }
+        notifyItemChanged(position)
     }
 
-    private fun closeMenu() {
+    fun closeMenu() {
         if (openMenuPosition != -1) {
             val pos = openMenuPosition
             openMenuPosition = -1
-            notifyItemChanged(pos, "HIDE_MENU")
+            notifyItemChanged(pos)
         }
     }
 

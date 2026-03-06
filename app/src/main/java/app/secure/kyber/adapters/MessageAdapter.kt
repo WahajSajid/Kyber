@@ -138,12 +138,30 @@ class MessageAdapter(
         holder.rlRcvd.isVisible = !isSent
 
         val isMenuOpen = adapterPosition == openMenuPosition
+        val emojiBar = holder.emojiBar(isSent)
+        val actionMenu = holder.actionMenu(isSent)
 
-        holder.emojiBar(isSent).visibility =
-            if (isMenuOpen) View.VISIBLE else View.GONE
-
-        holder.actionMenu(isSent).visibility =
-            if (isMenuOpen) View.VISIBLE else View.GONE
+        if (isMenuOpen) {
+            if (emojiBar.visibility != View.VISIBLE) {
+                emojiBar.visibility = View.VISIBLE
+                animateViewIn(emojiBar)
+            }
+            if (actionMenu.visibility != View.VISIBLE) {
+                actionMenu.visibility = View.VISIBLE
+                animateViewIn(actionMenu)
+            }
+        } else {
+            if (emojiBar.visibility == View.VISIBLE) {
+                animateViewOut(emojiBar)
+            } else {
+                emojiBar.visibility = View.GONE
+            }
+            if (actionMenu.visibility == View.VISIBLE) {
+                animateViewOut(actionMenu)
+            } else {
+                actionMenu.visibility = View.GONE
+            }
+        }
 
         val currentReaction = item.reaction
         val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
@@ -215,47 +233,52 @@ class MessageAdapter(
             val isSent = item.isSent
             val uriStr = item.uri ?: return
             startPlayback(holder, isSent, uriStr)
-            return
-        }
-
-        if (payloads.contains("SHOW_MENU") || payloads.contains("HIDE_MENU")) {
-            // First apply data binding to ensure UI states (including VISIBLE state) are set properly
-            onBindViewHolder(holder, adapterPosition)
-
-            if (payloads.contains("SHOW_MENU")) {
-                val item = getItem(adapterPosition)
-                val isSent = item.isSent
-
-                // Using .post ensures the Views are properly measured by ConstraintLayout before scaling
-                holder.emojiBar(isSent).post {
-                    holder.emojiBar(isSent).apply {
-                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
-                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
-                    }
-                }
-                holder.actionMenu(isSent).post {
-                    holder.actionMenu(isSent).apply {
-                        scaleX = 0.5f; scaleY = 0.5f; alpha = 0f
-                        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(200).start()
-                    }
-                }
-            }
         }
     }
 
     private fun showMenuWithAnimation(position: Int) {
         val oldPos = openMenuPosition
         openMenuPosition = position
-        if (oldPos != -1 && oldPos != position) notifyItemChanged(oldPos, "HIDE_MENU")
-        notifyItemChanged(position, "SHOW_MENU")
+        if (oldPos != -1 && oldPos != position) {
+            notifyItemChanged(oldPos)
+        }
+        notifyItemChanged(position)
     }
 
-    private fun closeMenu() {
+    fun closeMenu() {
         if (openMenuPosition != -1) {
             val pos = openMenuPosition
             openMenuPosition = -1
-            notifyItemChanged(pos, "HIDE_MENU")
+            notifyItemChanged(pos)
         }
+    }
+
+    private fun animateViewIn(view: View) {
+        view.alpha = 0f
+        view.scaleX = 0.8f
+        view.scaleY = 0.8f
+        view.animate()
+            .alpha(1f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(200)
+            .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
+            .start()
+    }
+
+    private fun animateViewOut(view: View) {
+        view.animate()
+            .alpha(0f)
+            .scaleX(0.8f)
+            .scaleY(0.8f)
+            .setDuration(150)
+            .withEndAction {
+                view.visibility = View.GONE
+                view.scaleX = 1f
+                view.scaleY = 1f
+                view.alpha = 1f
+            }
+            .start()
     }
 
     private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {

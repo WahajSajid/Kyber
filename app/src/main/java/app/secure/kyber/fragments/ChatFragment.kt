@@ -311,7 +311,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             selectedGroupMsg = null
             if (isEmojiPickerVisible) {
                 hideEmojiPicker()
-                showKeyboard(messageEdit)
             } else {
                 hideKeyboard(messageEdit)
                 messageEdit.postDelayed({ showEmojiPicker() }, 150)
@@ -353,6 +352,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     binding.ivMic.isVisible    = true
                 }
             }
+        }
+
+        // ── Global tap handler to close emoji bars / action menus ──────────────
+        binding.root.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_DOWN) {
+                if (::adapterMsg.isInitialized) {
+                    adapterMsg.closeMenu()
+                }
+                if (::groupMessageAdapter.isInitialized) {
+                    groupMessageAdapter.closeMenu()
+                }
+            }
+            false
         }
 
         // ── Back press ────────────────────────────────────────────────────────
