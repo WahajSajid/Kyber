@@ -305,7 +305,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             setOnEmojiPickedListener { emoji ->
                 if (selectedMsg != null || selectedGroupMsg != null) {
                     val msgId = selectedMsg?.id
-                    selectedMsg?.let { adapterMsg.showReactionImmediately(it.id.toString(), emoji.emoji) }
+                    selectedMsg?.let {
+                        adapterMsg.showReactionImmediately(
+                            it.id.toString(),
+                            emoji.emoji
+                        )
+                    }
                     handleReaction(emoji.emoji)
                     updateRecentEmojiList(emoji.emoji, msgId.toString())
                     hideEmojiPicker()
@@ -988,7 +993,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onMoreEmojisClicked = { msg ->
                 selectedGroupMsg = msg
                 selectedMsg = null
-                showEmojiPicker()
+                if (!isEmojiPickerVisible) {
+                    hideKeyboard(messageEdit)
+                    messageEdit.postDelayed({ showEmojiPicker() }, 150)
+                }
             },
             myId = unionId,
             recentEmojis = recentEmojisList
@@ -1045,7 +1053,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onMoreEmojisClicked = { msg ->
                 selectedMsg = msg
                 selectedGroupMsg = null
-                showEmojiPicker()
+                if (!isEmojiPickerVisible) {
+                    hideKeyboard(messageEdit)
+                    messageEdit.postDelayed({ showEmojiPicker() }, 150)
+                }
             },
             recentEmojis = recentEmojisList
         )
