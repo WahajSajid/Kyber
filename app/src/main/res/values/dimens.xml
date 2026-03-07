@@ -685,5 +685,6 @@
 
 
     <dimen name="audio_play_ic_dimen">18dp</dimen>
+    <dimen name="reaction_size">16dp</dimen>
 
 </resources>

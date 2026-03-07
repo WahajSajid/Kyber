@@ -6,6 +6,8 @@
     android:layout_height="match_parent"
     android:background="@android:color/transparent"
     android:fitsSystemWindows="true"
+    android:clipChildren="false"
+    android:clipToPadding="false"
     tools:context=".fragments.ChatListFragment">
 
     <!-- RecyclerView -->
