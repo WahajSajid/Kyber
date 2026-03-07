@@ -51,7 +51,7 @@ class MessageAdapter(
     private var activeHolder: VH? = null
     private var activeHandler: android.os.Handler? = null
     private var activeSpeedIdx: Int = 0
-    private var openMenuPosition: Int = -1
+    private val openMenuPositions = mutableSetOf<Int>()
 
     private var recyclerView: RecyclerView? = null
 
@@ -77,12 +77,6 @@ class MessageAdapter(
 
     fun updateRecentEmojis(newList: List<String>, reactedItemId: String? = null) {
         this.recentEmojis = newList
-        // Only rebind the specific item that got a reaction
-//        if (reactedItemId != null) {
-//            Log.d("MessageAdapter", "updateRecentEmojis: $reactedItemId")
-//            val pos = currentList.indexOfFirst { it.id.toString() == reactedItemId }
-//            if (pos != -1) notifyItemChanged(pos)
-//        }
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -170,16 +164,15 @@ class MessageAdapter(
         }
 
 
-        val isMenuOpen = adapterPosition == openMenuPosition
         val currentReaction = item.reaction
         val emojiBar = holder.emojiBar(isSent)
         val actionMenu = holder.actionMenu(isSent)
 
-        Log.d("MENU_DEBUG", "=== onBindViewHolder pos=$adapterPosition openMenuPos=$openMenuPosition isMenuOpen=$isMenuOpen ===")
+        val isMenuOpen = openMenuPositions.contains(adapterPosition)
 
         if (isMenuOpen) {
-            val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
-                val finalEmoji = if (emoji == currentReaction) "" else emoji
+            val emojiAdapter = RecentEmojiAdapter(recentEmojis, item.reaction) { emoji ->
+                val finalEmoji = if (emoji == item.reaction) "" else emoji
                 closeMenu()
                 onEmojiSelected(item, finalEmoji)
             }
@@ -197,24 +190,16 @@ class MessageAdapter(
             }
             holder.emojiBar(isSent).visibility = View.VISIBLE
             holder.actionMenu(isSent).visibility = View.VISIBLE
-            Log.d("MENU_DEBUG", "SET BOTH VISIBLE at pos=$adapterPosition")
-
-
-            // Add this
-            actionMenu.post {
-                Log.d("MENU_DEBUG", "actionMenu — width=${actionMenu.width} height=${actionMenu.height} x=${actionMenu.x} y=${actionMenu.y} alpha=${actionMenu.alpha}")
-                Log.d("MENU_DEBUG", "emojiBar — width=${emojiBar.width} height=${emojiBar.height} x=${emojiBar.x} y=${emojiBar.y} alpha=${emojiBar.alpha}")
-                Log.d("MENU_DEBUG", "itemView — width=${holder.itemView.width} height=${holder.itemView.height}")
-                Log.d("MENU_DEBUG", "actionMenu parent=${actionMenu.parent}")
-            }
         } else {
             holder.rvEmojis(isSent).adapter = null
             holder.emojiBar(isSent).visibility = View.GONE
             holder.actionMenu(isSent).visibility = View.GONE
-            Log.d("MENU_DEBUG", "SET BOTH GONE at pos=$adapterPosition")
         }
 
-        Log.d("MENU_DEBUG", "AFTER SET — emojiBar=${emojiBar.visibility} actionMenu=${actionMenu.visibility}")
+// Hide the opposite side's menu always
+        holder.emojiBar(!isSent).visibility = View.GONE
+        holder.actionMenu(!isSent).visibility = View.GONE
+        holder.rvEmojis(!isSent).adapter = null
 
 //        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
 //            val finalEmoji = if (emoji == currentReaction) "" else emoji
@@ -242,17 +227,17 @@ class MessageAdapter(
             reactionView.visibility = View.GONE
         }
 
-        holder.itemView.setOnClickListener {
-            if (openMenuPosition != -1) closeMenu()
-            else onClick(item)
-        }
-
         holder.itemView.setOnLongClickListener {
             val pos = holder.bindingAdapterPosition
             if (pos != RecyclerView.NO_POSITION) {
-                showMenuWithAnimation(pos)
+                showMenu(pos)
             }
             true
+        }
+
+        holder.itemView.setOnClickListener {
+            if (openMenuPositions.isNotEmpty()) closeMenu()
+            else onClick(item)
         }
 
         holder.actionMenu(isSent).findViewById<View>(R.id.btnReply)
@@ -288,33 +273,18 @@ class MessageAdapter(
         }
     }
 
-    private fun showMenuWithAnimation(position: Int) {
-        val oldPos = openMenuPosition
-        openMenuPosition = position
-        if (oldPos != -1 && oldPos != position) {
-            notifyItemChanged(oldPos)
-        }
+    private fun showMenu(position: Int) {
+        val previousOpen = openMenuPositions.toSet()
+        openMenuPositions.clear()
+        openMenuPositions.add(position)
+        previousOpen.forEach { if (it != position) notifyItemChanged(it) }
         notifyItemChanged(position)
     }
 
     fun closeMenu() {
-        Log.d("MENU_DEBUG", "closeMenu called openMenuPosition=$openMenuPosition")
-        if (openMenuPosition != -1) {
-            val pos = openMenuPosition
-            openMenuPosition = -1
-            // Find the ViewHolder and null its rvEmojis adapter immediately
-            // before any rebind can happen
-            recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
-                (vh as? VH)?.let { holder ->
-                    val isSent = getItem(pos).isSent
-                    Log.d("MENU_DEBUG", "Directly hiding views for pos=$pos")
-                    holder.rvEmojis(isSent).adapter = null
-                    holder.emojiBar(isSent).visibility = View.GONE
-                    holder.actionMenu(isSent).visibility = View.GONE
-                }
-            }
-            notifyItemChanged(pos)
-        }
+        val previousOpen = openMenuPositions.toSet()
+        openMenuPositions.clear()
+        previousOpen.forEach { notifyItemChanged(it) }
     }
 
     private fun animateViewIn(view: View) {
@@ -410,6 +380,23 @@ class MessageAdapter(
         }
     }
 
+    fun showReactionImmediately(itemId: String, emoji: String) {
+        val pos = currentList.indexOfFirst { it.id.toString() == itemId }
+        if (pos == -1) return
+        recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
+            (vh as? VH)?.let { holder ->
+                val isSent = getItem(pos).isSent
+                val reactionView = holder.reaction(isSent)
+                if (emoji.isEmpty()) {
+                    reactionView.visibility = View.GONE
+                } else {
+                    reactionView.text = emoji
+                    reactionView.visibility = View.VISIBLE
+                }
+            }
+        }
+    }
+
     private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
         h.tvSent.isVisible = false
         h.tvRcv.isVisible = false
@@ -479,6 +466,7 @@ class MessageAdapter(
             if (activeUri == uriStr) applySpeed(speed)
         }
     }
+
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
         stopPlayback(resetUi = true)
