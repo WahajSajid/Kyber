@@ -40,6 +40,18 @@
         android:focusable="true" />
 
 
+    <!-- ACTION MENU OVERLAY -->
+    <include
+        layout="@layout/msg_action_menu"
+        android:id="@+id/actionMenuOverlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:elevation="11dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+
     <!-- BOTTOM ITEMS LAYOUT wrapping everything except rvMsg and emojiPickerContainer -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_items_layout"

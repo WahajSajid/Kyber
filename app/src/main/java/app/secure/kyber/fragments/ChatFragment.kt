@@ -1000,6 +1000,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             myId = unionId,
             recentEmojis = recentEmojisList
+
         )
 
         vm1.getMessagesForGroupChat(groupId) { liveData ->
@@ -1007,9 +1008,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 groupMessageAdapter.submitList(messages) {
                     recyclerview.scrollToPosition(groupMessageAdapter.itemCount - 1)
                 }
-                recyclerview.layoutManager =
-                    LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
+                recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
+                    override fun supportsPredictiveItemAnimations() = false
+                }.apply { stackFromEnd = true }
                 recyclerview.adapter = groupMessageAdapter
+                recyclerview.clipChildren = false
+                recyclerview.clipToPadding = false
             }
         }
     }
@@ -1034,14 +1038,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             onLongClick = { view, msg ->
                 when (view.id) {
-                    R.id.btnReply -> handleReply(msg.msg)
-                    R.id.btnDelete -> handleDelete(msg)
-                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(
+                    R.id.btnReplySent -> handleReply(msg.msg)
+                    R.id.btnReplyRcv -> handleReply(msg.msg)
+                    R.id.btnDeleteSent -> handleDelete(msg)
+                    R.id.btnDeleteRcv -> handleDelete(msg)
+                    R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(
+                        android.content.ClipData.newPlainText("msg", msg.msg)
+                    )
+                    R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(
                         android.content.ClipData.newPlainText("msg", msg.msg)
                     )
 
-                    R.id.btnForward -> handleForward()
-                    R.id.btnInfo -> handleInfo(msg)
+                    R.id.btnForwardSent -> handleForward()
+                    R.id.btnForwardRcv -> handleForward()
+                    R.id.btnInfoSent -> handleInfo(msg)
+                    R.id.btnInfoRcv -> handleInfo(msg)
+
                 }
             },
             onEmojiSelected = { msg, emoji ->
@@ -1066,8 +1078,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     adapterMsg.submitList(list) { scrollToPosition(adapterMsg.itemCount - 1) }
                 }
             }
-            layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
+            layoutManager = object : LinearLayoutManager(requireContext()) {
+                override fun supportsPredictiveItemAnimations() = false
+            }.apply { stackFromEnd = true }
             adapter = adapterMsg
+            clipChildren = false
+            clipToPadding = false
         }
     }
 
@@ -1265,6 +1281,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val formatter = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
         return formatter.format(java.util.Date(timeInMillis))
     }
+
+
+
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
 }

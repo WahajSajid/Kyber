@@ -257,18 +257,201 @@
         app:layout_constraintEnd_toEndOf="@id/rlMsgRcvd"
         tools:ignore="MissingConstraints" />
 
-    <include
-        layout="@layout/msg_action_menu"
+
+
+    <LinearLayout
         android:id="@+id/actionMenuReceived"
-        android:layout_width="wrap_content"
+        android:layout_width="@dimen/_200sdp"
         android:layout_height="wrap_content"
+        android:background="@drawable/action_menu_bg"
+        android:orientation="vertical"
+        android:elevation="@dimen/_8sdp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:visibility="gone"
-        android:elevation="@dimen/_16sdp"
-        android:layout_marginTop="@dimen/_5sdp"
-        android:layout_marginBottom="@dimen/_5sdp"
+        android:layout_marginTop="@dimen/_14sdp"
         app:layout_constraintTop_toBottomOf="@id/receivedMessageTime"
         app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Reply Button -->
+        <LinearLayout
+            android:id="@+id/btnReplyRcv"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Reply"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/reply"
+                android:contentDescription="reply"
+                app:tint="@color/white" />
+
+
+        </LinearLayout>
+
+        <!-- Forward Button -->
+        <LinearLayout
+            android:id="@+id/btnForwardRcv"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Forward"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/forward_icon"
+                android:contentDescription="forward"
+                app:tint="@color/white" />
+
+        </LinearLayout>
+
+        <!-- Copy Button -->
+        <LinearLayout
+            android:id="@+id/btnCopyRcv"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Copy"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/copy_ic"
+                android:contentDescription="copy"
+                app:tint="@color/white" />
+
+
+        </LinearLayout>
+
+        <!-- Info Button -->
+        <LinearLayout
+            android:id="@+id/btnInfoRcv"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Info"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/info_icon"
+                android:contentDescription="Info"
+                app:tint="@color/white" />
+
+        </LinearLayout>
+
+        <!-- Delete Button -->
+        <LinearLayout
+            android:id="@+id/btnDeleteRcv"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Delete"
+                android:textColor="#FF4444"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/trash_icon"
+                android:contentDescription="delete"
+                app:tint="#FF4444" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+
+<!--    <include-->
+<!--        layout="@layout/msg_action_menu"-->
+<!--        android:id="@+id/actionMenuReceived"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:visibility="gone"-->
+<!--        android:elevation="@dimen/_16sdp"-->
+<!--        android:layout_marginTop="@dimen/_5sdp"-->
+<!--        android:layout_marginBottom="@dimen/_5sdp"-->
+<!--        app:layout_constraintTop_toBottomOf="@id/receivedMessageTime"-->
+<!--        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"-->
+<!--        app:layout_constraintBottom_toBottomOf="parent" />-->
 
     <include
         layout="@layout/emoji_reaction_bar"
@@ -471,18 +654,202 @@
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
         tools:ignore="MissingConstraints" />
 
-    <include
-        layout="@layout/msg_action_menu"
+
+
+    <LinearLayout
         android:id="@+id/actionMenuSent"
-        android:layout_width="wrap_content"
+        android:layout_width="@dimen/_200sdp"
         android:layout_height="wrap_content"
+        android:background="@drawable/action_menu_bg"
+        android:orientation="vertical"
+        android:elevation="@dimen/_8sdp"
+        android:clipChildren="false"
+        android:layout_marginTop="@dimen/_14sdp"
+        android:clipToPadding="false"
         android:visibility="gone"
-        android:elevation="@dimen/_16sdp"
-        android:layout_marginTop="@dimen/_5sdp"
-        android:layout_marginBottom="@dimen/_5sdp"
         app:layout_constraintTop_toBottomOf="@id/sentMessageTime"
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <!-- Reply Button -->
+        <LinearLayout
+            android:id="@+id/btnReplySent"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Reply"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/reply"
+                android:contentDescription="reply"
+                app:tint="@color/white" />
+
+
+        </LinearLayout>
+
+        <!-- Forward Button -->
+        <LinearLayout
+            android:id="@+id/btnForwardSent"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Forward"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/forward_icon"
+                android:contentDescription="forward"
+                app:tint="@color/white" />
+
+        </LinearLayout>
+
+        <!-- Copy Button -->
+        <LinearLayout
+            android:id="@+id/btnCopySent"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Copy"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/copy_ic"
+                android:contentDescription="copy"
+                app:tint="@color/white" />
+
+
+        </LinearLayout>
+
+        <!-- Info Button -->
+        <LinearLayout
+            android:id="@+id/btnInfoSent"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Info"
+                android:textColor="@color/white"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/info_icon"
+                android:contentDescription="Info"
+                app:tint="@color/white" />
+
+        </LinearLayout>
+
+        <!-- Delete Button -->
+        <LinearLayout
+            android:id="@+id/btnDeleteSent"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_48sdp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:text="Delete"
+                android:textColor="#FF4444"
+                android:textSize="@dimen/_16sdp"
+                android:fontFamily="@font/roboto_regular" />
+
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:src="@drawable/trash_icon"
+                android:contentDescription="delete"
+                app:tint="#FF4444" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+
+
+
+<!--    <include-->
+<!--        layout="@layout/msg_action_menu"-->
+<!--        android:id="@+id/actionMenuSent"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:visibility="gone"-->
+<!--        android:elevation="@dimen/_16sdp"-->
+<!--        android:layout_marginTop="@dimen/_5sdp"-->
+<!--        android:layout_marginBottom="@dimen/_5sdp"-->
+<!--        app:layout_constraintTop_toBottomOf="@id/sentMessageTime"-->
+<!--        app:layout_constraintEnd_toEndOf="@id/rlMsgSent"-->
+<!--        app:layout_constraintBottom_toBottomOf="parent" />-->
 
     <include
         layout="@layout/emoji_reaction_bar"

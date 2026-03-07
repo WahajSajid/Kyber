@@ -109,6 +109,24 @@ class GroupMessagesAdapter(
         val sentEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_sent)
         val receivedEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_received)
 
+
+
+        //action menu sent button
+        val replyBtnSent: LinearLayout = view.findViewById(R.id.btnReplySent)
+        val forwardBtnSent: LinearLayout = view.findViewById(R.id.btnForwardSent)
+        val copyBtnSent: LinearLayout = view.findViewById(R.id.btnCopySent)
+        val deleteBtnSent: LinearLayout = view.findViewById(R.id.btnDeleteSent)
+        val infoBtnSent: LinearLayout = view.findViewById(R.id.btnInfoSent)
+
+        //action menu received button
+        val replyBtnRcv: LinearLayout = view.findViewById(R.id.btnReplyRcv)
+        val forwardBtnRcv: LinearLayout = view.findViewById(R.id.btnForwardRcv)
+        val copyBtnRcv: LinearLayout = view.findViewById(R.id.btnCopyRcv)
+        val deleteBtnRcv: LinearLayout = view.findViewById(R.id.btnDeleteRcv)
+        val infoBtnRcv: LinearLayout = view.findViewById(R.id.btnInfoRcv)
+
+
+
         val rvRecentEmojisSent: RecyclerView = sentEmojiBar.findViewById(R.id.rvRecentEmojis)
         val rvRecentEmojisReceived: RecyclerView = receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
         val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
@@ -244,28 +262,20 @@ class GroupMessagesAdapter(
     }
 
     private fun setupActionMenuButtons(holder: VH, isSent: Boolean, item: GroupMessageEntity) {
-        val menu = holder.actionMenu(isSent)
+        //Set up click listeners for the action menu sent
+        holder.replyBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.forwardBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.copyBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.infoBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.deleteBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
 
-        menu.findViewById<View>(R.id.btnReply)?.setOnClickListener {
-            closeMenu()
-            onLongClick(it, item)
-        }
-        menu.findViewById<View>(R.id.btnDelete)?.setOnClickListener {
-            closeMenu()
-            onLongClick(it, item)
-        }
-        menu.findViewById<View>(R.id.btnCopy)?.setOnClickListener {
-            closeMenu()
-            onLongClick(it, item)
-        }
-        menu.findViewById<View>(R.id.btnForward)?.setOnClickListener {
-            closeMenu()
-            onLongClick(it, item)
-        }
-        menu.findViewById<View>(R.id.btnInfo)?.setOnClickListener {
-            closeMenu()
-            onLongClick(it, item)
-        }
+
+        //Set up click listeners for the action menu received
+        holder.replyBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.forwardBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.copyBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.infoBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.deleteBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
     }
 
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
