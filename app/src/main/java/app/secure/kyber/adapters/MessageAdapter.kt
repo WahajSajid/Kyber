@@ -163,11 +163,6 @@ class MessageAdapter(
             else -> bindText(holder, item, isSent)
         }
 
-
-        val currentReaction = item.reaction
-        val emojiBar = holder.emojiBar(isSent)
-        val actionMenu = holder.actionMenu(isSent)
-
         val isMenuOpen = openMenuPositions.contains(adapterPosition)
 
         if (isMenuOpen) {
@@ -200,18 +195,6 @@ class MessageAdapter(
         holder.emojiBar(!isSent).visibility = View.GONE
         holder.actionMenu(!isSent).visibility = View.GONE
         holder.rvEmojis(!isSent).adapter = null
-
-//        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
-//            val finalEmoji = if (emoji == currentReaction) "" else emoji
-//            closeMenu()
-//            onEmojiSelected(item, finalEmoji)
-//        }
-//
-//        holder.rvEmojis(isSent).apply {
-//            layoutManager =
-//                LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
-//            adapter = emojiAdapter
-//        }
 
 
         holder.tvSentTime.text = convertDatetime(item.time)
@@ -274,6 +257,7 @@ class MessageAdapter(
     }
 
     private fun showMenu(position: Int) {
+        Log.d("opened position", position.toString())
         val previousOpen = openMenuPositions.toSet()
         openMenuPositions.clear()
         openMenuPositions.add(position)

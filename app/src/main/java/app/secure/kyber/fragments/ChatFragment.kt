@@ -986,7 +986,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             onEmojiSelected = { msg, emoji ->
                 selectedGroupMsg = msg
-                adapterMsg.showReactionImmediately(msg.messageId, emoji)
+                groupMessageAdapter.showReactionImmediately(msg.messageId, emoji)
                 handleReaction(emoji)
                 updateRecentEmojiList(emoji, msg.messageId)
             },

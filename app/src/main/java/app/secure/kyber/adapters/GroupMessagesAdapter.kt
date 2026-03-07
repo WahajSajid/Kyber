@@ -53,7 +53,7 @@ class GroupMessagesAdapter(
     private var activeHolder:    VH?          = null
     private var activeHandler:   android.os.Handler?     = null
     private var activeSpeedIdx:  Int          = 0
-    private var openMenuPosition: Int = -1
+    private val openMenuPositions = mutableSetOf<Int>()
 
     init {
         setHasStableIds(true)
@@ -65,7 +65,6 @@ class GroupMessagesAdapter(
 
     fun updateRecentEmojis(newList: List<String>) {
         this.recentEmojis = newList
-        notifyDataSetChanged()
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -136,16 +135,16 @@ class GroupMessagesAdapter(
         val adapterPosition = holder.bindingAdapterPosition
         if (adapterPosition == RecyclerView.NO_POSITION) return
 
-        val currentItem = getItem(adapterPosition)
+        val item = getItem(adapterPosition)
         val showTime = if (adapterPosition < itemCount - 1) {
             val nextItem = getItem(adapterPosition + 1)
-            convertDatetime(currentItem.time) != convertDatetime(nextItem.time)
+            convertDatetime(item.time) != convertDatetime(nextItem.time)
         } else {
             true
         }
 
-        val type = currentItem.type.uppercase(Locale.US)
-        val isSent = currentItem.senderId == myId
+        val type = item.type.uppercase(Locale.US)
+        val isSent = item.senderId == myId
         val isMedia = type == "IMAGE" || type == "VIDEO"
         val isAudio = type == "AUDIO"
 
@@ -154,90 +153,94 @@ class GroupMessagesAdapter(
         holder.sentMessageTime.isVisible = isSent && showTime
         holder.receivedMessageTime.isVisible = !isSent && showTime
 
-        val isMenuOpen = adapterPosition == openMenuPosition
 
         val emojiBar = holder.emojiBar(isSent)
         val actionMenu = holder.actionMenu(isSent)
 
+
+        val isMenuOpen = openMenuPositions.contains(adapterPosition)
+
         if (isMenuOpen) {
-            Log.d("## Menu ##", "Showing menu")
-            emojiBar.visibility = View.VISIBLE
-            actionMenu.visibility = View.VISIBLE
-//                animateViewIn(emojiBar)
-//                animateViewIn(actionMenu)
-//            if (actionMenu.visibility != View.VISIBLE) {
-//                actionMenu.visibility = View.VISIBLE
-//                animateViewIn(actionMenu)
-//            }
+            val emojiAdapter = RecentEmojiAdapter(recentEmojis, item.reaction) { emoji ->
+                val finalEmoji = if (emoji == item.reaction) "" else emoji
+                closeMenu()
+                onEmojiSelected(item, finalEmoji)
+            }
+            holder.rvEmojis(isSent).apply {
+                layoutManager = LinearLayoutManager(
+                    holder.itemView.context,
+                    LinearLayoutManager.HORIZONTAL,
+                    false
+                )
+                adapter = emojiAdapter
+            }
+            holder.btnMore(isSent).setOnClickListener {
+                onMoreEmojisClicked(item)
+                closeMenu()
+            }
+            holder.emojiBar(isSent).visibility = View.VISIBLE
+            holder.actionMenu(isSent).visibility = View.VISIBLE
         } else {
-            Log.d("## Menu ##", "Hide menu")
-            emojiBar.visibility = View.GONE
-            actionMenu.visibility = View.GONE
-//                animateViewOut(emojiBar)
-//                animateViewOut(actionMenu)
-//            else {
-//                emojiBar.visibility = View.GONE
-//            }
-//            if (actionMenu.visibility == View.VISIBLE) {
-//                animateViewOut(actionMenu)
-//            } else {
-//                actionMenu.visibility = View.GONE
-//            }
+            holder.rvEmojis(isSent).adapter = null
+            holder.emojiBar(isSent).visibility = View.GONE
+            holder.actionMenu(isSent).visibility = View.GONE
         }
 
-        val currentReaction = currentItem.reaction
-        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
-            val finalEmoji = if (emoji == currentReaction) "" else emoji
-            onEmojiSelected(currentItem, finalEmoji)
-            closeMenu()
-        }
-
-        holder.rvEmojis(isSent).apply {
-            layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
-            adapter = emojiAdapter
-        }
-
-        holder.btnMore(isSent).setOnClickListener {
-            onMoreEmojisClicked(currentItem)
-            closeMenu()
-        }
 
         when {
-            isAudio -> bindAudio(holder, currentItem, isSent)
-            isMedia -> bindMedia(holder, currentItem, isSent, type)
-            else    -> bindText(holder, currentItem, isSent)
+            isAudio -> bindAudio(holder, item, isSent)
+            isMedia -> bindMedia(holder, item, isSent, type)
+            else    -> bindText(holder, item, isSent)
         }
 
         if (isSent) {
-            holder.tvSendTime.text = convertDatetime(currentItem.time)
+            holder.tvSendTime.text = convertDatetime(item.time)
         } else {
-            holder.senderName.text = currentItem.senderName
-            holder.senderId.text = currentItem.senderId
-            holder.tvRcvTime.text = convertDatetime(currentItem.time)
+            holder.senderName.text = item.senderName
+            holder.senderId.text = item.senderId
+            holder.tvRcvTime.text = convertDatetime(item.time)
         }
 
         val reactionView = holder.reaction(isSent)
-        if (currentItem.reaction.isNotEmpty()) {
-            reactionView.text = currentItem.reaction
+        if (item.reaction.isNotEmpty()) {
+            reactionView.text = item.reaction
             reactionView.visibility = View.VISIBLE
         } else {
             reactionView.visibility = View.GONE
         }
 
-        holder.itemView.setOnClickListener {
-            if (openMenuPosition != -1) closeMenu()
-            else onClick(currentItem)
-        }
-
         holder.itemView.setOnLongClickListener {
-            val currentPos = holder.bindingAdapterPosition
-            if (currentPos != RecyclerView.NO_POSITION && openMenuPosition != currentPos) {
-                showMenuWithAnimation(currentPos)
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) {
+                showMenu(pos)
             }
             true
         }
 
-        setupActionMenuButtons(holder, isSent, currentItem)
+        holder.itemView.setOnClickListener {
+            if (openMenuPositions.isNotEmpty()) closeMenu()
+            else onClick(item)
+        }
+
+
+        setupActionMenuButtons(holder, isSent, item)
+    }
+
+    fun showReactionImmediately(itemId: String, emoji: String) {
+        val pos = currentList.indexOfFirst { it.messageId == itemId }
+        if (pos == -1) return
+        recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
+            (vh as? MessageAdapter.VH)?.let { holder ->
+                val isSent = getItem(pos).isSent
+                val reactionView = holder.reaction(isSent)
+                if (emoji.isEmpty()) {
+                    reactionView.visibility = View.GONE
+                } else {
+                    reactionView.text = emoji
+                    reactionView.visibility = View.VISIBLE
+                }
+            }
+        }
     }
 
     private fun setupActionMenuButtons(holder: VH, isSent: Boolean, item: GroupMessageEntity) {
@@ -274,11 +277,15 @@ class GroupMessagesAdapter(
         val adapterPosition = holder.bindingAdapterPosition
         if (adapterPosition == RecyclerView.NO_POSITION) return
 
-        if (payloads.contains("START_PLAYBACK")) {
-            val item = getItem(adapterPosition)
-            val isSent = item.senderId == myId
-            val uriStr = item.uri ?: return
-            startPlayback(holder, isSent, uriStr)
+        when {
+            payloads.contains("START_PLAYBACK") -> {
+                val item = getItem(adapterPosition)
+                val isSent = item.isSent
+                val uriStr = item.uri ?: return
+                startPlayback(holder, isSent, uriStr)
+            }
+
+            else -> onBindViewHolder(holder, position) // ✅ full rebind for anything else
         }
     }
 
@@ -342,22 +349,24 @@ class GroupMessagesAdapter(
         }
     }
 
-    private fun showMenuWithAnimation(position: Int) {
-        val oldPos = openMenuPosition
-        openMenuPosition = position
-        if (oldPos != -1 && oldPos != position) {
-            notifyItemChanged(oldPos)
-        }
+
+
+    private fun showMenu(position: Int) {
+        Log.d("opened position", position.toString())
+        val previousOpen = openMenuPositions.toSet()
+        openMenuPositions.clear()
+        openMenuPositions.add(position)
+        previousOpen.forEach { if (it != position) notifyItemChanged(it) }
         notifyItemChanged(position)
     }
 
     fun closeMenu() {
-        if (openMenuPosition != -1) {
-            val pos = openMenuPosition
-            openMenuPosition = -1
-            notifyItemChanged(pos)
-        }
+        val previousOpen = openMenuPositions.toSet()
+        openMenuPositions.clear()
+        previousOpen.forEach { notifyItemChanged(it) }
     }
+
+
 
     private fun bindText(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
