@@ -3,6 +3,7 @@ package app.secure.kyber.adapters
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.RecyclerView
 import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
 import app.secure.kyber.roomdb.MessageEntity
+import coil.size.ViewSizeResolver
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import org.json.JSONArray
@@ -51,52 +53,74 @@ class MessageAdapter(
     private var activeSpeedIdx: Int = 0
     private var openMenuPosition: Int = -1
 
-    init { setHasStableIds(true) }
+    private var recyclerView: RecyclerView? = null
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        this.recyclerView = recyclerView
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        super.onDetachedFromRecyclerView(recyclerView)
+        this.recyclerView = null
+    }
+
+    init {
+        setHasStableIds(true)
+    }
 
     override fun getItemId(position: Int) = getItem(position).id.hashCode().toLong()
 
-    fun releasePlayer() { stopPlayback(resetUi = true) }
+    fun releasePlayer() {
+        stopPlayback(resetUi = true)
+    }
 
-    fun updateRecentEmojis(newList: List<String>) {
+    fun updateRecentEmojis(newList: List<String>, reactedItemId: String? = null) {
         this.recentEmojis = newList
-        notifyDataSetChanged()
+        // Only rebind the specific item that got a reaction
+//        if (reactedItemId != null) {
+//            Log.d("MessageAdapter", "updateRecentEmojis: $reactedItemId")
+//            val pos = currentList.indexOfFirst { it.id.toString() == reactedItemId }
+//            if (pos != -1) notifyItemChanged(pos)
+//        }
     }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
-        val tvSent        : TextView      = view.findViewById(R.id.tvSentMsg)
-        val tvRcv         : TextView      = view.findViewById(R.id.tvMsgRcv)
-        val tvSentTime    : TextView      = view.findViewById(R.id.tvSentTime)
-        val tvRcvTime     : TextView      = view.findViewById(R.id.tvRcvTime)
-        val rlSent        : LinearLayout  = view.findViewById(R.id.rlMsgSent)
-        val rlRcvd        : LinearLayout  = view.findViewById(R.id.rlMsgRcvd)
+        val tvSent: TextView = view.findViewById(R.id.tvSentMsg)
+        val tvRcv: TextView = view.findViewById(R.id.tvMsgRcv)
+        val tvSentTime: TextView = view.findViewById(R.id.tvSentTime)
+        val tvRcvTime: TextView = view.findViewById(R.id.tvRcvTime)
+        val rlSent: LinearLayout = view.findViewById(R.id.rlMsgSent)
+        val rlRcvd: LinearLayout = view.findViewById(R.id.rlMsgRcvd)
 
-        val sentMedia     : FrameLayout   = view.findViewById(R.id.sent_message_media)
-        val rcvdMedia     : FrameLayout   = view.findViewById(R.id.received_message_media)
-        val ivSentMedia   : ImageView     = view.findViewById(R.id.ivSentMedia)
-        val ivRcvMedia    : ImageView     = view.findViewById(R.id.ivRcvMedia)
-        val ivSentPlay    : ImageView     = view.findViewById(R.id.ivSentPlay)
-        val ivRcvPlay     : ImageView     = view.findViewById(R.id.ivRcvPlay)
+        val sentMedia: FrameLayout = view.findViewById(R.id.sent_message_media)
+        val rcvdMedia: FrameLayout = view.findViewById(R.id.received_message_media)
+        val ivSentMedia: ImageView = view.findViewById(R.id.ivSentMedia)
+        val ivRcvMedia: ImageView = view.findViewById(R.id.ivRcvMedia)
+        val ivSentPlay: ImageView = view.findViewById(R.id.ivSentPlay)
+        val ivRcvPlay: ImageView = view.findViewById(R.id.ivRcvPlay)
 
-        val sentAudio       : LinearLayout = view.findViewById(R.id.sentAudioContainer)
-        val ivSentPlayPause : ConstraintLayout  = view.findViewById(R.id.ivSentPlayPause)
-        val ivSentPlayIcon  : ImageView    = view.findViewById(R.id.ivSentPlayIcon)
-        val waveformSent    : WaveformView = view.findViewById(R.id.waveformSent)
-        val tvSentSpeed     : TextView     = view.findViewById(R.id.tvSentSpeed)
-        val tvSentDuration  : TextView     = view.findViewById(R.id.tvSentAudioDuration)
+        val sentAudio: LinearLayout = view.findViewById(R.id.sentAudioContainer)
+        val ivSentPlayPause: ConstraintLayout = view.findViewById(R.id.ivSentPlayPause)
+        val ivSentPlayIcon: ImageView = view.findViewById(R.id.ivSentPlayIcon)
+        val waveformSent: WaveformView = view.findViewById(R.id.waveformSent)
+        val tvSentSpeed: TextView = view.findViewById(R.id.tvSentSpeed)
+        val tvSentDuration: TextView = view.findViewById(R.id.tvSentAudioDuration)
 
-        val rcvAudio        : LinearLayout = view.findViewById(R.id.rcvAudioContainer)
-        val ivRcvPlayPause  : FrameLayout  = view.findViewById(R.id.ivRcvPlayPause)
-        val ivRcvPlayIcon   : ImageView    = view.findViewById(R.id.ivRcvPlayIcon)
-        val waveformRcv     : WaveformView = view.findViewById(R.id.waveformRcv)
-        val tvRcvSpeed      : TextView     = view.findViewById(R.id.tvRcvSpeed)
-        val tvRcvDuration   : TextView     = view.findViewById(R.id.tvRcvAudioDuration)
+        val rcvAudio: LinearLayout = view.findViewById(R.id.rcvAudioContainer)
+        val ivRcvPlayPause: FrameLayout = view.findViewById(R.id.ivRcvPlayPause)
+        val ivRcvPlayIcon: ImageView = view.findViewById(R.id.ivRcvPlayIcon)
+        val waveformRcv: WaveformView = view.findViewById(R.id.waveformRcv)
+        val tvRcvSpeed: TextView = view.findViewById(R.id.tvRcvSpeed)
+        val tvRcvDuration: TextView = view.findViewById(R.id.tvRcvAudioDuration)
         val sentMessageTimeLayout: LinearLayout? = view.findViewById(R.id.sent_message_time_layout)
-        val receivedMessageTimeLayout: LinearLayout? = view.findViewById(R.id.received_message_time_layout)
+        val receivedMessageTimeLayout: LinearLayout? =
+            view.findViewById(R.id.received_message_time_layout)
         val sentTimeAudio: TextView? = view.findViewById(R.id.tvSentTimeAudio)
         val rcvTimeAudio: TextView? = view.findViewById(R.id.tvRcvTimeAudio)
 
-        val tvSentReaction : TextView = view.findViewById(R.id.tvSentReaction)
-        val tvRcvReaction : TextView = view.findViewById(R.id.tvReceivedReaction)
+        val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
+        val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
 
         // Changed to View to prevent ClassCastExceptions from included layouts
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
@@ -105,20 +129,22 @@ class MessageAdapter(
         val receivedEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_received)
 
         val rvRecentEmojisSent: RecyclerView = sentEmojiBar.findViewById(R.id.rvRecentEmojis)
-        val rvRecentEmojisReceived: RecyclerView = receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
+        val rvRecentEmojisReceived: RecyclerView =
+            receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
         val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
         val btnMoreReceived: ImageButton = receivedEmojiBar.findViewById(R.id.emojiMore)
 
+
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
-        fun playIcon(sent: Boolean)       = if (sent) ivSentPlayIcon  else ivRcvPlayIcon
-        fun waveform(sent: Boolean)       = if (sent) waveformSent    else waveformRcv
-        fun speedBadge(sent: Boolean)     = if (sent) tvSentSpeed     else tvRcvSpeed
-        fun durationLabel(sent: Boolean)  = if (sent) tvSentDuration  else tvRcvDuration
-        fun reaction(sent: Boolean)       = if (sent) tvSentReaction  else tvRcvReaction
-        fun emojiBar(sent: Boolean)       = if (sent) sentEmojiBar    else receivedEmojiBar
-        fun actionMenu(sent: Boolean)     = if (sent) actionMenuSent  else actionMenuReceived
-        fun rvEmojis(sent: Boolean)       = if (sent) rvRecentEmojisSent else rvRecentEmojisReceived
-        fun btnMore(sent: Boolean)        = if (sent) btnMoreSent     else btnMoreReceived
+        fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
+        fun waveform(sent: Boolean) = if (sent) waveformSent else waveformRcv
+        fun speedBadge(sent: Boolean) = if (sent) tvSentSpeed else tvRcvSpeed
+        fun durationLabel(sent: Boolean) = if (sent) tvSentDuration else tvRcvDuration
+        fun reaction(sent: Boolean) = if (sent) tvSentReaction else tvRcvReaction
+        fun emojiBar(sent: Boolean) = if (sent) sentEmojiBar else receivedEmojiBar
+        fun actionMenu(sent: Boolean) = if (sent) actionMenuSent else actionMenuReceived
+        fun rvEmojis(sent: Boolean) = if (sent) rvRecentEmojisSent else rvRecentEmojisReceived
+        fun btnMore(sent: Boolean) = if (sent) btnMoreSent else btnMoreReceived
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -128,66 +154,83 @@ class MessageAdapter(
         val adapterPosition = holder.bindingAdapterPosition
         if (adapterPosition == RecyclerView.NO_POSITION) return
 
-        val item    = getItem(adapterPosition)
-        val type    = item.type.uppercase(Locale.US)
-        val isSent  = item.isSent
+        val item = getItem(adapterPosition)
+        val type = item.type.uppercase(Locale.US)
+        val isSent = item.isSent
         val isMedia = type == "IMAGE" || type == "VIDEO"
         val isAudio = type == "AUDIO"
 
         holder.rlSent.isVisible = isSent
         holder.rlRcvd.isVisible = !isSent
 
-        val isMenuOpen = adapterPosition == openMenuPosition
-        val emojiBar = holder.emojiBar(isSent)
-        val actionMenu = holder.actionMenu(isSent)
-
-        if (isMenuOpen) {
-            if (emojiBar.visibility != View.VISIBLE) {
-                emojiBar.visibility = View.VISIBLE
-                animateViewIn(emojiBar)
-            }
-            if (actionMenu.visibility != View.VISIBLE) {
-                actionMenu.visibility = View.VISIBLE
-                animateViewIn(actionMenu)
-            }
-        } else {
-            if (emojiBar.visibility == View.VISIBLE) {
-                animateViewOut(emojiBar)
-            } else {
-                emojiBar.visibility = View.GONE
-            }
-            if (actionMenu.visibility == View.VISIBLE) {
-                animateViewOut(actionMenu)
-            } else {
-                actionMenu.visibility = View.GONE
-            }
-        }
-
-        val currentReaction = item.reaction
-        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
-            val finalEmoji = if (emoji == currentReaction) "" else emoji
-            onEmojiSelected(item, finalEmoji)
-            closeMenu()
-        }
-
-        holder.rvEmojis(isSent).apply {
-            layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
-            adapter = emojiAdapter
-        }
-
-        holder.btnMore(isSent).setOnClickListener {
-            onMoreEmojisClicked(item)
-            closeMenu()
-        }
-
         when {
             isAudio -> bindAudio(holder, item, isSent)
             isMedia -> bindMedia(holder, item, isSent, type)
-            else    -> bindText(holder, item, isSent)
+            else -> bindText(holder, item, isSent)
         }
 
+
+        val isMenuOpen = adapterPosition == openMenuPosition
+        val currentReaction = item.reaction
+        val emojiBar = holder.emojiBar(isSent)
+        val actionMenu = holder.actionMenu(isSent)
+
+        Log.d("MENU_DEBUG", "=== onBindViewHolder pos=$adapterPosition openMenuPos=$openMenuPosition isMenuOpen=$isMenuOpen ===")
+
+        if (isMenuOpen) {
+            val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
+                val finalEmoji = if (emoji == currentReaction) "" else emoji
+                closeMenu()
+                onEmojiSelected(item, finalEmoji)
+            }
+            holder.rvEmojis(isSent).apply {
+                layoutManager = LinearLayoutManager(
+                    holder.itemView.context,
+                    LinearLayoutManager.HORIZONTAL,
+                    false
+                )
+                adapter = emojiAdapter
+            }
+            holder.btnMore(isSent).setOnClickListener {
+                onMoreEmojisClicked(item)
+                closeMenu()
+            }
+            holder.emojiBar(isSent).visibility = View.VISIBLE
+            holder.actionMenu(isSent).visibility = View.VISIBLE
+            Log.d("MENU_DEBUG", "SET BOTH VISIBLE at pos=$adapterPosition")
+
+
+            // Add this
+            actionMenu.post {
+                Log.d("MENU_DEBUG", "actionMenu — width=${actionMenu.width} height=${actionMenu.height} x=${actionMenu.x} y=${actionMenu.y} alpha=${actionMenu.alpha}")
+                Log.d("MENU_DEBUG", "emojiBar — width=${emojiBar.width} height=${emojiBar.height} x=${emojiBar.x} y=${emojiBar.y} alpha=${emojiBar.alpha}")
+                Log.d("MENU_DEBUG", "itemView — width=${holder.itemView.width} height=${holder.itemView.height}")
+                Log.d("MENU_DEBUG", "actionMenu parent=${actionMenu.parent}")
+            }
+        } else {
+            holder.rvEmojis(isSent).adapter = null
+            holder.emojiBar(isSent).visibility = View.GONE
+            holder.actionMenu(isSent).visibility = View.GONE
+            Log.d("MENU_DEBUG", "SET BOTH GONE at pos=$adapterPosition")
+        }
+
+        Log.d("MENU_DEBUG", "AFTER SET — emojiBar=${emojiBar.visibility} actionMenu=${actionMenu.visibility}")
+
+//        val emojiAdapter = RecentEmojiAdapter(recentEmojis, currentReaction) { emoji ->
+//            val finalEmoji = if (emoji == currentReaction) "" else emoji
+//            closeMenu()
+//            onEmojiSelected(item, finalEmoji)
+//        }
+//
+//        holder.rvEmojis(isSent).apply {
+//            layoutManager =
+//                LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
+//            adapter = emojiAdapter
+//        }
+
+
         holder.tvSentTime.text = convertDatetime(item.time)
-        holder.tvRcvTime.text  = convertDatetime(item.time)
+        holder.tvRcvTime.text = convertDatetime(item.time)
         holder.sentTimeAudio?.text = convertDatetime(item.time)
         holder.rcvTimeAudio?.text = convertDatetime(item.time)
 
@@ -212,11 +255,16 @@ class MessageAdapter(
             true
         }
 
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnReply)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnDelete)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnCopy)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnForward)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
-        holder.actionMenu(isSent).findViewById<View>(R.id.btnInfo)?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnReply)
+            ?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnDelete)
+            ?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnCopy)
+            ?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnForward)
+            ?.setOnClickListener { closeMenu(); onLongClick(it, item) }
+        holder.actionMenu(isSent).findViewById<View>(R.id.btnInfo)
+            ?.setOnClickListener { closeMenu(); onLongClick(it, item) }
     }
 
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
@@ -228,11 +276,15 @@ class MessageAdapter(
         val adapterPosition = holder.bindingAdapterPosition
         if (adapterPosition == RecyclerView.NO_POSITION) return
 
-        if (payloads.contains("START_PLAYBACK")) {
-            val item = getItem(adapterPosition)
-            val isSent = item.isSent
-            val uriStr = item.uri ?: return
-            startPlayback(holder, isSent, uriStr)
+        when {
+            payloads.contains("START_PLAYBACK") -> {
+                val item = getItem(adapterPosition)
+                val isSent = item.isSent
+                val uriStr = item.uri ?: return
+                startPlayback(holder, isSent, uriStr)
+            }
+
+            else -> onBindViewHolder(holder, position) // ✅ full rebind for anything else
         }
     }
 
@@ -246,9 +298,21 @@ class MessageAdapter(
     }
 
     fun closeMenu() {
+        Log.d("MENU_DEBUG", "closeMenu called openMenuPosition=$openMenuPosition")
         if (openMenuPosition != -1) {
             val pos = openMenuPosition
             openMenuPosition = -1
+            // Find the ViewHolder and null its rvEmojis adapter immediately
+            // before any rebind can happen
+            recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
+                (vh as? VH)?.let { holder ->
+                    val isSent = getItem(pos).isSent
+                    Log.d("MENU_DEBUG", "Directly hiding views for pos=$pos")
+                    holder.rvEmojis(isSent).adapter = null
+                    holder.emojiBar(isSent).visibility = View.GONE
+                    holder.actionMenu(isSent).visibility = View.GONE
+                }
+            }
             notifyItemChanged(pos)
         }
     }
@@ -283,7 +347,7 @@ class MessageAdapter(
 
     private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
-        h.rcvAudio.isVisible  = false
+        h.rcvAudio.isVisible = false
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
@@ -292,30 +356,34 @@ class MessageAdapter(
 
         if (sent) {
             h.tvSent.isVisible = true
-            h.tvSent.text        = item.msg
-            h.tvRcv.isVisible  = false
+            h.tvSent.text = item.msg
+            h.tvRcv.isVisible = false
         } else {
-            h.tvRcv.isVisible  = true
-            h.tvRcv.text        = item.msg
+            h.tvRcv.isVisible = true
+            h.tvRcv.text = item.msg
             h.tvSent.isVisible = false
         }
     }
 
     private fun bindMedia(h: VH, item: MessageEntity, sent: Boolean, type: String) {
         h.sentAudio.isVisible = false
-        h.rcvAudio.isVisible  = false
-        h.tvSent.isVisible    = false
-        h.tvRcv.isVisible     = false
+        h.rcvAudio.isVisible = false
+        h.tvSent.isVisible = false
+        h.tvRcv.isVisible = false
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
 
         val uriStr = item.uri ?: item.msg
-        val uri    = try { uriStr.toUri() } catch (_: Exception) { null }
+        val uri = try {
+            uriStr.toUri()
+        } catch (_: Exception) {
+            null
+        }
 
         if (sent) {
-            h.sentMedia.isVisible  = true
-            h.rcvdMedia.isVisible  = false
+            h.sentMedia.isVisible = true
+            h.rcvdMedia.isVisible = false
             h.ivSentMedia.isVisible = true
-            h.ivSentPlay.isVisible  = type == "VIDEO"
+            h.ivSentPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri)
                 .apply(RequestOptions.centerCropTransform()).into(h.ivSentMedia)
 
@@ -324,12 +392,12 @@ class MessageAdapter(
                 h.tvSent.text = caption; h.tvSent.isVisible = true
             }
             h.ivSentMedia.setOnClickListener { onClick(item) }
-            h.ivSentPlay.setOnClickListener  { onClick(item) }
+            h.ivSentPlay.setOnClickListener { onClick(item) }
         } else {
-            h.rcvdMedia.isVisible  = true
-            h.sentMedia.isVisible  = false
-            h.ivRcvMedia.isVisible  = true
-            h.ivRcvPlay.isVisible   = type == "VIDEO"
+            h.rcvdMedia.isVisible = true
+            h.sentMedia.isVisible = false
+            h.ivRcvMedia.isVisible = true
+            h.ivRcvPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri)
                 .apply(RequestOptions.centerCropTransform()).into(h.ivRcvMedia)
 
@@ -338,13 +406,13 @@ class MessageAdapter(
                 h.tvRcv.text = caption; h.tvRcv.isVisible = true
             }
             h.ivRcvMedia.setOnClickListener { onClick(item) }
-            h.ivRcvPlay.setOnClickListener  { onClick(item) }
+            h.ivRcvPlay.setOnClickListener { onClick(item) }
         }
     }
 
     private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
-        h.tvSent.isVisible    = false
-        h.tvRcv.isVisible     = false
+        h.tvSent.isVisible = false
+        h.tvRcv.isVisible = false
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
@@ -352,7 +420,7 @@ class MessageAdapter(
         h.receivedMessageTimeLayout?.visibility = View.GONE
 
         h.sentAudio.isVisible = sent
-        h.rcvAudio.isVisible  = !sent
+        h.rcvAudio.isVisible = !sent
 
         val uriStr = item.uri ?: return
         val amplitudes = decodeAmplitudes(item.ampsJson)
@@ -423,9 +491,9 @@ class MessageAdapter(
             e.printStackTrace()
             return
         }
-        activePlayer   = player
-        activeUri      = uriStr
-        activeHolder   = h
+        activePlayer = player
+        activeUri = uriStr
+        activeHolder = h
         activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0])
         player.start()
@@ -440,9 +508,9 @@ class MessageAdapter(
             h.durationLabel(sent).text = formatDuration(player.duration)
 
             val currentPos = h.bindingAdapterPosition
-            activePlayer  = null
-            activeUri     = null
-            activeHolder  = null
+            activePlayer = null
+            activeUri = null
+            activeHolder = null
 
             if (currentPos != -1) {
                 playNextAudioIfAvailable(currentPos)
@@ -470,7 +538,8 @@ class MessageAdapter(
                 if (player.isPlaying) {
                     val progress = player.currentPosition.toFloat() / player.duration
                     h.waveform(sent).setProgress(progress)
-                    h.durationLabel(sent).text = formatDuration(player.duration - player.currentPosition)
+                    h.durationLabel(sent).text =
+                        formatDuration(player.duration - player.currentPosition)
                 }
                 handler.postDelayed(this, 50)
             }
@@ -501,7 +570,7 @@ class MessageAdapter(
                 }
             }
         }
-        activeUri    = null
+        activeUri = null
         activeHolder = null
     }
 
@@ -518,7 +587,9 @@ class MessageAdapter(
         return try {
             val arr = JSONArray(json)
             List(arr.length()) { i -> arr.getDouble(i).toFloat() }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun formatDuration(ms: Int): String {
@@ -531,13 +602,19 @@ class MessageAdapter(
         return try {
             retriever.setDataSource(context, uriStr.toUri())
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (e: Exception) { 0 } finally { retriever.release() }
+        } catch (e: Exception) {
+            0
+        } finally {
+            retriever.release()
+        }
     }
 
     private fun convertDatetime(time: String): String {
         return try {
             val formatter = java.text.SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (e: Exception) { "" }
+        } catch (e: Exception) {
+            ""
+        }
     }
 }

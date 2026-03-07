@@ -3,6 +3,7 @@ package app.secure.kyber.adapters
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -159,25 +160,29 @@ class GroupMessagesAdapter(
         val actionMenu = holder.actionMenu(isSent)
 
         if (isMenuOpen) {
-            if (emojiBar.visibility != View.VISIBLE) {
-                emojiBar.visibility = View.VISIBLE
-                animateViewIn(emojiBar)
-            }
-            if (actionMenu.visibility != View.VISIBLE) {
-                actionMenu.visibility = View.VISIBLE
-                animateViewIn(actionMenu)
-            }
+            Log.d("## Menu ##", "Showing menu")
+            emojiBar.visibility = View.VISIBLE
+            actionMenu.visibility = View.VISIBLE
+//                animateViewIn(emojiBar)
+//                animateViewIn(actionMenu)
+//            if (actionMenu.visibility != View.VISIBLE) {
+//                actionMenu.visibility = View.VISIBLE
+//                animateViewIn(actionMenu)
+//            }
         } else {
-            if (emojiBar.visibility == View.VISIBLE) {
-                animateViewOut(emojiBar)
-            } else {
-                emojiBar.visibility = View.GONE
-            }
-            if (actionMenu.visibility == View.VISIBLE) {
-                animateViewOut(actionMenu)
-            } else {
-                actionMenu.visibility = View.GONE
-            }
+            Log.d("## Menu ##", "Hide menu")
+            emojiBar.visibility = View.GONE
+            actionMenu.visibility = View.GONE
+//                animateViewOut(emojiBar)
+//                animateViewOut(actionMenu)
+//            else {
+//                emojiBar.visibility = View.GONE
+//            }
+//            if (actionMenu.visibility == View.VISIBLE) {
+//                animateViewOut(actionMenu)
+//            } else {
+//                actionMenu.visibility = View.GONE
+//            }
         }
 
         val currentReaction = currentItem.reaction

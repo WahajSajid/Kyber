@@ -107,15 +107,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private var pulseAnimation: AlphaAnimation? = null
 
     // ── Mic touch tracking for lock popup + locked recording bar ─────────────
-    private var micDownRawY       = 0f
-    private var micDownRawX       = 0f
-    private val lockThreshold    = 120f   // px — swipe UP this far to lock
-    private val cancelThreshold  = 180f   // px — swipe LEFT this far to cancel
+    private var micDownRawY = 0f
+    private var micDownRawX = 0f
+    private val lockThreshold = 120f   // px — swipe UP this far to lock
+    private val cancelThreshold = 180f   // px — swipe LEFT this far to cancel
     private var isRecordingLocked = false  // true after user swipes up to lock
     private var isRecordingPaused = false  // true when pause tapped in locked bar
-    private var lockPopupVisible  = false
-    private val waveformHandler   = Handler(Looper.getMainLooper())
-    private val liveAmplititudes    = mutableListOf<Float>()
+    private var lockPopupVisible = false
+    private val waveformHandler = Handler(Looper.getMainLooper())
+    private val liveAmplititudes = mutableListOf<Float>()
 
     private lateinit var groupCreationDate: String
     private lateinit var noOfMembers: String
@@ -139,13 +139,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private val targetUnionId by lazy { requireArguments().getString("contact_id").orEmpty() }
-    private val contactName   by lazy { requireArguments().getString("contact_name").orEmpty() }
-    private val comingFrom    by lazy { requireArguments().getString("coming_from").orEmpty() }
-    private val groupId       by lazy { requireArguments().getString("group_id").orEmpty() }
-    private val groupName     by lazy { requireArguments().getString("group_name").orEmpty() }
+    private val contactName by lazy { requireArguments().getString("contact_name").orEmpty() }
+    private val comingFrom by lazy { requireArguments().getString("coming_from").orEmpty() }
+    private val groupId by lazy { requireArguments().getString("group_id").orEmpty() }
+    private val groupName by lazy { requireArguments().getString("group_name").orEmpty() }
 
     private val vm: MessagesViewModel by viewModels {
-        val db   = AppDb.get(requireContext())
+        val db = AppDb.get(requireContext())
         val repo = MessageRepository(db.messageDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -154,7 +154,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private val vm1: GroupMessagesViewModel by viewModels {
-        val db   = AppDb.get(requireContext())
+        val db = AppDb.get(requireContext())
         val repo = GroupMessageRepository(db.groupsMessagesDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -163,7 +163,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private val vm2: GroupsViewModel by viewModels {
-        val db   = AppDb.get(requireContext())
+        val db = AppDb.get(requireContext())
         val repo = GroupRepository(db.groupsDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -189,14 +189,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val list = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                result.data!!.getParcelableArrayListExtra(MediaPreviewActivity.EXTRA_RESULT_ITEMS, SelectedMediaParcelable::class.java)
+                result.data!!.getParcelableArrayListExtra(
+                    MediaPreviewActivity.EXTRA_RESULT_ITEMS,
+                    SelectedMediaParcelable::class.java
+                )
             } else {
                 @Suppress("DEPRECATION")
-                result.data!!.getParcelableArrayListExtra<SelectedMediaParcelable>(MediaPreviewActivity.EXTRA_RESULT_ITEMS)
+                result.data!!.getParcelableArrayListExtra<SelectedMediaParcelable>(
+                    MediaPreviewActivity.EXTRA_RESULT_ITEMS
+                )
             }
             if (!list.isNullOrEmpty()) {
                 val unionId = Prefs.getUnionId(requireContext()).toString()
-                val name    = Prefs.getName(requireContext()).toString()
+                val name = Prefs.getName(requireContext()).toString()
                 for (item in list) {
                     val caption = if (item.caption.isBlank()) {
                         if (item.type == "VIDEO") "video" else "photo"
@@ -232,11 +237,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        binding      = FragmentChatBinding.inflate(inflater, container, false)
+        binding = FragmentChatBinding.inflate(inflater, container, false)
         groupManager = GroupManager()
         audioRecordingManager = AudioRecordingManager(requireContext())
 
-        selectedMediaAdapter = SelectedMediaAdapter(selectedMedias,
+        selectedMediaAdapter = SelectedMediaAdapter(
+            selectedMedias,
             onRemove = { pos ->
                 if (pos in selectedMedias.indices) {
                     selectedMedias.removeAt(pos)
@@ -254,12 +260,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     @SuppressLint("ClickableViewAccessibility")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val name    = Prefs.getName(requireContext()).toString()
+        val name = Prefs.getName(requireContext()).toString()
         val unionId = Prefs.getUnionId(requireContext()).toString()
 
-        messageEdit          = binding.etMsg
+        messageEdit = binding.etMsg
         emojiPickerContainer = binding.emojiPickerContainer
-        recentEmojiProvider  = CustomRecentEmojiProvider(requireContext())
+        recentEmojiProvider = CustomRecentEmojiProvider(requireContext())
 
         loadRecentEmojis()
 
@@ -268,18 +274,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             vm2.getCreationDate(onResult = { result ->
                 groupCreationDate = formatTimestamp(result)
                 if (::noOfMembers.isInitialized) {
-                    (activity as? MainActivity)?.onGroupChatDetailsClick(groupName, groupCreationDate, noOfMembers)
+                    (activity as? MainActivity)?.onGroupChatDetailsClick(
+                        groupName,
+                        groupCreationDate,
+                        noOfMembers
+                    )
                 }
             }, groupId)
 
             vm2.getNoOfMembers(onResult = { result ->
                 noOfMembers = result.toString()
                 if (::groupCreationDate.isInitialized) {
-                    (activity as? MainActivity)?.onGroupChatDetailsClick(groupName, groupCreationDate, noOfMembers)
+                    (activity as? MainActivity)?.onGroupChatDetailsClick(
+                        groupName,
+                        groupCreationDate,
+                        noOfMembers
+                    )
                 }
             }, groupId)
         }
-
 
 
         // ── Emoji picker ──────────────────────────────────────────────────────
@@ -291,13 +304,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             setRecentEmojiProvider(RecentEmojiProviderAdapter(recentEmojiProvider))
             setOnEmojiPickedListener { emoji ->
                 if (selectedMsg != null || selectedGroupMsg != null) {
+                    val msgId = selectedMsg?.id
+                    closeMenuOnAdapters()
                     handleReaction(emoji.emoji)
-                    updateRecentEmojiList(emoji.emoji)
+                    updateRecentEmojiList(emoji.emoji, msgId.toString())
                     hideEmojiPicker()
                 } else {
                     val editable = messageEdit.text ?: return@setOnEmojiPickedListener
                     val start = messageEdit.selectionStart.coerceAtLeast(0)
-                    val end   = messageEdit.selectionEnd.coerceAtLeast(start)
+                    val end = messageEdit.selectionEnd.coerceAtLeast(start)
                     editable.replace(start, end, emoji.emoji)
                     recentEmojiProvider.addRecentEmoji(emoji.emoji)
                     updateRecentEmojiList(emoji.emoji)
@@ -330,26 +345,28 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.tilMsg.viewTreeObserver.addOnGlobalLayoutListener {
             val r = Rect()
             binding.tilMsg.getWindowVisibleDisplayFrame(r)
-            val screenH  = binding.tilMsg.rootView.height
+            val screenH = binding.tilMsg.rootView.height
             val kbHeight = screenH - r.bottom
             val kbVisible = kbHeight > screenH * 0.15
 
             when {
                 kbVisible -> {
                     if (isEmojiPickerVisible) hideEmojiPicker()
-                    binding.ivSend.isVisible   = true
+                    binding.ivSend.isVisible = true
                     binding.ivCamera.isVisible = false
-                    binding.ivMic.isVisible    = false
+                    binding.ivMic.isVisible = false
                 }
+
                 isEmojiPickerVisible -> {
-                    binding.ivSend.isVisible   = true
+                    binding.ivSend.isVisible = true
                     binding.ivCamera.isVisible = false
-                    binding.ivMic.isVisible    = false
+                    binding.ivMic.isVisible = false
                 }
+
                 else -> {
-                    binding.ivSend.isVisible   = false
+                    binding.ivSend.isVisible = false
                     binding.ivCamera.isVisible = true
-                    binding.ivMic.isVisible    = true
+                    binding.ivMic.isVisible = true
                 }
             }
         }
@@ -368,13 +385,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
         // ── Back press ────────────────────────────────────────────────────────
-        requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner,
+        requireActivity().onBackPressedDispatcher.addCallback(
+            viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     when {
                         isRecordingLocked -> cancelAudioRecording()
                         isEmojiPickerVisible -> hideEmojiPicker()
-                        else -> { isEnabled = false; requireActivity().onBackPressedDispatcher.onBackPressed() }
+                        else -> {
+                            isEnabled =
+                                false; requireActivity().onBackPressedDispatcher.onBackPressed()
+                        }
                     }
                 }
             })
@@ -388,10 +409,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.ivMic.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    micDownRawY        = event.rawY
-                    micDownRawX        = event.rawX
-                    isRecordingLocked  = false
-                    isRecordingPaused  = false
+                    micDownRawY = event.rawY
+                    micDownRawX = event.rawX
+                    isRecordingLocked = false
+                    isRecordingPaused = false
                     isRecordingStarted = false
                     longPressHandler.postDelayed(longPressRunnable, 400)
                     true
@@ -399,7 +420,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
                 MotionEvent.ACTION_MOVE -> {
                     if (!isRecordingStarted) return@setOnTouchListener true
-                    if (isRecordingLocked)   return@setOnTouchListener true
+                    if (isRecordingLocked) return@setOnTouchListener true
 
                     val deltaY = micDownRawY - event.rawY  // positive = moved up
                     val deltaX = micDownRawX - event.rawX  // positive = moved left
@@ -424,7 +445,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         binding.ivLockIcon.scaleX = scale
                         binding.ivLockIcon.scaleY = scale
 
-                        binding.tvLockChevrons.alpha        = 0.3f + 0.7f * progress
+                        binding.tvLockChevrons.alpha = 0.3f + 0.7f * progress
                         binding.tvLockChevrons.translationY = -20f * progress
 
                         binding.lockPopup.translationY = -deltaY * 0.25f
@@ -443,7 +464,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     longPressHandler.removeCallbacks(longPressRunnable)
 
                     if (!isRecordingStarted) return@setOnTouchListener true
-                    if (isRecordingLocked)   return@setOnTouchListener true
+                    if (isRecordingLocked) return@setOnTouchListener true
 
                     if (audioRecordingManager.isCurrentlyRecording()) {
                         stopAndSendAudioRecording(unionId, name)
@@ -508,7 +529,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             }
                         } else {
                             sendMessage(text)
-                            vm.saveMessage(text, targetUnionId, System.currentTimeMillis().toString(), true)
+                            vm.saveMessage(
+                                text,
+                                targetUnionId,
+                                System.currentTimeMillis().toString(),
+                                true
+                            )
                             binding.etMsg.setText("")
                         }
                     }
@@ -519,7 +545,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
         // ── Initial Setup ─────────────────────────────────────────────────────
         navController = view.findNavController()
-        unionClient   = UnionClient()
+        unionClient = UnionClient()
         onionAppConnection()
 
         when (comingFrom) {
@@ -532,13 +558,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
                         sendMessage(text)
-                        vm.saveMessage(text, targetUnionId, System.currentTimeMillis().toString(), true)
+                        vm.saveMessage(
+                            text,
+                            targetUnionId,
+                            System.currentTimeMillis().toString(),
+                            true
+                        )
                         binding.etMsg.setText("")
                     }
                 }
                 (requireActivity() as MainActivity).onChatDetailsClick(targetUnionId, contactName)
                 setListMessageAdapter()
             }
+
             "group_chat_list" -> {
                 groupManager.listenForMessages(groupId, unionId, vm1)
                 (requireActivity() as MainActivity).setAppChatUser(groupName)
@@ -556,7 +588,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
         binding.rvPreview.apply {
-            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+            layoutManager =
+                LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             adapter = selectedMediaAdapter
         }
         updatePreviewVisibility()
@@ -590,12 +623,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun handleForward() {
-        Toast.makeText(requireContext(), "Forward feature - select contacts", Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "Forward feature - select contacts", Toast.LENGTH_SHORT)
+            .show()
     }
 
     private fun handleInfo(msg: Any) {
-        val time = if (msg is MessageEntity) convertDatetime(msg.time) else convertDatetime((msg as GroupMessageEntity).time)
-        val senderInfo = if (msg is GroupMessageEntity) String.format("Sender: %s\nID: %s\n", msg.senderName, msg.senderId) else ""
+        val time =
+            if (msg is MessageEntity) convertDatetime(msg.time) else convertDatetime((msg as GroupMessageEntity).time)
+        val senderInfo = if (msg is GroupMessageEntity) String.format(
+            "Sender: %s\nID: %s\n",
+            msg.senderName,
+            msg.senderId
+        ) else ""
         val infoMessage = String.format("%sTime: %s\nStatus: Delivered", senderInfo, time)
         Toast.makeText(requireContext(), infoMessage, Toast.LENGTH_LONG).show()
     }
@@ -622,7 +661,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 timeSpan = latest?.time?.toLongOrNull() ?: System.currentTimeMillis()
             )
             vm2.saveGroup(updatedGroup)
-            groupManager.updateLastMessage(groupId, updatedGroup.lastMessage, updatedGroup.timeSpan.toString(), latest?.senderId ?: "")
+            groupManager.updateLastMessage(
+                groupId,
+                updatedGroup.lastMessage,
+                updatedGroup.timeSpan.toString(),
+                latest?.senderId ?: ""
+            )
         }
     }
 
@@ -635,29 +679,29 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun startAudioRecording() {
         if (!audioRecordingManager.startRecording()) return
-        recordingSeconds  = 0
+        recordingSeconds = 0
         isRecordingLocked = false
         isRecordingPaused = false
         liveAmplititudes.clear()
 
-        binding.ivLockIcon.scaleX           = 1f
-        binding.ivLockIcon.scaleY           = 1f
-        binding.lockPopup.translationY      = 0f
-        binding.lockPopup.alpha             = 0f
+        binding.ivLockIcon.scaleX = 1f
+        binding.ivLockIcon.scaleY = 1f
+        binding.lockPopup.translationY = 0f
+        binding.lockPopup.alpha = 0f
         binding.tvLockChevrons.translationY = 0f
-        binding.tvLockChevrons.alpha        = 0.3f
+        binding.tvLockChevrons.alpha = 0.3f
 
-        binding.bottomSheet.isVisible          = false
-        binding.lockedRecordingBar.isVisible   = false
+        binding.bottomSheet.isVisible = false
+        binding.lockedRecordingBar.isVisible = false
         binding.unLockedRecordingBar.isVisible = true
-        binding.tvSlideToCancel.alpha           = 1f
+        binding.tvSlideToCancel.alpha = 1f
 
         binding.lockPopup.isVisible = true
         binding.lockPopup.animate().alpha(1f).setDuration(200).start()
         lockPopupVisible = true
 
         binding.tvRecordingTimerUnlocked.text = "0:00"
-        binding.tvRecordingTimer.text         = "0:00"
+        binding.tvRecordingTimer.text = "0:00"
         startMicPulse()
         recordingTimerHandler.post(recordingTimerRunnable)
         waveformHandler.post(waveformUpdateRunnable)
@@ -665,7 +709,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun lockRecording() {
         isRecordingLocked = true
-        lockPopupVisible  = false
+        lockPopupVisible = false
 
         binding.ivLockIcon.animate()
             .scaleX(1.6f)
@@ -677,16 +721,16 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     .alpha(0f)
                     .setDuration(250)
                     .withEndAction {
-                        binding.lockPopup.isVisible            = false
-                        binding.lockPopup.translationY          = 0f
-                        binding.lockPopup.alpha                 = 1f
-                        binding.ivLockIcon.scaleX               = 1f
-                        binding.ivLockIcon.scaleY               = 1f
-                        binding.tvLockChevrons.translationY     = 0f
-                        binding.tvLockChevrons.alpha            = 0.3f
+                        binding.lockPopup.isVisible = false
+                        binding.lockPopup.translationY = 0f
+                        binding.lockPopup.alpha = 1f
+                        binding.ivLockIcon.scaleX = 1f
+                        binding.ivLockIcon.scaleY = 1f
+                        binding.tvLockChevrons.translationY = 0f
+                        binding.tvLockChevrons.alpha = 0.3f
 
                         binding.unLockedRecordingBar.isVisible = false
-                        binding.lockedRecordingBar.isVisible   = true
+                        binding.lockedRecordingBar.isVisible = true
                         binding.ivRecordPause.setImageResource(R.drawable.pause_icon_0)
                         binding.waveformRecording.setAmplitudes(liveAmplititudes.toList())
                     }
@@ -696,7 +740,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun stopAndSendAudioRecording(unionId: String, senderName: String) {
-        val filePath   = audioRecordingManager.stopRecording()
+        val filePath = audioRecordingManager.stopRecording()
         val amplitudes = audioRecordingManager.amplitudeSamples
 
         recordingTimerHandler.removeCallbacks(recordingTimerRunnable)
@@ -704,29 +748,48 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         stopMicPulse()
 
         isRecordingStarted = false
-        isRecordingLocked  = false
-        isRecordingPaused  = false
-        lockPopupVisible   = false
+        isRecordingLocked = false
+        isRecordingPaused = false
+        lockPopupVisible = false
 
-        binding.lockedRecordingBar.isVisible   = false
+        binding.lockedRecordingBar.isVisible = false
         binding.unLockedRecordingBar.isVisible = false
-        binding.lockPopup.isVisible            = false
-        binding.bottomSheet.isVisible          = true
+        binding.lockPopup.isVisible = false
+        binding.bottomSheet.isVisible = true
 
         if (filePath.isNullOrBlank()) return
-        if (recordingSeconds < 1) { java.io.File(filePath).delete(); return }
+        if (recordingSeconds < 1) {
+            java.io.File(filePath).delete(); return
+        }
 
-        val fileUri     = Uri.fromFile(java.io.File(filePath)).toString()
-        val ampsJson    = encodeAmplitudes(amplitudes)
-        val duration    = getTotalDuration(requireContext(), fileUri)
+        val fileUri = Uri.fromFile(java.io.File(filePath)).toString()
+        val ampsJson = encodeAmplitudes(amplitudes)
+        val duration = getTotalDuration(requireContext(), fileUri)
         val durationStr = formatDuration(duration)
 
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
-                groupManager.sendMessage(groupId, unionId, senderName, "Voice Message ($durationStr)", vm1, "AUDIO", fileUri, ampsJson)
+                groupManager.sendMessage(
+                    groupId,
+                    unionId,
+                    senderName,
+                    "Voice Message ($durationStr)",
+                    vm1,
+                    "AUDIO",
+                    fileUri,
+                    ampsJson
+                )
             }
         } else {
-            vm.saveMessage("Voice Message ($durationStr)", targetUnionId, System.currentTimeMillis().toString(), true, "AUDIO", fileUri, ampsJson)
+            vm.saveMessage(
+                "Voice Message ($durationStr)",
+                targetUnionId,
+                System.currentTimeMillis().toString(),
+                true,
+                "AUDIO",
+                fileUri,
+                ampsJson
+            )
         }
     }
 
@@ -736,8 +799,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         waveformHandler.removeCallbacks(waveformUpdateRunnable)
         stopMicPulse()
         isRecordingStarted = false
-        isRecordingPaused  = false
-        lockPopupVisible   = false
+        isRecordingPaused = false
+        lockPopupVisible = false
 
         if (isRecordingLocked) {
             val anim = TranslateAnimation(0f, -200f, 0f, 0f).apply {
@@ -746,32 +809,37 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     override fun onAnimationStart(a: Animation?) {}
                     override fun onAnimationRepeat(a: Animation?) {}
                     override fun onAnimationEnd(a: Animation?) {
-                        isRecordingLocked                       = false
-                        binding.lockedRecordingBar.isVisible   = false
+                        isRecordingLocked = false
+                        binding.lockedRecordingBar.isVisible = false
                         binding.unLockedRecordingBar.isVisible = false
                         resetLockPopupState()
-                        binding.bottomSheet.isVisible          = true
+                        binding.bottomSheet.isVisible = true
                     }
                 })
             }
             binding.lockedRecordingBar.startAnimation(anim)
         } else {
-            isRecordingLocked                       = false
-            binding.lockedRecordingBar.isVisible   = false
+            isRecordingLocked = false
+            binding.lockedRecordingBar.isVisible = false
             binding.unLockedRecordingBar.isVisible = false
             resetLockPopupState()
-            binding.bottomSheet.isVisible          = true
+            binding.bottomSheet.isVisible = true
         }
     }
 
+    private fun closeMenuOnAdapters() {
+        if (::adapterMsg.isInitialized) adapterMsg.closeMenu()
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.closeMenu()
+    }
+
     private fun resetLockPopupState() {
-        binding.lockPopup.isVisible        = false
-        binding.lockPopup.translationY      = 0f
-        binding.lockPopup.alpha             = 1f
-        binding.ivLockIcon.scaleX           = 1f
-        binding.ivLockIcon.scaleY           = 1f
+        binding.lockPopup.isVisible = false
+        binding.lockPopup.translationY = 0f
+        binding.lockPopup.alpha = 1f
+        binding.ivLockIcon.scaleX = 1f
+        binding.ivLockIcon.scaleY = 1f
         binding.tvLockChevrons.translationY = 0f
-        binding.tvLockChevrons.alpha        = 0.3f
+        binding.tvLockChevrons.alpha = 0.3f
     }
 
     // ── Timer / Waveform ──────────────────────────────────────────────────────
@@ -780,8 +848,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         override fun run() {
             if (isRecordingPaused) return
             recordingSeconds++
-            val formatted = String.format(Locale.getDefault(), "%02d:%02d", recordingSeconds / 60, recordingSeconds % 60)
-            binding.tvRecordingTimer.text         = formatted
+            val formatted = String.format(
+                Locale.getDefault(),
+                "%02d:%02d",
+                recordingSeconds / 60,
+                recordingSeconds % 60
+            )
+            binding.tvRecordingTimer.text = formatted
             binding.tvRecordingTimerUnlocked.text = formatted
             recordingTimerHandler.postDelayed(this, 1000)
         }
@@ -795,7 +868,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 liveAmplititudes.clear()
                 liveAmplititudes.addAll(samples)
                 if (isRecordingLocked) {
-                    binding.waveformRecording.setAmplitudes(if (samples.size > 60) samples.takeLast(60) else samples)
+                    binding.waveformRecording.setAmplitudes(
+                        if (samples.size > 60) samples.takeLast(
+                            60
+                        ) else samples
+                    )
                 }
             }
             waveformHandler.postDelayed(this, 100)
@@ -804,8 +881,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun startMicPulse() {
         pulseAnimation = AlphaAnimation(1.0f, 0.2f).apply {
-            duration    = 600
-            repeatMode  = Animation.REVERSE
+            duration = 600
+            repeatMode = Animation.REVERSE
             repeatCount = Animation.INFINITE
         }
         binding.ivRecordingMic.startAnimation(pulseAnimation)
@@ -820,9 +897,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun encodeAmplitudes(amps: List<Float>): String {
-        val target  = 100
+        val target = 100
         val sampled = if (amps.size <= target) amps
-        else List(target) { i -> amps[(i * (amps.size.toFloat() / target)).toInt().coerceIn(0, amps.size - 1)] }
+        else List(target) { i ->
+            amps[(i * (amps.size.toFloat() / target)).toInt().coerceIn(0, amps.size - 1)]
+        }
         val array = JSONArray()
         sampled.forEach { array.put(it.toDouble()) }
         return array.toString()
@@ -833,17 +912,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun showEmojiPicker() {
         isEmojiPickerVisible = true
         emojiPickerContainer.isVisible = true
-        binding.ivSend.isVisible   = true
+        binding.ivSend.isVisible = true
         binding.ivCamera.isVisible = true
-        binding.ivMic.isVisible    = false
+        binding.ivMic.isVisible = false
     }
 
     private fun hideEmojiPicker() {
         isEmojiPickerVisible = false
         emojiPickerContainer.isVisible = false
-        binding.ivSend.isVisible   = false
+        binding.ivSend.isVisible = false
         binding.ivCamera.isVisible = true
-        binding.ivMic.isVisible    = true
+        binding.ivMic.isVisible = true
     }
 
     override fun onPause() {
@@ -867,7 +946,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         super.onDestroy()
     }
 
-    private fun disconnectFromServer() { lifecycleScope.launch { unionClient.disconnect() } }
+    private fun disconnectFromServer() {
+        lifecycleScope.launch { unionClient.disconnect() }
+    }
 
     private fun setListGroupMessageAdapter(unionId: String) {
         recyclerview = binding.rvMsg
@@ -876,9 +957,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
                     val uriStr = msg.uri ?: msg.msg
                     if (uriStr.isNotBlank()) {
-                        startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                            putExtra("uri", uriStr); putExtra("type", msg.type)
-                        })
+                        startActivity(
+                            Intent(
+                                requireContext(),
+                                FullscreenMediaActivity::class.java
+                            ).apply {
+                                putExtra("uri", uriStr); putExtra("type", msg.type)
+                            })
                     }
                 }
             },
@@ -886,7 +971,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 when (view.id) {
                     R.id.btnReply -> handleReply(msg.msg)
                     R.id.btnDelete -> handleDelete(msg)
-                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(
+                        android.content.ClipData.newPlainText("msg", msg.msg)
+                    )
+
                     R.id.btnForward -> handleForward()
                     R.id.btnInfo -> handleInfo(msg)
                 }
@@ -894,7 +982,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onEmojiSelected = { msg, emoji ->
                 selectedGroupMsg = msg
                 handleReaction(emoji)
-                updateRecentEmojiList(emoji)
+                updateRecentEmojiList(emoji, msg.messageId)
             },
             onMoreEmojisClicked = { msg ->
                 selectedGroupMsg = msg
@@ -910,7 +998,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 groupMessageAdapter.submitList(messages) {
                     recyclerview.scrollToPosition(groupMessageAdapter.itemCount - 1)
                 }
-                recyclerview.layoutManager = LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
+                recyclerview.layoutManager =
+                    LinearLayoutManager(requireContext()).apply { stackFromEnd = true }
                 recyclerview.adapter = groupMessageAdapter
             }
         }
@@ -924,9 +1013,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
                     val uriStr = msg.uri ?: msg.msg
                     if (uriStr.isNotBlank()) {
-                        startActivity(Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                            putExtra("uri", uriStr); putExtra("type", msg.type)
-                        })
+                        startActivity(
+                            Intent(
+                                requireContext(),
+                                FullscreenMediaActivity::class.java
+                            ).apply {
+                                putExtra("uri", uriStr); putExtra("type", msg.type)
+                            })
                     }
                 }
             },
@@ -934,7 +1027,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 when (view.id) {
                     R.id.btnReply -> handleReply(msg.msg)
                     R.id.btnDelete -> handleDelete(msg)
-                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                    R.id.btnCopy -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(
+                        android.content.ClipData.newPlainText("msg", msg.msg)
+                    )
+
                     R.id.btnForward -> handleForward()
                     R.id.btnInfo -> handleInfo(msg)
                 }
@@ -942,7 +1038,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onEmojiSelected = { msg, emoji ->
                 selectedMsg = msg
                 handleReaction(emoji)
-                updateRecentEmojiList(emoji)
+                updateRecentEmojiList(emoji, msg.id.toString())
             },
             onMoreEmojisClicked = { msg ->
                 selectedMsg = msg
@@ -970,15 +1066,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    private fun updateRecentEmojiList(emoji: String) {
+    private fun updateRecentEmojiList(emoji: String, msgId: String? = null) {
         recentEmojisList.remove(emoji)
         recentEmojisList.add(0, emoji)
         if (recentEmojisList.size > 8) {
             recentEmojisList = recentEmojisList.take(8).toMutableList()
         }
         Prefs.setRecentEmojis(requireContext(), recentEmojisList)
-        if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList)
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(recentEmojisList)
+        if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList, msgId)
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(
+            recentEmojisList
+        )
     }
 
     private fun openPicker() {
@@ -999,12 +1097,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         else data.data?.let { uris.add(it) }
         if (uris.isEmpty()) return
 
-        val takeFlags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        val takeFlags =
+            data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         val parcelables = ArrayList<SelectedMediaParcelable>(uris.size)
         for (uri in uris) {
-            try { requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags) } catch (_: Exception) {}
-            val mime = try { requireContext().contentResolver.getType(uri) } catch (_: Exception) { null }
-            val type = if (mime?.startsWith("video") == true || uri.toString().endsWith(".mp4", true)) "VIDEO" else "IMAGE"
+            try {
+                requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
+            } catch (_: Exception) {
+            }
+            val mime = try {
+                requireContext().contentResolver.getType(uri)
+            } catch (_: Exception) {
+                null
+            }
+            val type = if (mime?.startsWith("video") == true || uri.toString()
+                    .endsWith(".mp4", true)
+            ) "VIDEO" else "IMAGE"
             parcelables.add(SelectedMediaParcelable(uri.toString(), type, ""))
         }
         previewLauncher.launch(Intent(requireContext(), MediaPreviewActivity::class.java).apply {
@@ -1020,15 +1128,31 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun performSendForSelectedMedia() {
         val unionId = Prefs.getUnionId(requireContext()).toString()
-        val name    = Prefs.getName(requireContext()).toString()
+        val name = Prefs.getName(requireContext()).toString()
         for (m in selectedMedias) {
-            val caption = if (m.caption.isNullOrBlank()) (if (m.type == "VIDEO") "video" else "photo") else m.caption
+            val caption =
+                if (m.caption.isNullOrBlank()) (if (m.type == "VIDEO") "video" else "photo") else m.caption
             if (comingFrom == "group_chat_list") {
                 lifecycleScope.launch {
-                    groupManager.sendMessage(groupId, unionId, name, caption!!, vm1, m.type, m.uri.toString())
+                    groupManager.sendMessage(
+                        groupId,
+                        unionId,
+                        name,
+                        caption!!,
+                        vm1,
+                        m.type,
+                        m.uri.toString()
+                    )
                 }
             } else {
-                vm.saveMessage(caption!!, targetUnionId, System.currentTimeMillis().toString(), true, m.type, m.uri.toString())
+                vm.saveMessage(
+                    caption!!,
+                    targetUnionId,
+                    System.currentTimeMillis().toString(),
+                    true,
+                    m.type,
+                    m.uri.toString()
+                )
             }
         }
         val count = selectedMedias.size
@@ -1039,7 +1163,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun sendMessage(text: String) {
-        if (targetUnionId.isNotEmpty()) lifecycleScope.launch { unionClient.sendMessage(targetUnionId, text) }
+        if (targetUnionId.isNotEmpty()) lifecycleScope.launch {
+            unionClient.sendMessage(
+                targetUnionId,
+                text
+            )
+        }
     }
 
     fun onionAppConnection() {
@@ -1050,7 +1179,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         } else {
             unionClient.importIdentity(
                 mapOf(
-                    "unionId"   to Prefs.getUnionId(requireContext())!!,
+                    "unionId" to Prefs.getUnionId(requireContext())!!,
                     "publicKey" to Prefs.getPublicKey(requireContext())!!
                 )
             )
@@ -1090,20 +1219,33 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun getTotalDuration(context: Context, uriStr: String): Int {
         if (uriStr.isBlank()) return 0
-        val uri = try { uriStr.toUri() } catch (_: Exception) { return 0 }
+        val uri = try {
+            uriStr.toUri()
+        } catch (_: Exception) {
+            return 0
+        }
         val retriever = MediaMetadataRetriever()
         return try {
             if (uri.scheme == "file") retriever.setDataSource(uri.path)
             else retriever.setDataSource(context, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (_: Exception) { 0 } finally { try { retriever.release() } catch (_: Exception) {} }
+        } catch (_: Exception) {
+            0
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private fun convertDatetime(time: String): String {
         return try {
             val formatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (_: Exception) { "" }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun formatTimestamp(timeInMillis: Long): String {

@@ -6,6 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:clipChildren="false"
+    android:minHeight="0dp"
     android:clipToPadding="false"
     android:layout_marginVertical="@dimen/_2sdp">
 
@@ -237,8 +238,7 @@
         android:layout_marginTop="@dimen/_5sdp"
         android:layout_marginBottom="@dimen/_5sdp"
         app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd"
-        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd" />
 
     <include
         layout="@layout/emoji_reaction_bar"
@@ -483,10 +483,8 @@
         android:visibility="gone"
         android:elevation="@dimen/_16sdp"
         android:layout_marginTop="@dimen/_5sdp"
-        android:layout_marginBottom="@dimen/_5sdp"
         app:layout_constraintTop_toBottomOf="@id/rlMsgSent"
-        app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
-        app:layout_constraintBottom_toBottomOf="parent" />
+        app:layout_constraintEnd_toEndOf="@id/rlMsgSent" />
 
     <include
         layout="@layout/emoji_reaction_bar"

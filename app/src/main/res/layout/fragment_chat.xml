@@ -22,6 +22,8 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="1.0"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         tools:listitem="@layout/msg_list_item" />
 
     <!-- BLUR/DIM OVERLAY -->
