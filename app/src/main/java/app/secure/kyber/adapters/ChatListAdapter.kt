@@ -62,7 +62,7 @@ class ChatListAdapter( private var context : Context,private val onItemClick: (C
 
             Glide.with(context)
                 .load(item.avatarRes)
-                .placeholder(R.drawable.ic_person)
+                .placeholder(R.drawable.new_ic)
                 .into(avatarIV)
 
             itemView.setOnClickListener {

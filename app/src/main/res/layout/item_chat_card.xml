@@ -21,7 +21,7 @@
             android:id="@+id/imgAvatar"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:src="@drawable/ic_person"
+            android:src="@drawable/new_ic"
             android:padding="@dimen/_5sdp"
             android:contentDescription="@string/app_name"
             />
