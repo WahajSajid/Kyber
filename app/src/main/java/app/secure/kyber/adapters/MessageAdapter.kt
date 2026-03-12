@@ -15,6 +15,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -170,6 +171,9 @@ class MessageAdapter(
 
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
+
+        // Decrypting indicator (only used for received text messages)
+        val tvDecryptingRcv: TextView? = view.findViewById(R.id.tvDecryptingRcv)
 
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
         val actionMenuReceived: View = view.findViewById(R.id.actionMenuReceived)
@@ -369,6 +373,7 @@ class MessageAdapter(
             targetView.animate().cancel()
             targetView.alpha = 1f
             targetView.text = item.msg
+            setDecryptingUi(h, isDecrypting = false, sent = true)
             return
         }
 
@@ -378,6 +383,7 @@ class MessageAdapter(
             targetView.animate().cancel()
             targetView.alpha = 1f
             targetView.text = cached
+            setDecryptingUi(h, isDecrypting = false, sent = false)
             return
         }
 
@@ -386,6 +392,7 @@ class MessageAdapter(
             if (targetView.text.isNullOrBlank()) {
                 targetView.text = generateEncryptedPlaceholder(item.msg.length)
             }
+            setDecryptingUi(h, isDecrypting = true, sent = false)
             return
         }
 
@@ -393,23 +400,34 @@ class MessageAdapter(
         targetView.text = generateEncryptedPlaceholder(item.msg.length)
         targetView.alpha = 0.35f  // start faded for smooth fade-in
 
+        setDecryptingUi(h, isDecrypting = true, sent = false)
+
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
         // Capture holder directly for reliable direct writes inside the coroutine
         val capturedHolder = h
         val capturedSent   = sent
+        val encryptedBase  = targetView.text.toString()
 
         val job = adapterScope.launch {
             try {
-                delay(500)
+                // Initial "processing" delay before characters begin to resolve
+                delay(1000)
 
                 val decrypted = withContext(Dispatchers.IO) {
                     messageDecryptor(item.msg)
                 }
 
                 decryptedTextCache[msgId] = decrypted
-                runScrambleReveal(msgId, item.id, decrypted, capturedHolder, capturedSent)
+                runSweepReveal(
+                    msgId = msgId,
+                    itemId = item.id,
+                    encryptedBase = encryptedBase,
+                    finalText = decrypted,
+                    h = capturedHolder,
+                    sent = capturedSent
+                )
 
             } catch (_: Exception) {
                 decryptedTextCache[msgId] = item.msg
@@ -420,6 +438,23 @@ class MessageAdapter(
             }
         }
         decryptJobs[msgId] = job
+    }
+
+    private fun setDecryptingUi(holder: VH, isDecrypting: Boolean, sent: Boolean) {
+        if (sent) return
+        val tv = holder.tvRcv
+        val indicator = holder.tvDecryptingRcv ?: return
+        if (isDecrypting) {
+            indicator.visibility = View.VISIBLE
+            indicator.text = "Decrypting..."
+            tv.background = ContextCompat.getDrawable(
+                holder.itemView.context,
+                R.drawable.bg_message_decrypting_overlay
+            )
+        } else {
+            indicator.visibility = View.GONE
+            tv.background = null
+        }
     }
 
     /**
@@ -454,26 +489,28 @@ class MessageAdapter(
         updateAlphaForMessage(itemId, itemId, alpha)
     }
 
-    private suspend fun runScrambleReveal(
+    private suspend fun runSweepReveal(
         msgId: Long,
         itemId: Long,
+        encryptedBase: String,
         finalText: String,
         h: VH,
         sent: Boolean
     ) {
-        val FRAME_MS        = 36L
-        val SCRAMBLE_ROUNDS = 8
-        val STAGGER_MS      = 30L
+        val FRAME_MS   = 70L
+        val TOTAL_MS   = 1000L
+        val steps      = (TOTAL_MS / FRAME_MS).toInt().coerceAtLeast(1)
 
-        val length     = finalText.length
-        val locked     = BooleanArray(length) { false }
-        val buffer     = CharArray(length) { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }
-        val frameCount = IntArray(length) { 0 }
+        val length          = finalText.length
+        val encryptedChars  = if (encryptedBase.length >= length) {
+            encryptedBase.substring(0, length).toCharArray()
+        } else {
+            (encryptedBase + generateEncryptedPlaceholder(length - encryptedBase.length))
+                .substring(0, length)
+                .toCharArray()
+        }
 
-        var allLocked     = false
-        var elapsedFrames = 0L
-
-        // Smooth fade-in: 0.35 → 1.0 over 3 frames before scrambling
+        // Smooth overall fade-in at the start of the sweep
         setAlphaOnHolder(h, sent, 0.35f, itemId)
         delay(FRAME_MS)
         setAlphaOnHolder(h, sent, 0.6f, itemId)
@@ -482,37 +519,20 @@ class MessageAdapter(
         delay(FRAME_MS)
         setAlphaOnHolder(h, sent, 1f, itemId)
 
-        while (!allLocked) {
-            allLocked = true
-
-            for (i in 0 until length) {
-                val startFrame = (i * STAGGER_MS / FRAME_MS).toInt()
-                when {
-                    elapsedFrames < startFrame -> {
-                        buffer[i] = SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)]
-                        allLocked = false
-                    }
-                    !locked[i] && frameCount[i] < SCRAMBLE_ROUNDS -> {
-                        buffer[i] = SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)]
-                        frameCount[i]++
-                        allLocked = false
-                    }
-                    !locked[i] -> {
-                        buffer[i] = finalText[i]
-                        locked[i] = true
-                    }
-                    else -> buffer[i] = finalText[i]
-                }
+        for (step in 0..steps) {
+            val progress    = step.toFloat() / steps.toFloat()
+            val sweepIndex  = (progress * length).toInt().coerceIn(0, length)
+            val buffer      = CharArray(length) { i ->
+                if (i < sweepIndex) finalText[i] else encryptedChars[i]
             }
-
             writeToHolder(h, sent, String(buffer), itemId)
             delay(FRAME_MS)
-            elapsedFrames++
         }
 
         // Final guaranteed state
         setAlphaOnHolder(h, sent, 1f, itemId)
         writeToHolder(h, sent, finalText, itemId)
+        setDecryptingUi(h, isDecrypting = false, sent = sent)
     }
 
     private fun updateAlphaForMessage(msgId: Long, itemId: Long, alpha: Float) {

@@ -199,6 +199,20 @@
             android:textSize="@dimen/_16sdp"
             android:visibility="visible"/>
 
+        <!-- Decrypting indicator for received group messages -->
+        <TextView
+            android:id="@+id/tvDecryptingRcv"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_marginTop="@dimen/_2sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:text="Decrypting..."
+            android:textSize="@dimen/_11sdp"
+            android:textColor="#99FFFFFF"
+            android:fontFamily="@font/roboto_medium"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvRcvReaction"
             android:layout_width="wrap_content"
