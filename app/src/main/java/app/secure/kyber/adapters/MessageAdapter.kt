@@ -3,6 +3,8 @@ package app.secure.kyber.adapters
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -25,8 +27,17 @@ import app.secure.kyber.roomdb.MessageEntity
 import coil.size.ViewSizeResolver
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import java.util.Locale
+import kotlin.random.Random
 
 @Suppress("DEPRECATION")
 class MessageAdapter(
@@ -44,6 +55,26 @@ class MessageAdapter(
             override fun areContentsTheSame(a: MessageEntity, b: MessageEntity) = a == b
         }
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
+
+        private val SCRAMBLE_CHARS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
+
+        fun generateEncryptedPlaceholder(length: Int): String {
+            if (length <= 0) return "••••••••"
+            return (1..length.coerceAtLeast(8))
+                .map { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }
+                .joinToString("")
+        }
+
+        /**
+         * Persistent cache that survives adapter re-creation (fragment re-entry).
+         * Once a message id is stored here it will NEVER be animated again.
+         * Key = MessageEntity.id (Long)
+         */
+        private val persistentCache = mutableMapOf<Long, String>()
+
+        /** Call from outside (e.g. onDestroyView) if you ever need to wipe it. */
+        fun clearPersistentCache() = persistentCache.clear()
     }
 
     private var activePlayer: MediaPlayer? = null
@@ -55,6 +86,29 @@ class MessageAdapter(
 
     private var recyclerView: RecyclerView? = null
 
+    // Coroutine scope for async per-item decryption work
+    private val adapterScope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    // Delegate to the static persistentCache so decrypted text survives adapter re-creation.
+    // This is the key guard that prevents re-animation on fragment re-entry.
+    private val decryptedTextCache: MutableMap<Long, String> get() = persistentCache
+
+    // Track which messages are mid-animation (instance-level is fine — in-flight jobs
+    // are naturally lost when the adapter is recreated, which is correct behaviour).
+    private val animatingIds = mutableSetOf<Long>()
+
+    private val decryptJobs = mutableMapOf<Long, Job>()
+
+    /**
+     * Pluggable decryptor. Replace this lambda from outside (e.g. ChatFragment) with
+     * your real crypto implementation. It runs on Dispatchers.IO automatically.
+     *
+     * For the demo this is wired in ChatFragment to add a fake delay then return
+     * the real message text.
+     */
+    var messageDecryptor: suspend (String) -> String = { it }
+
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         super.onAttachedToRecyclerView(recyclerView)
         this.recyclerView = recyclerView
@@ -63,6 +117,7 @@ class MessageAdapter(
     override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
         super.onDetachedFromRecyclerView(recyclerView)
         this.recyclerView = null
+        adapterScope.coroutineContext.cancelChildren()
     }
 
     init {
@@ -116,34 +171,28 @@ class MessageAdapter(
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
 
-        // Changed to View to prevent ClassCastExceptions from included layouts
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
         val actionMenuReceived: View = view.findViewById(R.id.actionMenuReceived)
         val sentEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_sent)
         val receivedEmojiBar: View = view.findViewById(R.id.emoji_reaction_bar_received)
 
-
-        //action menu sent button
         val replyBtnSent: LinearLayout = view.findViewById(R.id.btnReplySent)
         val forwardBtnSent: LinearLayout = view.findViewById(R.id.btnForwardSent)
         val copyBtnSent: LinearLayout = view.findViewById(R.id.btnCopySent)
         val deleteBtnSent: LinearLayout = view.findViewById(R.id.btnDeleteSent)
         val infoBtnSent: LinearLayout = view.findViewById(R.id.btnInfoSent)
 
-        //action menu received button
         val replyBtnRcv: LinearLayout = view.findViewById(R.id.btnReplyRcv)
         val forwardBtnRcv: LinearLayout = view.findViewById(R.id.btnForwardRcv)
         val copyBtnRcv: LinearLayout = view.findViewById(R.id.btnCopyRcv)
         val deleteBtnRcv: LinearLayout = view.findViewById(R.id.btnDeleteRcv)
         val infoBtnRcv: LinearLayout = view.findViewById(R.id.btnInfoRcv)
 
-
         val rvRecentEmojisSent: RecyclerView = sentEmojiBar.findViewById(R.id.rvRecentEmojis)
         val rvRecentEmojisReceived: RecyclerView =
             receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
         val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
         val btnMoreReceived: ImageButton = receivedEmojiBar.findViewById(R.id.emojiMore)
-
 
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
@@ -179,7 +228,6 @@ class MessageAdapter(
             else -> bindText(holder, item, isSent)
         }
 
-
         val isMenuOpen = openMenuPositions.contains(adapterPosition)
 
         if (isMenuOpen) {
@@ -200,21 +248,17 @@ class MessageAdapter(
                 onMoreEmojisClicked(item)
                 closeMenu()
             }
-            Log.d(" ## Menu ## ", "Visible")
             holder.emojiBar(isSent).visibility = View.VISIBLE
             holder.actionMenu(isSent).visibility = View.VISIBLE
         } else {
             holder.rvEmojis(isSent).adapter = null
-            Log.d(" ## Menu ## ", "Gone")
             holder.emojiBar(isSent).visibility = View.GONE
             holder.actionMenu(isSent).visibility = View.GONE
         }
 
-// Hide the opposite side's menu always
         holder.emojiBar(!isSent).visibility = View.GONE
         holder.actionMenu(!isSent).visibility = View.GONE
         holder.rvEmojis(!isSent).adapter = null
-
 
         holder.tvSentTime.text = convertDatetime(item.time)
         holder.tvRcvTime.text = convertDatetime(item.time)
@@ -231,9 +275,7 @@ class MessageAdapter(
 
         holder.itemView.setOnLongClickListener {
             val pos = holder.bindingAdapterPosition
-            if (pos != RecyclerView.NO_POSITION) {
-                showMenu(pos)
-            }
+            if (pos != RecyclerView.NO_POSITION) showMenu(pos)
             true
         }
 
@@ -242,22 +284,17 @@ class MessageAdapter(
             else onClick(item)
         }
 
-
-        //Set up click listeners for the action menu sent
         holder.replyBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.forwardBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.copyBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.infoBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.deleteBtnSent.setOnClickListener { closeMenu(); onLongClick(it, item) }
 
-
-        //Set up click listeners for the action menu received
         holder.replyBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.forwardBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.copyBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.infoBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
         holder.deleteBtnRcv.setOnClickListener { closeMenu(); onLongClick(it, item) }
-
     }
 
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
@@ -265,7 +302,6 @@ class MessageAdapter(
             onBindViewHolder(holder, position)
             return
         }
-
         val adapterPosition = holder.bindingAdapterPosition
         if (adapterPosition == RecyclerView.NO_POSITION) return
 
@@ -276,13 +312,13 @@ class MessageAdapter(
                 val uriStr = item.uri ?: return
                 startPlayback(holder, isSent, uriStr)
             }
-
-            else -> onBindViewHolder(holder, position) // ✅ full rebind for anything else
+            else -> onBindViewHolder(holder, position)
         }
     }
 
+    // ── Menu helpers ──────────────────────────────────────────────────────────
+
     private fun showMenu(position: Int) {
-        Log.d("opened position", position.toString())
         val previousOpen = openMenuPositions.toSet()
         openMenuPositions.clear()
         openMenuPositions.add(position)
@@ -296,33 +332,22 @@ class MessageAdapter(
         previousOpen.forEach { notifyItemChanged(it) }
     }
 
-    private fun animateViewIn(view: View) {
-        view.alpha = 0f
-        view.scaleX = 0.8f
-        view.scaleY = 0.8f
-        view.animate()
-            .alpha(1f)
-            .scaleX(1f)
-            .scaleY(1f)
-            .setDuration(200)
-            .setInterpolator(android.view.animation.OvershootInterpolator(1.2f))
-            .start()
+    // ── Reaction helper ───────────────────────────────────────────────────────
+
+    fun showReactionImmediately(itemId: String, emoji: String) {
+        val pos = currentList.indexOfFirst { it.id.toString() == itemId }
+        if (pos == -1) return
+        recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
+            (vh as? VH)?.let { holder ->
+                val isSent = getItem(pos).isSent
+                val reactionView = holder.reaction(isSent)
+                if (emoji.isEmpty()) reactionView.visibility = View.GONE
+                else { reactionView.text = emoji; reactionView.visibility = View.VISIBLE }
+            }
+        }
     }
 
-    private fun animateViewOut(view: View) {
-        view.animate()
-            .alpha(0f)
-            .scaleX(0.8f)
-            .scaleY(0.8f)
-            .setDuration(150)
-            .withEndAction {
-                view.visibility = View.GONE
-                view.scaleX = 1f
-                view.scaleY = 1f
-                view.alpha = 1f
-            }
-            .start()
-    }
+    // ── Text binding with one-time scramble decryption animation ─────────────
 
     private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
@@ -333,16 +358,192 @@ class MessageAdapter(
         h.sentMessageTimeLayout?.visibility = View.VISIBLE
         h.receivedMessageTimeLayout?.visibility = View.VISIBLE
 
+        val msgId = item.id
+        val targetView = if (sent) h.tvSent else h.tvRcv
+
+        if (sent) { h.tvSent.isVisible = true; h.tvRcv.isVisible = false }
+        else      { h.tvRcv.isVisible = true;  h.tvSent.isVisible = false }
+
+        // Sent messages show their own text immediately — no animation needed
         if (sent) {
-            h.tvSent.isVisible = true
-            h.tvSent.text = item.msg
-            h.tvRcv.isVisible = false
-        } else {
-            h.tvRcv.isVisible = true
-            h.tvRcv.text = item.msg
-            h.tvSent.isVisible = false
+            targetView.animate().cancel()
+            targetView.alpha = 1f
+            targetView.text = item.msg
+            return
         }
+
+        // ── CASE 1: Already decrypted — show final text, no animation ─────────
+        val cached = decryptedTextCache[msgId]
+        if (cached != null) {
+            targetView.animate().cancel()
+            targetView.alpha = 1f
+            targetView.text = cached
+            return
+        }
+
+        // ── CASE 2: Animation already running for this msgId ─────────────────
+        if (animatingIds.contains(msgId)) {
+            if (targetView.text.isNullOrBlank()) {
+                targetView.text = generateEncryptedPlaceholder(item.msg.length)
+            }
+            return
+        }
+
+        // ── CASE 3: First time seeing this received message — start the animation
+        targetView.text = generateEncryptedPlaceholder(item.msg.length)
+        targetView.alpha = 0.35f  // start faded for smooth fade-in
+
+        animatingIds.add(msgId)
+        decryptJobs[msgId]?.cancel()
+
+        // Capture holder directly for reliable direct writes inside the coroutine
+        val capturedHolder = h
+        val capturedSent   = sent
+
+        val job = adapterScope.launch {
+            try {
+                delay(500)
+
+                val decrypted = withContext(Dispatchers.IO) {
+                    messageDecryptor(item.msg)
+                }
+
+                decryptedTextCache[msgId] = decrypted
+                runScrambleReveal(msgId, item.id, decrypted, capturedHolder, capturedSent)
+
+            } catch (_: Exception) {
+                decryptedTextCache[msgId] = item.msg
+                writeToHolder(capturedHolder, capturedSent, item.msg, item.id)
+            } finally {
+                animatingIds.remove(msgId)
+                decryptJobs.remove(msgId)
+            }
+        }
+        decryptJobs[msgId] = job
     }
+
+    /**
+     * Writes text + resets alpha directly to the captured holder if it still
+     * represents the correct message; otherwise falls back to rvRef lookup.
+     */
+    private fun writeToHolder(h: VH, sent: Boolean, text: String, itemId: Long) {
+        val pos = h.bindingAdapterPosition
+        if (pos != RecyclerView.NO_POSITION) {
+            val current = runCatching { getItem(pos) }.getOrNull()
+            if (current?.id == itemId) {
+                val tv = if (sent) h.tvSent else h.tvRcv
+                tv.text = text
+                tv.alpha = 1f
+                return
+            }
+        }
+        // Holder recycled — find the new one via RecyclerView
+        updateTextViewForMessage(itemId, itemId, text, animate = false)
+    }
+
+    private fun setAlphaOnHolder(h: VH, sent: Boolean, alpha: Float, itemId: Long) {
+        val pos = h.bindingAdapterPosition
+        if (pos != RecyclerView.NO_POSITION) {
+            val current = runCatching { getItem(pos) }.getOrNull()
+            if (current?.id == itemId) {
+                val tv = if (sent) h.tvSent else h.tvRcv
+                tv.alpha = alpha
+                return
+            }
+        }
+        updateAlphaForMessage(itemId, itemId, alpha)
+    }
+
+    private suspend fun runScrambleReveal(
+        msgId: Long,
+        itemId: Long,
+        finalText: String,
+        h: VH,
+        sent: Boolean
+    ) {
+        val FRAME_MS        = 36L
+        val SCRAMBLE_ROUNDS = 8
+        val STAGGER_MS      = 30L
+
+        val length     = finalText.length
+        val locked     = BooleanArray(length) { false }
+        val buffer     = CharArray(length) { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }
+        val frameCount = IntArray(length) { 0 }
+
+        var allLocked     = false
+        var elapsedFrames = 0L
+
+        // Smooth fade-in: 0.35 → 1.0 over 3 frames before scrambling
+        setAlphaOnHolder(h, sent, 0.35f, itemId)
+        delay(FRAME_MS)
+        setAlphaOnHolder(h, sent, 0.6f, itemId)
+        delay(FRAME_MS)
+        setAlphaOnHolder(h, sent, 0.85f, itemId)
+        delay(FRAME_MS)
+        setAlphaOnHolder(h, sent, 1f, itemId)
+
+        while (!allLocked) {
+            allLocked = true
+
+            for (i in 0 until length) {
+                val startFrame = (i * STAGGER_MS / FRAME_MS).toInt()
+                when {
+                    elapsedFrames < startFrame -> {
+                        buffer[i] = SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)]
+                        allLocked = false
+                    }
+                    !locked[i] && frameCount[i] < SCRAMBLE_ROUNDS -> {
+                        buffer[i] = SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)]
+                        frameCount[i]++
+                        allLocked = false
+                    }
+                    !locked[i] -> {
+                        buffer[i] = finalText[i]
+                        locked[i] = true
+                    }
+                    else -> buffer[i] = finalText[i]
+                }
+            }
+
+            writeToHolder(h, sent, String(buffer), itemId)
+            delay(FRAME_MS)
+            elapsedFrames++
+        }
+
+        // Final guaranteed state
+        setAlphaOnHolder(h, sent, 1f, itemId)
+        writeToHolder(h, sent, finalText, itemId)
+    }
+
+    private fun updateAlphaForMessage(msgId: Long, itemId: Long, alpha: Float) {
+        val pos = currentList.indexOfFirst { it.id == itemId }
+        if (pos == -1) return
+        val vh = recyclerView?.findViewHolderForAdapterPosition(pos) as? VH ?: return
+        if (vh.bindingAdapterPosition == RecyclerView.NO_POSITION) return
+        val currentItem = runCatching { getItem(vh.bindingAdapterPosition) }.getOrNull() ?: return
+        if (currentItem.id != itemId) return
+        val tv = if (currentItem.isSent) vh.tvSent else vh.tvRcv
+        tv.alpha = alpha
+    }
+
+    private fun updateTextViewForMessage(
+        msgId: Long,
+        itemId: Long,
+        text: String,
+        animate: Boolean
+    ) {
+        val pos = currentList.indexOfFirst { it.id == itemId }
+        if (pos == -1) return
+        val vh = recyclerView?.findViewHolderForAdapterPosition(pos) as? VH ?: return
+        if (vh.bindingAdapterPosition == RecyclerView.NO_POSITION) return
+        val currentItem = runCatching { getItem(vh.bindingAdapterPosition) }.getOrNull() ?: return
+        if (currentItem.id != itemId) return
+        val tv = if (currentItem.isSent) vh.tvSent else vh.tvRcv
+        tv.text = text
+        tv.alpha = 1f
+    }
+
+    // ── Media binding ─────────────────────────────────────────────────────────
 
     private fun bindMedia(h: VH, item: MessageEntity, sent: Boolean, type: String) {
         h.sentAudio.isVisible = false
@@ -352,11 +553,7 @@ class MessageAdapter(
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
 
         val uriStr = item.uri ?: item.msg
-        val uri = try {
-            uriStr.toUri()
-        } catch (_: Exception) {
-            null
-        }
+        val uri = try { uriStr.toUri() } catch (_: Exception) { null }
 
         if (sent) {
             h.sentMedia.isVisible = true
@@ -365,7 +562,6 @@ class MessageAdapter(
             h.ivSentPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri)
                 .apply(RequestOptions.centerCropTransform()).into(h.ivSentMedia)
-
             val caption = item.msg
             if (caption.isNotBlank() && caption != "photo" && caption != "video") {
                 h.tvSent.text = caption; h.tvSent.isVisible = true
@@ -379,7 +575,6 @@ class MessageAdapter(
             h.ivRcvPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri)
                 .apply(RequestOptions.centerCropTransform()).into(h.ivRcvMedia)
-
             val caption = item.msg
             if (caption.isNotBlank() && caption != "photo" && caption != "video") {
                 h.tvRcv.text = caption; h.tvRcv.isVisible = true
@@ -389,22 +584,7 @@ class MessageAdapter(
         }
     }
 
-    fun showReactionImmediately(itemId: String, emoji: String) {
-        val pos = currentList.indexOfFirst { it.id.toString() == itemId }
-        if (pos == -1) return
-        recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
-            (vh as? VH)?.let { holder ->
-                val isSent = getItem(pos).isSent
-                val reactionView = holder.reaction(isSent)
-                if (emoji.isEmpty()) {
-                    reactionView.visibility = View.GONE
-                } else {
-                    reactionView.text = emoji
-                    reactionView.visibility = View.VISIBLE
-                }
-            }
-        }
-    }
+    // ── Audio binding ─────────────────────────────────────────────────────────
 
     private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
         h.tvSent.isVisible = false
@@ -424,9 +604,8 @@ class MessageAdapter(
         val totalMs = getTotalDuration(h.itemView.context, uriStr)
         h.durationLabel(sent).text = formatDuration(totalMs)
 
-        if (activeUri == uriStr) {
-            syncPlayingUi(h, sent)
-        } else {
+        if (activeUri == uriStr) syncPlayingUi(h, sent)
+        else {
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
             h.waveform(sent).setProgress(0f)
             h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
@@ -444,54 +623,41 @@ class MessageAdapter(
                     h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
                     startProgressUpdater(h, sent, uriStr)
                 }
-            } else {
-                startPlayback(h, sent, uriStr)
-            }
+            } else startPlayback(h, sent, uriStr)
         }
 
         h.waveform(sent).setOnSeekListener { progress ->
             if (activeUri == uriStr) {
                 activePlayer?.let { player ->
-                    val seekTo = (progress * player.duration).toInt()
-                    player.seekTo(seekTo)
+                    player.seekTo((progress * player.duration).toInt())
                     h.waveform(sent).setProgress(progress)
                 }
             } else {
                 startPlayback(h, sent, uriStr)
                 activePlayer?.let { player ->
-                    val seekTo = (progress * player.duration).toInt()
-                    player.seekTo(seekTo)
+                    player.seekTo((progress * player.duration).toInt())
                     h.waveform(sent).setProgress(progress)
                 }
             }
         }
 
         h.speedBadge(sent).setOnClickListener {
-            activeSpeedIdx = if (activeUri == uriStr) {
-                (activeSpeedIdx + 1) % SPEED_STEPS.size
-            } else 0
+            activeSpeedIdx = if (activeUri == uriStr) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
             val speed = SPEED_STEPS[activeSpeedIdx]
             h.speedBadge(sent).text = speed.toLabel()
             if (activeUri == uriStr) applySpeed(speed)
         }
     }
 
+    // ── Audio playback ────────────────────────────────────────────────────────
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
         stopPlayback(resetUi = true)
         val player = try {
-            MediaPlayer().apply {
-                setDataSource(h.itemView.context, uriStr.toUri())
-                prepare()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            return
-        }
-        activePlayer = player
-        activeUri = uriStr
-        activeHolder = h
-        activeSpeedIdx = 0
+            MediaPlayer().apply { setDataSource(h.itemView.context, uriStr.toUri()); prepare() }
+        } catch (e: Exception) { e.printStackTrace(); return }
+
+        activePlayer = player; activeUri = uriStr; activeHolder = h; activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0])
         player.start()
         h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
@@ -503,24 +669,16 @@ class MessageAdapter(
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
             h.waveform(sent).setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
-
             val currentPos = h.bindingAdapterPosition
-            activePlayer = null
-            activeUri = null
-            activeHolder = null
-
-            if (currentPos != -1) {
-                playNextAudioIfAvailable(currentPos)
-            }
+            activePlayer = null; activeUri = null; activeHolder = null
+            if (currentPos != -1) playNextAudioIfAvailable(currentPos)
         }
     }
 
     private fun playNextAudioIfAvailable(currentPos: Int) {
         for (i in (currentPos + 1) until itemCount) {
-            val nextItem = getItem(i)
-            if (nextItem.type.uppercase(Locale.US) == "AUDIO") {
-                notifyItemChanged(i, "START_PLAYBACK")
-                break
+            if (getItem(i).type.uppercase(Locale.US) == "AUDIO") {
+                notifyItemChanged(i, "START_PLAYBACK"); break
             }
         }
     }
@@ -533,10 +691,8 @@ class MessageAdapter(
                 val player = activePlayer ?: return
                 if (activeUri != uriStr) return
                 if (player.isPlaying) {
-                    val progress = player.currentPosition.toFloat() / player.duration
-                    h.waveform(sent).setProgress(progress)
-                    h.durationLabel(sent).text =
-                        formatDuration(player.duration - player.currentPosition)
+                    h.waveform(sent).setProgress(player.currentPosition.toFloat() / player.duration)
+                    h.durationLabel(sent).text = formatDuration(player.duration - player.currentPosition)
                 }
                 handler.postDelayed(this, 50)
             }
@@ -554,9 +710,7 @@ class MessageAdapter(
 
     private fun stopPlayback(resetUi: Boolean) {
         activeHandler?.removeCallbacksAndMessages(null)
-        activePlayer?.stop()
-        activePlayer?.release()
-        activePlayer = null
+        activePlayer?.stop(); activePlayer?.release(); activePlayer = null
         if (resetUi) {
             activeHolder?.let { h ->
                 val pos = h.bindingAdapterPosition
@@ -567,8 +721,7 @@ class MessageAdapter(
                 }
             }
         }
-        activeUri = null
-        activeHolder = null
+        activeUri = null; activeHolder = null
     }
 
     private fun applySpeed(speed: Float) {
@@ -577,6 +730,8 @@ class MessageAdapter(
         }
     }
 
+    // ── Utilities ─────────────────────────────────────────────────────────────
+
     private fun Float.toLabel() = if (this == 1.0f) "1x" else "${this}x"
 
     private fun decodeAmplitudes(json: String?): List<Float> {
@@ -584,9 +739,7 @@ class MessageAdapter(
         return try {
             val arr = JSONArray(json)
             List(arr.length()) { i -> arr.getDouble(i).toFloat() }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (_: Exception) { emptyList() }
     }
 
     private fun formatDuration(ms: Int): String {
@@ -599,19 +752,13 @@ class MessageAdapter(
         return try {
             retriever.setDataSource(context, uriStr.toUri())
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (e: Exception) {
-            0
-        } finally {
-            retriever.release()
-        }
+        } catch (_: Exception) { 0 } finally { retriever.release() }
     }
 
     private fun convertDatetime(time: String): String {
         return try {
             val formatter = java.text.SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (e: Exception) {
-            ""
-        }
+        } catch (_: Exception) { "" }
     }
 }
