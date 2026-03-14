@@ -763,26 +763,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             recentEmojis = recentEmojisList
         )
 
-        // ── Demo decryptor for group messages ─────────────────────────────────
-        // Same pattern as the 1-to-1 chat. Replace the lambda body with your
-        // real group message decryption when ready.
         groupMessageAdapter.messageDecryptor = { encryptedText ->
             delay((300L..700L).random())
             encryptedText
         }
-        // ─────────────────────────────────────────────────────────────────────
 
+        // 1. Configure the RecyclerView ONCE, outside the observer
+        recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
+            override fun supportsPredictiveItemAnimations() = false
+        }.apply { stackFromEnd = true }
+        recyclerview.adapter = groupMessageAdapter
+        recyclerview.clipChildren = false
+        recyclerview.clipToPadding = false
+
+        // 2. Observe the LiveData and only submit the updated list
         vm1.getMessagesForGroupChat(groupId) { liveData ->
             liveData.observe(viewLifecycleOwner) { messages ->
                 groupMessageAdapter.submitList(messages) {
                     recyclerview.scrollToPosition(groupMessageAdapter.itemCount - 1)
                 }
-                recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
-                    override fun supportsPredictiveItemAnimations() = false
-                }.apply { stackFromEnd = true }
-                recyclerview.adapter = groupMessageAdapter
-                recyclerview.clipChildren = false
-                recyclerview.clipToPadding = false
             }
         }
     }

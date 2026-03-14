@@ -56,7 +56,7 @@ class GroupMessagesAdapter(
         }
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
         private val SCRAMBLE_CHARS =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
 
         fun generateEncryptedPlaceholder(length: Int): String {
             if (length <= 0) return "••••••••"
@@ -65,13 +65,7 @@ class GroupMessagesAdapter(
                 .joinToString("")
         }
 
-        /**
-         * Persistent cache that survives adapter re-creation (fragment re-entry).
-         * Once a message id is stored here it will NEVER be animated again.
-         * Key = GroupMessageEntity.messageId (String)
-         */
         private val persistentCache = mutableMapOf<String, String>()
-
         fun clearPersistentCache() = persistentCache.clear()
     }
 
@@ -85,25 +79,32 @@ class GroupMessagesAdapter(
     private val adapterScope: CoroutineScope =
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // Delegate to the static persistentCache — survives adapter re-creation.
     private val decryptedTextCache: MutableMap<String, String> get() = persistentCache
 
-    // Instance-level is fine — in-flight jobs are naturally lost on re-creation.
     private val animatingIds = mutableSetOf<String>()
     private val decryptJobs = mutableMapOf<String, Job>()
 
-    /**
-     * Pluggable decryptor. Assign from ChatFragment for real crypto.
-     * For the demo, ChatFragment wires this to a fake delay + passthrough.
-     */
     var messageDecryptor: suspend (String) -> String = { it }
 
-    // Mutable internal reference — set via onAttachedToRecyclerView so it is
-    // always valid regardless of how the adapter is constructed.
     private var rvRef: RecyclerView? = recyclerView
 
     init {
         setHasStableIds(true)
+    }
+
+    // INTERCEPT SUBMIT LIST TO PREVENT OLD MESSAGES FROM ANIMATING
+    override fun submitList(list: List<GroupMessageEntity>?) {
+        if (currentList.isEmpty() && list != null) {
+            list.forEach { persistentCache[it.messageId] = it.msg }
+        }
+        super.submitList(list)
+    }
+
+    override fun submitList(list: List<GroupMessageEntity>?, commitCallback: Runnable?) {
+        if (currentList.isEmpty() && list != null) {
+            list.forEach { persistentCache[it.messageId] = it.msg }
+        }
+        super.submitList(list, commitCallback)
     }
 
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
@@ -162,7 +163,6 @@ class GroupMessagesAdapter(
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvRcvReaction)
 
-        // Decrypting indicator for received group text messages
         val tvDecryptingRcv: TextView? = view.findViewById(R.id.tvDecryptingRcv)
 
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
@@ -284,7 +284,7 @@ class GroupMessagesAdapter(
     fun showReactionImmediately(itemId: String, emoji: String) {
         val pos = currentList.indexOfFirst { it.messageId == itemId }
         if (pos == -1) return
-        recyclerView?.findViewHolderForAdapterPosition(pos)?.let { vh ->
+        rvRef?.findViewHolderForAdapterPosition(pos)?.let { vh ->
             (vh as? VH)?.let { holder ->
                 val isSent = getItem(pos).senderId == myId
                 val reactionView = holder.reaction(isSent)
@@ -325,8 +325,6 @@ class GroupMessagesAdapter(
         }
     }
 
-    // ── Menu helpers ──────────────────────────────────────────────────────────
-
     private fun showMenu(position: Int) {
         val previousOpen = openMenuPositions.toSet()
         openMenuPositions.clear()
@@ -341,8 +339,6 @@ class GroupMessagesAdapter(
         previousOpen.forEach { notifyItemChanged(it) }
     }
 
-    // ── Text binding with one-time scramble decryption animation ─────────────
-
     private fun bindText(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
         h.rcvAudio.isVisible  = false
@@ -356,7 +352,6 @@ class GroupMessagesAdapter(
         if (sent) { h.tvSentMsg.isVisible = true; h.tvMsgRcv.isVisible = false }
         else      { h.tvMsgRcv.isVisible = true;  h.tvSentMsg.isVisible = false }
 
-        // Sent messages show their own text immediately — no animation needed
         if (sent) {
             targetView.animate().cancel()
             targetView.alpha = 1f
@@ -365,7 +360,6 @@ class GroupMessagesAdapter(
             return
         }
 
-        // ── CASE 1: Already decrypted ─────────────────────────────────────────
         val cached = decryptedTextCache[msgId]
         if (cached != null) {
             targetView.animate().cancel()
@@ -375,7 +369,6 @@ class GroupMessagesAdapter(
             return
         }
 
-        // ── CASE 2: Animation already in flight ───────────────────────────────
         if (animatingIds.contains(msgId)) {
             if (targetView.text.isNullOrBlank()) {
                 targetView.text = generateEncryptedPlaceholder(item.msg.length)
@@ -384,8 +377,6 @@ class GroupMessagesAdapter(
             return
         }
 
-        // ── CASE 3: First time seeing this received message — start the animation
-        // Show placeholder and immediately set alpha low for the fade-in effect
         targetView.text = generateEncryptedPlaceholder(item.msg.length)
         targetView.alpha = 0.35f
 
@@ -394,16 +385,12 @@ class GroupMessagesAdapter(
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
-        // Capture the ViewHolder directly — direct writes are the most reliable
-        // approach. updateTextViewForMessage() is used as a fallback if this
-        // holder gets recycled before the animation finishes.
         val capturedHolder = h
         val capturedSent   = sent
         val encryptedBase  = targetView.text.toString()
 
         val job = adapterScope.launch {
             try {
-                // Initial pause before characters begin to resolve
                 delay(1000)
 
                 val decrypted = withContext(Dispatchers.IO) {
@@ -422,7 +409,6 @@ class GroupMessagesAdapter(
 
             } catch (_: Exception) {
                 decryptedTextCache[msgId] = item.msg
-                // Direct write to captured holder if still valid, else fallback
                 writeToHolder(capturedHolder, capturedSent, item.msg, item.messageId)
             } finally {
                 animatingIds.remove(msgId)
@@ -442,17 +428,32 @@ class GroupMessagesAdapter(
             tv.background = ContextCompat.getDrawable(
                 holder.itemView.context,
                 R.drawable.bg_message_decrypting_overlay
-            )
+            )?.mutate()?.apply { alpha = 255 }
         } else {
             indicator.visibility = View.GONE
             tv.background = null
         }
     }
 
-    /**
-     * Writes text directly to the captured holder if it still represents the
-     * correct message, otherwise falls back to finding via rvRef.
-     */
+    private fun setDecryptingOverlayAlpha(holder: VH, sent: Boolean, alpha01: Float, messageId: String) {
+        if (sent) return
+        val a = (alpha01.coerceIn(0f, 1f) * 255f).toInt()
+
+        val pos = holder.bindingAdapterPosition
+        if (pos != RecyclerView.NO_POSITION) {
+            val current = runCatching { getItem(pos) }.getOrNull()
+            if (current?.messageId == messageId) {
+                holder.tvMsgRcv.background?.mutate()?.alpha = a
+                return
+            }
+        }
+
+        val idx = currentList.indexOfFirst { it.messageId == messageId }
+        if (idx == -1) return
+        val vh = rvRef?.findViewHolderForAdapterPosition(idx) as? VH ?: return
+        vh.tvMsgRcv.background?.mutate()?.alpha = a
+    }
+
     private fun writeToHolder(h: VH, sent: Boolean, text: String, messageId: String) {
         val pos = h.bindingAdapterPosition
         if (pos != RecyclerView.NO_POSITION) {
@@ -464,7 +465,6 @@ class GroupMessagesAdapter(
                 return
             }
         }
-        // Holder was recycled — find the new one
         updateTextViewForMessage(messageId, messageId, text)
     }
 
@@ -502,7 +502,6 @@ class GroupMessagesAdapter(
                 .toCharArray()
         }
 
-        // Smooth overall fade-in at the start of the sweep
         setAlphaOnHolder(h, sent, 0.35f, itemMessageId)
         delay(FRAME_MS)
         setAlphaOnHolder(h, sent, 0.6f, itemMessageId)
@@ -518,10 +517,11 @@ class GroupMessagesAdapter(
                 if (i < sweepIndex) finalText[i] else encryptedChars[i]
             }
             writeToHolder(h, sent, String(buffer), itemMessageId)
+            val overlayAlpha = (1f - progress).let { p -> p * p }
+            setDecryptingOverlayAlpha(h, sent, overlayAlpha, itemMessageId)
             delay(FRAME_MS)
         }
 
-        // Final guaranteed state
         setAlphaOnHolder(h, sent, 1f, itemMessageId)
         writeToHolder(h, sent, finalText, itemMessageId)
         setDecryptingUi(h, isDecrypting = false, sent = sent)
@@ -555,8 +555,6 @@ class GroupMessagesAdapter(
         tv.text = text
     }
 
-    // ── Media binding ─────────────────────────────────────────────────────────
-
     private fun bindMedia(h: VH, item: GroupMessageEntity, sent: Boolean, type: String) {
         h.sentAudio.isVisible = false
         h.rcvAudio.isVisible  = false
@@ -583,8 +581,6 @@ class GroupMessagesAdapter(
             }
         }
     }
-
-    // ── Audio binding ─────────────────────────────────────────────────────────
 
     private fun bindAudio(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.tvSentMsg.isVisible = false; h.tvMsgRcv.isVisible = false
@@ -642,8 +638,6 @@ class GroupMessagesAdapter(
             if (activeUri == uriStr) applySpeed(speed)
         }
     }
-
-    // ── Audio playback ────────────────────────────────────────────────────────
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
         stopPlayback(resetUi = true)
@@ -723,8 +717,6 @@ class GroupMessagesAdapter(
             activePlayer?.let { it.playbackParams = it.playbackParams.setSpeed(speed) }
         }
     }
-
-    // ── Utilities ─────────────────────────────────────────────────────────────
 
     private fun Float.toLabel() = if (this == 1.0f) "1x" else "${this}x"
 

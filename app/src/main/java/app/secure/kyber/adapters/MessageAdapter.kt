@@ -58,7 +58,7 @@ class MessageAdapter(
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
 
         private val SCRAMBLE_CHARS =
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
 
         fun generateEncryptedPlaceholder(length: Int): String {
             if (length <= 0) return "••••••••"
@@ -67,14 +67,7 @@ class MessageAdapter(
                 .joinToString("")
         }
 
-        /**
-         * Persistent cache that survives adapter re-creation (fragment re-entry).
-         * Once a message id is stored here it will NEVER be animated again.
-         * Key = MessageEntity.id (Long)
-         */
         private val persistentCache = mutableMapOf<Long, String>()
-
-        /** Call from outside (e.g. onDestroyView) if you ever need to wipe it. */
         fun clearPersistentCache() = persistentCache.clear()
     }
 
@@ -87,28 +80,29 @@ class MessageAdapter(
 
     private var recyclerView: RecyclerView? = null
 
-    // Coroutine scope for async per-item decryption work
     private val adapterScope: CoroutineScope =
         CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // Delegate to the static persistentCache so decrypted text survives adapter re-creation.
-    // This is the key guard that prevents re-animation on fragment re-entry.
     private val decryptedTextCache: MutableMap<Long, String> get() = persistentCache
-
-    // Track which messages are mid-animation (instance-level is fine — in-flight jobs
-    // are naturally lost when the adapter is recreated, which is correct behaviour).
     private val animatingIds = mutableSetOf<Long>()
-
     private val decryptJobs = mutableMapOf<Long, Job>()
 
-    /**
-     * Pluggable decryptor. Replace this lambda from outside (e.g. ChatFragment) with
-     * your real crypto implementation. It runs on Dispatchers.IO automatically.
-     *
-     * For the demo this is wired in ChatFragment to add a fake delay then return
-     * the real message text.
-     */
     var messageDecryptor: suspend (String) -> String = { it }
+
+    // INTERCEPT SUBMIT LIST TO PREVENT OLD MESSAGES FROM ANIMATING
+    override fun submitList(list: List<MessageEntity>?) {
+        if (currentList.isEmpty() && list != null) {
+            list.forEach { persistentCache[it.id] = it.msg }
+        }
+        super.submitList(list)
+    }
+
+    override fun submitList(list: List<MessageEntity>?, commitCallback: Runnable?) {
+        if (currentList.isEmpty() && list != null) {
+            list.forEach { persistentCache[it.id] = it.msg }
+        }
+        super.submitList(list, commitCallback)
+    }
 
     override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
         super.onAttachedToRecyclerView(recyclerView)
@@ -127,9 +121,7 @@ class MessageAdapter(
 
     override fun getItemId(position: Int) = getItem(position).id.hashCode().toLong()
 
-    fun releasePlayer() {
-        stopPlayback(resetUi = true)
-    }
+    fun releasePlayer() { stopPlayback(resetUi = true) }
 
     fun updateRecentEmojis(newList: List<String>, reactedItemId: String? = null) {
         this.recentEmojis = newList
@@ -172,7 +164,6 @@ class MessageAdapter(
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
 
-        // Decrypting indicator (only used for received text messages)
         val tvDecryptingRcv: TextView? = view.findViewById(R.id.tvDecryptingRcv)
 
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
@@ -320,8 +311,6 @@ class MessageAdapter(
         }
     }
 
-    // ── Menu helpers ──────────────────────────────────────────────────────────
-
     private fun showMenu(position: Int) {
         val previousOpen = openMenuPositions.toSet()
         openMenuPositions.clear()
@@ -336,8 +325,6 @@ class MessageAdapter(
         previousOpen.forEach { notifyItemChanged(it) }
     }
 
-    // ── Reaction helper ───────────────────────────────────────────────────────
-
     fun showReactionImmediately(itemId: String, emoji: String) {
         val pos = currentList.indexOfFirst { it.id.toString() == itemId }
         if (pos == -1) return
@@ -350,8 +337,6 @@ class MessageAdapter(
             }
         }
     }
-
-    // ── Text binding with one-time scramble decryption animation ─────────────
 
     private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
@@ -368,7 +353,6 @@ class MessageAdapter(
         if (sent) { h.tvSent.isVisible = true; h.tvRcv.isVisible = false }
         else      { h.tvRcv.isVisible = true;  h.tvSent.isVisible = false }
 
-        // Sent messages show their own text immediately — no animation needed
         if (sent) {
             targetView.animate().cancel()
             targetView.alpha = 1f
@@ -377,7 +361,6 @@ class MessageAdapter(
             return
         }
 
-        // ── CASE 1: Already decrypted — show final text, no animation ─────────
         val cached = decryptedTextCache[msgId]
         if (cached != null) {
             targetView.animate().cancel()
@@ -387,7 +370,6 @@ class MessageAdapter(
             return
         }
 
-        // ── CASE 2: Animation already running for this msgId ─────────────────
         if (animatingIds.contains(msgId)) {
             if (targetView.text.isNullOrBlank()) {
                 targetView.text = generateEncryptedPlaceholder(item.msg.length)
@@ -396,23 +378,20 @@ class MessageAdapter(
             return
         }
 
-        // ── CASE 3: First time seeing this received message — start the animation
         targetView.text = generateEncryptedPlaceholder(item.msg.length)
-        targetView.alpha = 0.35f  // start faded for smooth fade-in
+        targetView.alpha = 0.35f
 
         setDecryptingUi(h, isDecrypting = true, sent = false)
 
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
-        // Capture holder directly for reliable direct writes inside the coroutine
         val capturedHolder = h
         val capturedSent   = sent
         val encryptedBase  = targetView.text.toString()
 
         val job = adapterScope.launch {
             try {
-                // Initial "processing" delay before characters begin to resolve
                 delay(1000)
 
                 val decrypted = withContext(Dispatchers.IO) {
@@ -450,17 +429,32 @@ class MessageAdapter(
             tv.background = ContextCompat.getDrawable(
                 holder.itemView.context,
                 R.drawable.bg_message_decrypting_overlay
-            )
+            )?.mutate()?.apply { alpha = 255 }
         } else {
             indicator.visibility = View.GONE
             tv.background = null
         }
     }
 
-    /**
-     * Writes text + resets alpha directly to the captured holder if it still
-     * represents the correct message; otherwise falls back to rvRef lookup.
-     */
+    private fun setDecryptingOverlayAlpha(holder: VH, sent: Boolean, alpha01: Float, itemId: Long) {
+        if (sent) return
+        val a = (alpha01.coerceIn(0f, 1f) * 255f).toInt()
+
+        val pos = holder.bindingAdapterPosition
+        if (pos != RecyclerView.NO_POSITION) {
+            val current = runCatching { getItem(pos) }.getOrNull()
+            if (current?.id == itemId) {
+                holder.tvRcv.background?.mutate()?.alpha = a
+                return
+            }
+        }
+
+        val idx = currentList.indexOfFirst { it.id == itemId }
+        if (idx == -1) return
+        val vh = recyclerView?.findViewHolderForAdapterPosition(idx) as? VH ?: return
+        vh.tvRcv.background?.mutate()?.alpha = a
+    }
+
     private fun writeToHolder(h: VH, sent: Boolean, text: String, itemId: Long) {
         val pos = h.bindingAdapterPosition
         if (pos != RecyclerView.NO_POSITION) {
@@ -472,7 +466,6 @@ class MessageAdapter(
                 return
             }
         }
-        // Holder recycled — find the new one via RecyclerView
         updateTextViewForMessage(itemId, itemId, text, animate = false)
     }
 
@@ -510,7 +503,6 @@ class MessageAdapter(
                 .toCharArray()
         }
 
-        // Smooth overall fade-in at the start of the sweep
         setAlphaOnHolder(h, sent, 0.35f, itemId)
         delay(FRAME_MS)
         setAlphaOnHolder(h, sent, 0.6f, itemId)
@@ -526,10 +518,11 @@ class MessageAdapter(
                 if (i < sweepIndex) finalText[i] else encryptedChars[i]
             }
             writeToHolder(h, sent, String(buffer), itemId)
+            val overlayAlpha = (1f - progress).let { p -> p * p }
+            setDecryptingOverlayAlpha(h, sent, overlayAlpha, itemId)
             delay(FRAME_MS)
         }
 
-        // Final guaranteed state
         setAlphaOnHolder(h, sent, 1f, itemId)
         writeToHolder(h, sent, finalText, itemId)
         setDecryptingUi(h, isDecrypting = false, sent = sent)
@@ -562,8 +555,6 @@ class MessageAdapter(
         tv.text = text
         tv.alpha = 1f
     }
-
-    // ── Media binding ─────────────────────────────────────────────────────────
 
     private fun bindMedia(h: VH, item: MessageEntity, sent: Boolean, type: String) {
         h.sentAudio.isVisible = false
@@ -603,8 +594,6 @@ class MessageAdapter(
             h.ivRcvPlay.setOnClickListener { onClick(item) }
         }
     }
-
-    // ── Audio binding ─────────────────────────────────────────────────────────
 
     private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
         h.tvSent.isVisible = false
@@ -668,8 +657,6 @@ class MessageAdapter(
             if (activeUri == uriStr) applySpeed(speed)
         }
     }
-
-    // ── Audio playback ────────────────────────────────────────────────────────
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
         stopPlayback(resetUi = true)
@@ -749,8 +736,6 @@ class MessageAdapter(
             activePlayer?.let { it.playbackParams = it.playbackParams.setSpeed(speed) }
         }
     }
-
-    // ── Utilities ─────────────────────────────────────────────────────────────
 
     private fun Float.toLabel() = if (this == 1.0f) "1x" else "${this}x"
 
