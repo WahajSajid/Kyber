@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Typeface
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.animation.LinearInterpolator
@@ -16,26 +17,39 @@ import androidx.appcompat.widget.AppCompatTextView
 /**
  * Drop-in replacement for the received-message TextView.
  *
- * THREE-PHASE animation, all directions LEFT → RIGHT:
+ * THREE FIXES applied in this version:
  *
- * Phase 1  — OVERLAY IN  (overlayInProgress 0→1)
- *   Empty bubble visible.
- *   The cream rect + encrypted text builds in from left → right.
- *   visibleRight = width * overlayInProgress   (grows from 0 to full width)
- *   Real text is NOT drawn yet (alpha 0 via super invisible trick — we just don't call super.onDraw).
+ * FIX 1 — No flash of encrypted text without background:
+ *   SIZING phase suppresses all drawing during setText() layout passes.
+ *   The adapter must call prepareForAnimation() BEFORE setText(), which sets
+ *   phase = SIZING immediately. Any onDraw() triggered by the setText() layout
+ *   pass draws nothing (empty bubble). startPhase1() then transitions to
+ *   OVERLAY_IN and begins the animation cleanly.
+ *   Also: cancelAndShowFinal() no longer needs to be called before
+ *   prepareForAnimation() — the adapter flow is: prepareForAnimation → setText
+ *   → startPhase1 (no cancelAndShowFinal in between).
  *
- * Phase 2  — DECRYPT REVEAL  (revealProgress 0→1)
- *   The cream overlay + encrypted text retreat left → right (left edge moves right).
- *   overlayLeft  = width * revealProgress       (left edge of overlay grows from 0 → width)
- *   Simultaneously the real white text becomes visible from left → right, clipped to
- *   [0 .. revealRight] where revealRight = width * revealProgress
- *   (i.e. real text reveals in the same band the overlay is leaving).
+ * FIX 2 — Encrypted text vertically centered in cream background:
+ *   Text Y is computed as h/2 - (descent + ascent)/2, which is the standard
+ *   formula for vertically centering text within a rect of height h.
+ *   Previously it used compoundPaddingTop + textSize - descent, which placed
+ *   text at the top baseline and looked slightly high.
  *
- * Normal mode (no animation): behaves exactly like AppCompatTextView.
+ * FIX 3 — Consistent animation speed regardless of message length:
+ *   Duration is calculated from a fixed pixels-per-second rate rather than a
+ *   fixed time. Previously, the wipe covered width pixels in a fixed time, so
+ *   longer (wider) bubbles animated faster. Now:
+ *     phase1Duration = width / OVERLAY_IN_SPEED_PX_PER_SEC  (in ms)
+ *     phase2Duration = width / DECRYPT_REVEAL_SPEED_PX_PER_SEC  (in ms)
+ *   Durations are clamped to [MIN_DURATION .. MAX_DURATION] to avoid extremes.
+ *   Duration is computed in onSizeChanged() once the view has a real width.
  *
- * Public API:
- *   startDecryptAnimation(encrypted, phaseInMs, revealMs, onDone)
- *   cancelAndShowFinal()
+ * ANIMATION PHASES (unchanged):
+ *   SIZING         → draw nothing (empty bubble, setText in progress)
+ *   OVERLAY_IN     → cream + encrypted text build in L→R
+ *   HOLD           → overlay fully visible, static
+ *   DECRYPT_REVEAL → real text reveals L→R, overlay retreats L→R
+ *   IDLE           → normal AppCompatTextView
  */
 class DecryptRevealTextView @JvmOverloads constructor(
     context: Context,
@@ -43,33 +57,49 @@ class DecryptRevealTextView @JvmOverloads constructor(
     defStyle: Int = 0
 ) : AppCompatTextView(context, attrs, defStyle) {
 
-    // ── animation state ───────────────────────────────────────────────────────
-    private enum class Phase { IDLE, OVERLAY_IN, DECRYPT_REVEAL }
-
+    private enum class Phase { IDLE, SIZING, OVERLAY_IN, HOLD, DECRYPT_REVEAL }
     private var phase = Phase.IDLE
-    private var encryptedText: String = ""
 
-    /**
-     * Phase 1: 0→1 means overlay builds in from left to right.
-     * visibleRight = width * overlayInProgress
-     */
+    private var encryptedText: String = ""
+    private var decryptedText: String = ""
+
     private var overlayInProgress: Float = 0f
         set(v) { field = v.coerceIn(0f, 1f); invalidate() }
 
-    /**
-     * Phase 2: 0→1 means overlay retreats left-to-right AND real text reveals left-to-right.
-     * overlayLeft   = width * revealProgress  (left edge of overlay moves right → overlay shrinks from left)
-     * revealRight   = width * revealProgress  (real text visible up to this x)
-     */
     private var revealProgress: Float = 0f
         set(v) { field = v.coerceIn(0f, 1f); invalidate() }
 
+    // ── speed constants (dp/s) → converted to px/s in init ───────────────────
+    // These control how many pixels per second the wipe travels.
+    // Increasing these values makes the animation faster.
+    // Tune these two numbers to adjust feel across all message lengths.
+    private val overlayInSpeedDpPerSec  = 220f   // phase 1: cream builds in
+    private val revealSpeedDpPerSec     = 160f   // phase 2: decrypt reveal
+
+    // Duration bounds (ms) to prevent extremes on very short or very long messages
+    private val minDurationMs = 400L
+    private val maxDurationMs = 2000L
+
+    private val density: Float by lazy {
+        resources.displayMetrics.density
+    }
+
+    // Computed in onSizeChanged when we know the actual pixel width
+    private var phase1DurationMs: Long = 900L
+    private var phase2DurationMs: Long = 1400L
+
     // ── paints ────────────────────────────────────────────────────────────────
+
     private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#EDE8DC")   // cream / off-white
     }
+
     private val encryptedTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#1C1C1C")   // dark text on cream
+    }
+
+    private val realTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
     }
 
     private val overlayRect = RectF()
@@ -78,63 +108,99 @@ class DecryptRevealTextView @JvmOverloads constructor(
     private var phase1Animator: ValueAnimator? = null
     private var phase2Animator: ValueAnimator? = null
 
+    // ── size tracking ─────────────────────────────────────────────────────────
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w > 0) {
+            // Recalculate durations based on actual pixel width
+            val overlayInSpeedPxPerSec = overlayInSpeedDpPerSec * density
+            val revealSpeedPxPerSec    = revealSpeedDpPerSec    * density
+
+            phase1DurationMs = ((w.toFloat() / overlayInSpeedPxPerSec) * 1000f)
+                .toLong()
+                .coerceIn(minDurationMs, maxDurationMs)
+
+            phase2DurationMs = ((w.toFloat() / revealSpeedPxPerSec) * 1000f)
+                .toLong()
+                .coerceIn(minDurationMs, maxDurationMs)
+        }
+    }
+
     // ── public API ────────────────────────────────────────────────────────────
 
     /**
-     * Start the full three-phase animation.
+     * STEP 1 — call this BEFORE setText().
      *
-     * IMPORTANT: call setText("") before calling this so the bubble appears empty.
-     * The real decrypted text must be set DURING the animation (between phase 1 and 2).
-     * The adapter does this — it calls setText(decrypted) just before phase 2 starts.
-     *
-     * @param encrypted      the encrypted placeholder string
-     * @param overlayInMs    duration of phase 1 (overlay building in), default 500ms
-     * @param revealMs       duration of phase 2 (decrypt reveal), default 900ms
-     * @param onReadyForReal called when phase 1 ends — adapter should setText(decrypted) here
-     * @param onDone         called when phase 2 ends
+     * Sets phase = SIZING so any onDraw() call during the upcoming setText()
+     * layout pass draws nothing — no encrypted text flash.
      */
-    fun startDecryptAnimation(
-        encrypted: String,
-        overlayInMs: Long = 500L,
-        revealMs: Long = 900L,
-        onReadyForReal: () -> Unit = {},
-        onDone: () -> Unit = {}
-    ) {
-        cancelAndShowFinal()   // reset any previous state
-
+    fun prepareForAnimation(encrypted: String) {
+        phase1Animator?.cancel(); phase1Animator = null
+        phase2Animator?.cancel(); phase2Animator = null
         encryptedText = encrypted
-        encryptedTextPaint.typeface = typeface
-        encryptedTextPaint.textSize = textSize
+        phase = Phase.SIZING
+        overlayInProgress = 0f
+        revealProgress = 0f
+    }
 
-        // Phase 1: build overlay in left → right
+    /**
+     * STEP 2 — call this after setText(encryptedPlaceholder).
+     *
+     * Starts Phase 1: cream + encrypted text build in LEFT → RIGHT.
+     * Duration is derived from pixel width for consistent visual speed.
+     *
+     * @param decrypted     the real message — stored internally, revealed in phase 2
+     * @param onPhase1Done  called on main thread when phase 1 fully ends
+     */
+    fun startPhase1(
+        decrypted: String,
+        onPhase1Done: () -> Unit = {}
+    ) {
+        phase1Animator?.cancel(); phase1Animator = null
+        phase2Animator?.cancel(); phase2Animator = null
+
+        decryptedText = decrypted
+        syncPaints()
+
         phase = Phase.OVERLAY_IN
         overlayInProgress = 0f
         revealProgress = 0f
 
         phase1Animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = overlayInMs
+            duration = phase1DurationMs
             interpolator = LinearInterpolator()
             addUpdateListener { overlayInProgress = it.animatedValue as Float }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
                     overlayInProgress = 1f
-                    // Notify adapter to set the real decrypted text now
-                    onReadyForReal()
-                    // Start phase 2
-                    startPhase2(revealMs, onDone)
+                    phase = Phase.HOLD
+                    invalidate()
+                    onPhase1Done()
                 }
-                override fun onAnimationCancel(a: Animator) { /* handled by cancelAndShowFinal */ }
             })
             start()
         }
     }
 
-    private fun startPhase2(revealMs: Long, onDone: () -> Unit) {
+    /**
+     * STEP 3 — call this from the onPhase1Done callback.
+     *
+     * Starts Phase 2: real white text reveals L→R, overlay retreats L→R.
+     * Duration is derived from pixel width for consistent visual speed.
+     * Do NOT call setText() before this — real text is already stored internally.
+     *
+     * @param onDone  called on main thread when phase 2 fully ends
+     */
+    fun beginPhase2(
+        onDone: () -> Unit = {}
+    ) {
+        phase2Animator?.cancel(); phase2Animator = null
         phase = Phase.DECRYPT_REVEAL
         revealProgress = 0f
 
         phase2Animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = revealMs
+            duration = phase2DurationMs
             interpolator = LinearInterpolator()
             addUpdateListener { revealProgress = it.animatedValue as Float }
             addListener(object : AnimatorListenerAdapter() {
@@ -142,13 +208,12 @@ class DecryptRevealTextView @JvmOverloads constructor(
                     finishDecrypt()
                     onDone()
                 }
-                override fun onAnimationCancel(a: Animator) { /* handled by cancelAndShowFinal */ }
             })
             start()
         }
     }
 
-    /** Immediately snap to final state — real text visible, no overlay. */
+    /** Immediately show final state — real text, no overlay, no animation. */
     fun cancelAndShowFinal() {
         phase1Animator?.cancel(); phase1Animator = null
         phase2Animator?.cancel(); phase2Animator = null
@@ -158,25 +223,33 @@ class DecryptRevealTextView @JvmOverloads constructor(
     // ── internal ──────────────────────────────────────────────────────────────
 
     private fun finishDecrypt() {
+        val finalText = decryptedText
         phase = Phase.IDLE
         encryptedText = ""
+        decryptedText = ""
         overlayInProgress = 0f
-        revealProgress = 1f
-        invalidate()
+        revealProgress = 0f
+        if (finalText.isNotEmpty()) text = finalText else invalidate()
+    }
+
+    private fun syncPaints() {
+        val tf = typeface ?: Typeface.DEFAULT
+        encryptedTextPaint.typeface = tf
+        encryptedTextPaint.textSize = textSize
+        realTextPaint.typeface = tf
+        realTextPaint.textSize = textSize
     }
 
     override fun onDraw(canvas: Canvas) {
         when (phase) {
 
-            Phase.IDLE -> {
-                // Normal TextView — just draw real text
-                super.onDraw(canvas)
-            }
+            Phase.IDLE -> super.onDraw(canvas)
 
+            // Draw nothing — setText() layout pass in progress, prevent flash
+            Phase.SIZING -> { /* empty bubble */ }
+
+            // Phase 1: cream + encrypted text build in LEFT → RIGHT
             Phase.OVERLAY_IN -> {
-                // Phase 1: empty bubble + overlay building in from left → right.
-                // Do NOT draw real text yet (bubble appears empty).
-                // Draw cream rect + encrypted text clipped to [0..visibleRight]
                 val w = width.toFloat(); val h = height.toFloat()
                 if (w == 0f || h == 0f) return
                 val visibleRight = w * overlayInProgress
@@ -188,29 +261,35 @@ class DecryptRevealTextView @JvmOverloads constructor(
                     drawEncryptedText(canvas, h)
                     canvas.restore()
                 }
-                // Real text intentionally NOT drawn — super.onDraw not called
             }
 
+            // HOLD: fully visible overlay, static
+            Phase.HOLD -> {
+                val w = width.toFloat(); val h = height.toFloat()
+                if (w == 0f || h == 0f) return
+                overlayRect.set(0f, 0f, w, h)
+                canvas.drawRoundRect(overlayRect, cornerRadius, cornerRadius, overlayPaint)
+                canvas.save()
+                canvas.clipRect(0f, 0f, w, h)
+                drawEncryptedText(canvas, h)
+                canvas.restore()
+            }
+
+            // Phase 2: real text reveals L→R, overlay retreats L→R
             Phase.DECRYPT_REVEAL -> {
-                // Phase 2:
-                // - Real white text reveals left → right: visible in [0..revealRight]
-                // - Overlay retreats left → right: visible in [overlayLeft..width]
-                //   where overlayLeft = width * revealProgress
                 val w = width.toFloat(); val h = height.toFloat()
                 if (w == 0f || h == 0f) return
 
-                val revealRight  = w * revealProgress        // real text reveals up to here
-                val overlayLeft  = w * revealProgress        // overlay now starts here (retreating left edge)
+                val revealRight = w * revealProgress
+                val overlayLeft = w * revealProgress
 
-                // Draw real white text clipped to [0..revealRight]
                 if (revealRight > 0f) {
                     canvas.save()
                     canvas.clipRect(0f, 0f, revealRight, h)
-                    super.onDraw(canvas)
+                    drawRealText(canvas, h)
                     canvas.restore()
                 }
 
-                // Draw cream overlay + encrypted text clipped to [overlayLeft..width]
                 if (overlayLeft < w) {
                     overlayRect.set(overlayLeft, 0f, w, h)
                     canvas.drawRoundRect(overlayRect, cornerRadius, cornerRadius, overlayPaint)
@@ -223,10 +302,27 @@ class DecryptRevealTextView @JvmOverloads constructor(
         }
     }
 
-    private fun drawEncryptedText(canvas: Canvas, viewHeight: Float) {
-        val paddingLeft = compoundPaddingLeft.toFloat()
-        val textY = compoundPaddingTop + textSize - encryptedTextPaint.descent()
-        canvas.drawText(encryptedText, paddingLeft, textY, encryptedTextPaint)
+    // ── draw helpers ──────────────────────────────────────────────────────────
+
+    /**
+     * Draw encrypted text vertically centered within the cream rect of height [h].
+     * Formula: h/2 - (descent + ascent)/2 places the text baseline so the
+     * visual centre of the text cap-height aligns with the centre of the rect.
+     */
+    private fun drawEncryptedText(canvas: Canvas, h: Float) {
+        val x = compoundPaddingLeft.toFloat()
+        // Vertically centre: midpoint of rect minus midpoint of text bounds
+        val y = h / 2f - (encryptedTextPaint.descent() + encryptedTextPaint.ascent()) / 2f
+        canvas.drawText(encryptedText, x, y, encryptedTextPaint)
+    }
+
+    /**
+     * Draw real decrypted text vertically centered within the view height [h].
+     */
+    private fun drawRealText(canvas: Canvas, h: Float) {
+        val x = compoundPaddingLeft.toFloat()
+        val y = h / 2f - (realTextPaint.descent() + realTextPaint.ascent()) / 2f
+        canvas.drawText(decryptedText, x, y, realTextPaint)
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

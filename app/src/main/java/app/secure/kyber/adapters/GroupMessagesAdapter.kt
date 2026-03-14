@@ -254,10 +254,7 @@ class GroupMessagesAdapter(
     fun closeMenu() { val prev = openMenuPositions.toSet(); openMenuPositions.clear(); prev.forEach { notifyItemChanged(it) } }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // bindText — three-phase wipe animation for received group messages
-    //
-    // Phase 1 (overlay IN):   empty bubble → cream+encrypted builds in L→R
-    // Phase 2 (decrypt OUT):  encrypted overlay leaves L→R, white text reveals L→R
+    // bindText — strict 2-phase sequential animation for received group messages
     // ─────────────────────────────────────────────────────────────────────────
     private fun bindText(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false; h.rcvAudio.isVisible = false
@@ -276,25 +273,22 @@ class GroupMessagesAdapter(
         val cached = decryptedTextCache[msgId]
 
         if (cached != null) {
-            // Already decrypted — show final white text immediately, no animation
             h.tvMsgRcv.cancelAndShowFinal(); h.tvMsgRcv.text = cached
             h.tvDecryptingRcv?.visibility = View.GONE; return
         }
 
         if (animatingIds.contains(msgId)) {
-            // Animation already running — do not restart
             h.tvDecryptingRcv?.visibility = View.VISIBLE; return
         }
 
-        // ── Brand new message — start full 3-phase animation ─────────────────
+        // ── Brand new message — strict 2-phase animation ─────────────────────
         val encryptedPlaceholder = generateEncryptedPlaceholder(item.msg.length)
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
-
-        // Size the view with placeholder, then clear text for empty-bubble phase 1 start
-        h.tvMsgRcv.cancelAndShowFinal()
-        h.tvMsgRcv.text = encryptedPlaceholder  // size the view
-        h.tvMsgRcv.text = ""                    // empty for phase 1
+        // prepareForAnimation sets phase = SIZING before setText so any onDraw during
+        // the layout pass draws nothing — prevents encrypted text flashing without background.
+        h.tvMsgRcv.prepareForAnimation(encryptedPlaceholder)
+        h.tvMsgRcv.text = encryptedPlaceholder   // size the view (onDraw suppressed via SIZING)
 
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
@@ -304,27 +298,27 @@ class GroupMessagesAdapter(
                 decryptedTextCache[msgId] = decrypted
                 withContext(Dispatchers.Main) {
                     val liveVH = findVHForMessage(msgId) ?: run { animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext }
-                    if (liveVH.tvMsgRcv.text.isNullOrEmpty()) {
-                        liveVH.tvMsgRcv.text = encryptedPlaceholder
-                        liveVH.tvMsgRcv.text = ""
-                    }
-                    liveVH.tvMsgRcv.startDecryptAnimation(
-                        encrypted = encryptedPlaceholder,
-                        overlayInMs = 500L,
-                        revealMs = 900L,
-                        onReadyForReal = {
-                            findVHForMessage(msgId)?.tvMsgRcv?.text = decrypted
-                        },
-                        onDone = {
-                            findVHForMessage(msgId)?.tvDecryptingRcv?.visibility = View.GONE
-                            animatingIds.remove(msgId); decryptJobs.remove(msgId)
+                    liveVH.tvMsgRcv.startPhase1(
+                        decrypted = decrypted,
+                        onPhase1Done = {
+                            val vh2 = findVHForMessage(msgId)
+                            if (vh2 != null) {
+                                vh2.tvMsgRcv.beginPhase2(
+                                    onDone = {
+                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility = View.GONE
+                                        animatingIds.remove(msgId); decryptJobs.remove(msgId)
+                                    }
+                                )
+                            } else {
+                                animatingIds.remove(msgId); decryptJobs.remove(msgId)
+                            }
                         }
                     )
                 }
             } catch (_: Exception) {
                 decryptedTextCache[msgId] = item.msg
                 withContext(Dispatchers.Main) {
-                    findVHForMessage(msgId)?.let { vh -> vh.tvMsgRcv.cancelAndShowFinal(); vh.tvMsgRcv.text = item.msg; vh.tvDecryptingRcv?.visibility = View.GONE }
+                    findVHForMessage(msgId)?.let { vh -> vh.tvMsgRcv.cancelAndShowFinal(); vh.tvDecryptingRcv?.visibility = View.GONE }
                     animatingIds.remove(msgId); decryptJobs.remove(msgId)
                 }
             }

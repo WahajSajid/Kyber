@@ -305,10 +305,10 @@ class MessageAdapter(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // bindText — three-phase wipe animation via DecryptRevealTextView
+    // bindText — strict 2-phase sequential animation, no overlap
     //
-    // Phase 1 (overlay IN):   empty bubble → cream+encrypted builds in L→R
-    // Phase 2 (decrypt OUT):  encrypted overlay leaves L→R, white text reveals L→R
+    // Phase 1: empty bubble → cream+encrypted builds in L→R (completes fully)
+    // Phase 2: encrypted overlay leaves L→R, white text reveals L→R (starts only after phase 1)
     // ─────────────────────────────────────────────────────────────────────────
     private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false
@@ -336,7 +336,7 @@ class MessageAdapter(
         val cached = decryptedTextCache[msgId]
 
         if (cached != null) {
-            // Already fully decrypted — show final white text immediately, no animation
+            // Already fully decrypted — show final white text immediately
             h.tvRcv.cancelAndShowFinal()
             h.tvRcv.text = cached
             h.tvDecryptingRcv?.visibility = View.GONE
@@ -344,60 +344,57 @@ class MessageAdapter(
         }
 
         if (animatingIds.contains(msgId)) {
-            // Animation already running for this message on another coroutine.
-            // Keep view in its current animated state — do not restart.
+            // Animation already running — do not restart
             h.tvDecryptingRcv?.visibility = View.VISIBLE
             return
         }
 
-        // ── Brand new message — start full 3-phase animation ─────────────────
+        // ── Brand new message — start strict 2-phase animation ───────────────
         val encryptedPlaceholder = generateEncryptedPlaceholder(item.msg.length)
 
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
 
-        // Phase 1 starts immediately: bubble appears empty, overlay builds in L→R.
-        // setText("") makes the bubble empty. The view's size is determined by the
-        // encrypted placeholder length (set inside startDecryptAnimation).
-        h.tvRcv.cancelAndShowFinal()
-        h.tvRcv.text = encryptedPlaceholder  // size the view correctly
-        h.tvRcv.text = ""                    // but display empty for phase 1 start
+        // prepareForAnimation() sets phase = SIZING BEFORE setText().
+        // This ensures any onDraw() triggered by the setText layout pass draws
+        // nothing — preventing the encrypted text from flashing without its background.
+        h.tvRcv.prepareForAnimation(encryptedPlaceholder)
+        h.tvRcv.text = encryptedPlaceholder   // size the view (onDraw suppressed via SIZING phase)
 
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
         decryptJobs[msgId] = adapterScope.launch {
             try {
-                // Decrypt in background while phase 1 animation plays
+                // Decrypt in background while phase 1 animation plays on screen.
+                // The decrypted text is passed into startPhase1 and stored inside the view —
+                // it is NEVER set via setText() until the animation fully ends.
                 val decrypted = withContext(Dispatchers.IO) { messageDecryptor(item.msg) }
                 decryptedTextCache[msgId] = decrypted
 
-                // Start animation on main thread
                 withContext(Dispatchers.Main) {
                     val liveVH = findVHForMessage(msgId) ?: run {
                         animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext
                     }
 
-                    // Ensure view is properly sized for the encrypted text before animating
-                    if (liveVH.tvRcv.text.isNullOrEmpty()) {
-                        liveVH.tvRcv.text = encryptedPlaceholder
-                        liveVH.tvRcv.text = ""
-                    }
-
-                    liveVH.tvRcv.startDecryptAnimation(
-                        encrypted = encryptedPlaceholder,
-                        overlayInMs = 500L,
-                        revealMs = 900L,
-                        onReadyForReal = {
-                            // Called between phase 1 and phase 2 — set real text now.
-                            // The view draws it clipped (hidden under overlay) until phase 2 reveals it.
+                    liveVH.tvRcv.startPhase1(
+                        decrypted = decrypted,
+                        onPhase1Done = {
+                            // Phase 1 fully done — overlay fully visible and static.
+                            // Start phase 2 immediately. No setText needed.
                             val vh2 = findVHForMessage(msgId)
-                            vh2?.tvRcv?.text = decrypted
-                        },
-                        onDone = {
-                            val vh2 = findVHForMessage(msgId)
-                            vh2?.tvDecryptingRcv?.visibility = View.GONE
-                            animatingIds.remove(msgId); decryptJobs.remove(msgId)
+                            if (vh2 != null) {
+                                vh2.tvRcv.beginPhase2(
+                                    onDone = {
+                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility = View.GONE
+                                        animatingIds.remove(msgId)
+                                        decryptJobs.remove(msgId)
+                                    }
+                                )
+                            } else {
+                                animatingIds.remove(msgId)
+                                decryptJobs.remove(msgId)
+                            }
                         }
                     )
                 }
@@ -407,10 +404,10 @@ class MessageAdapter(
                 withContext(Dispatchers.Main) {
                     findVHForMessage(msgId)?.let { vh ->
                         vh.tvRcv.cancelAndShowFinal()
-                        vh.tvRcv.text = item.msg
                         vh.tvDecryptingRcv?.visibility = View.GONE
                     }
-                    animatingIds.remove(msgId); decryptJobs.remove(msgId)
+                    animatingIds.remove(msgId)
+                    decryptJobs.remove(msgId)
                 }
             }
         }
