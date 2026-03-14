@@ -352,11 +352,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     binding.ivCamera.isVisible = false
                     binding.ivMic.isVisible = false
                 }
+
                 isEmojiPickerVisible -> {
                     binding.ivSend.isVisible = true
                     binding.ivCamera.isVisible = false
                     binding.ivMic.isVisible = false
                 }
+
                 else -> {
                     binding.ivSend.isVisible = false
                     binding.ivCamera.isVisible = true
@@ -659,18 +661,20 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             onLongClick = { view, msg ->
                 when (view.id) {
-                    R.id.btnReplySent  -> handleReply(msg.msg)
-                    R.id.btnReplyRcv   -> handleReply(msg.msg)
+                    R.id.btnReplySent -> handleReply(msg.msg)
+                    R.id.btnReplyRcv -> handleReply(msg.msg)
                     R.id.btnDeleteSent -> handleDelete(msg)
-                    R.id.btnDeleteRcv  -> handleDelete(msg)
-                    R.id.btnCopySent   -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    R.id.btnDeleteRcv -> handleDelete(msg)
+                    R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-                    R.id.btnCopyRcv    -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+
+                    R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+
                     R.id.btnForwardSent -> handleForward()
-                    R.id.btnForwardRcv  -> handleForward()
-                    R.id.btnInfoSent    -> handleInfo(msg)
-                    R.id.btnInfoRcv     -> handleInfo(msg)
+                    R.id.btnForwardRcv -> handleForward()
+                    R.id.btnInfoSent -> handleInfo(msg)
+                    R.id.btnInfoRcv -> handleInfo(msg)
                 }
             },
             onEmojiSelected = { msg, emoji ->
@@ -737,12 +741,20 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             onLongClick = { view, msg ->
                 when (view.id) {
-                    R.id.btnReply   -> handleReply(msg.msg)
-                    R.id.btnDelete  -> handleDelete(msg)
-                    R.id.btnCopy    -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    R.id.btnReplySent -> handleReply(msg.msg)
+                    R.id.btnReplyRcv -> handleReply(msg.msg)
+                    R.id.btnDeleteSent -> handleDelete(msg)
+                    R.id.btnDeleteRcv -> handleDelete(msg)
+                    R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-                    R.id.btnForward -> handleForward()
-                    R.id.btnInfo    -> handleInfo(msg)
+
+                    R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+
+                    R.id.btnForwardSent -> handleForward()
+                    R.id.btnForwardRcv -> handleForward()
+                    R.id.btnInfoSent -> handleInfo(msg)
+                    R.id.btnInfoRcv -> handleInfo(msg)
                 }
             },
             onEmojiSelected = { msg, emoji ->
@@ -866,7 +878,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.bottomSheet.isVisible = true
 
         if (filePath.isNullOrBlank()) return
-        if (recordingSeconds < 1) { java.io.File(filePath).delete(); return }
+        if (recordingSeconds < 1) {
+            java.io.File(filePath).delete(); return
+        }
 
         val fileUri = Uri.fromFile(java.io.File(filePath)).toString()
         val ampsJson = encodeAmplitudes(amplitudes)
@@ -1054,7 +1068,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         Prefs.setRecentEmojis(requireContext(), recentEmojisList)
         if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList, msgId)
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(recentEmojisList)
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(
+            recentEmojisList
+        )
     }
 
     private fun openPicker() {
@@ -1081,10 +1097,16 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (uri in uris) {
             try {
                 requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
-            } catch (_: Exception) { }
-            val mime = try { requireContext().contentResolver.getType(uri) } catch (_: Exception) { null }
+            } catch (_: Exception) {
+            }
+            val mime = try {
+                requireContext().contentResolver.getType(uri)
+            } catch (_: Exception) {
+                null
+            }
             val type = if (mime?.startsWith("video") == true ||
-                uri.toString().endsWith(".mp4", true)) "VIDEO" else "IMAGE"
+                uri.toString().endsWith(".mp4", true)
+            ) "VIDEO" else "IMAGE"
             parcelables.add(SelectedMediaParcelable(uri.toString(), type, ""))
         }
         previewLauncher.launch(Intent(requireContext(), MediaPreviewActivity::class.java).apply {
@@ -1178,14 +1200,23 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun getTotalDuration(context: Context, uriStr: String): Int {
         if (uriStr.isBlank()) return 0
-        val uri = try { uriStr.toUri() } catch (_: Exception) { return 0 }
+        val uri = try {
+            uriStr.toUri()
+        } catch (_: Exception) {
+            return 0
+        }
         val retriever = MediaMetadataRetriever()
         return try {
             if (uri.scheme == "file") retriever.setDataSource(uri.path)
             else retriever.setDataSource(context, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (_: Exception) { 0 } finally {
-            try { retriever.release() } catch (_: Exception) { }
+        } catch (_: Exception) {
+            0
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -1193,7 +1224,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         return try {
             val formatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (_: Exception) { "" }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun formatTimestamp(timeInMillis: Long): String {

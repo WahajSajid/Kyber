@@ -81,23 +81,47 @@ class MessageAdapter(
 
     var messageDecryptor: suspend (String) -> String = { it }
 
+    // True once the very first submitList with >1 item has been processed.
+    // If the first submitList has exactly 1 item it is treated as a new incoming
+    // message (empty chat) and should animate — not be pre-cached.
+    private var firstLoadDone = false
+
     override fun submitList(list: List<MessageEntity>?) {
-        if (currentList.isEmpty() && list != null) {
-            list.forEach { persistentCache[it.id] = it.msg }
-        }
+        handlePreCache(list)
         super.submitList(list)
     }
 
     override fun submitList(list: List<MessageEntity>?, commitCallback: Runnable?) {
-        if (currentList.isEmpty() && list != null) {
-            list.forEach { persistentCache[it.id] = it.msg }
-        }
+        handlePreCache(list)
         super.submitList(list, commitCallback)
+    }
+
+    /**
+     * Pre-caches messages that should skip animation (already-read history).
+     * Only caches on the very first load when the incoming list has more than one
+     * message — that means it's history being loaded. A single new message arriving
+     * into an empty chat should NOT be pre-cached; it should animate.
+     */
+    private fun handlePreCache(list: List<MessageEntity>?) {
+        if (!firstLoadDone && currentList.isEmpty() && list != null) {
+            if (list.size > 1) {
+                // This is an initial history load — pre-cache everything so existing
+                // messages render immediately without animation.
+                list.forEach { persistentCache[it.id] = it.msg }
+            }
+            // If list.size == 1 and currentList was empty: a single new message into
+            // an empty chat — do NOT pre-cache, let it animate.
+            firstLoadDone = true
+        }
     }
 
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         recyclerView = rv
+        // Ensure messages stack from the bottom so new messages in an empty chat
+        // appear at the bottom of the screen (standard chat behaviour).
+        (rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager)
+            ?.stackFromEnd = true
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {

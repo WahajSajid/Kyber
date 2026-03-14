@@ -9,46 +9,42 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.os.Build
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
 import android.util.AttributeSet
 import android.util.TypedValue
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import androidx.appcompat.widget.AppCompatTextView
+import kotlin.random.Random
 
 /**
  * Drop-in replacement for the received-message TextView.
  *
- * THREE FIXES applied in this version:
+ * CHANGES IN THIS VERSION:
  *
- * FIX 1 — No flash of encrypted text without background:
- *   SIZING phase suppresses all drawing during setText() layout passes.
- *   The adapter must call prepareForAnimation() BEFORE setText(), which sets
- *   phase = SIZING immediately. Any onDraw() triggered by the setText() layout
- *   pass draws nothing (empty bubble). startPhase1() then transitions to
- *   OVERLAY_IN and begins the animation cleanly.
- *   Also: cancelAndShowFinal() no longer needs to be called before
- *   prepareForAnimation() — the adapter flow is: prepareForAnimation → setText
- *   → startPhase1 (no cancelAndShowFinal in between).
+ * 1. Cream background width now matches the ENCRYPTED text width per line,
+ *    not the decrypted text width. This means the cream overlay snugly fits
+ *    the encrypted placeholder that was visible before decryption, so the
+ *    bubble looks natural in the encrypted state. A separate array
+ *    [lineEncryptedWidthsPx] stores the measured pixel width of each encrypted
+ *    line string. Both OVERLAY_IN and DECRYPT_REVEAL use this width for the
+ *    cream rect bounds.
  *
- * FIX 2 — Encrypted text vertically centered in cream background:
- *   Text Y is computed as h/2 - (descent + ascent)/2, which is the standard
- *   formula for vertically centering text within a rect of height h.
- *   Previously it used compoundPaddingTop + textSize - descent, which placed
- *   text at the top baseline and looked slightly high.
- *
- * FIX 3 — Consistent animation speed regardless of message length:
- *   Duration is calculated from a fixed pixels-per-second rate rather than a
- *   fixed time. Previously, the wipe covered width pixels in a fixed time, so
- *   longer (wider) bubbles animated faster. Now:
- *     phase1Duration = width / OVERLAY_IN_SPEED_PX_PER_SEC  (in ms)
- *     phase2Duration = width / DECRYPT_REVEAL_SPEED_PX_PER_SEC  (in ms)
- *   Durations are clamped to [MIN_DURATION .. MAX_DURATION] to avoid extremes.
- *   Duration is computed in onSizeChanged() once the view has a real width.
+ * 2. Animation is slower and smoother:
+ *    - overlayInSpeedDpPerSec reduced from 190 → 90
+ *    - revealSpeedDpPerSec reduced from 140 → 70
+ *    - minLineDurationMs raised from 200 → 400
+ *    - maxLineDurationMs raised from 650 → 1400
+ *    - interLinePauseMs raised from 80 → 120
  *
  * ANIMATION PHASES (unchanged):
- *   SIZING         → draw nothing (empty bubble, setText in progress)
- *   OVERLAY_IN     → cream + encrypted text build in L→R
- *   HOLD           → overlay fully visible, static
- *   DECRYPT_REVEAL → real text reveals L→R, overlay retreats L→R
+ *   SIZING         → draw nothing (prevents flash)
+ *   OVERLAY_IN     → cream rows build in L→R, line by line
+ *   HOLD           → all cream rows fully visible, static
+ *   DECRYPT_REVEAL → real text reveals L→R, cream rows retreat L→R, line by line
  *   IDLE           → normal AppCompatTextView
  */
 class DecryptRevealTextView @JvmOverloads constructor(
@@ -60,99 +56,70 @@ class DecryptRevealTextView @JvmOverloads constructor(
     private enum class Phase { IDLE, SIZING, OVERLAY_IN, HOLD, DECRYPT_REVEAL }
     private var phase = Phase.IDLE
 
-    private var encryptedText: String = ""
+    private var encryptedSingleLine: String = ""
     private var decryptedText: String = ""
+    private var realLayout: StaticLayout? = null
+    private var lineEncryptedTexts: List<String> = emptyList()
 
-    private var overlayInProgress: Float = 0f
-        set(v) { field = v.coerceIn(0f, 1f); invalidate() }
+    // Width of each encrypted text line in pixels — used for cream rect bounds
+    private var lineEncryptedWidthsPx: FloatArray = FloatArray(0)
 
-    private var revealProgress: Float = 0f
-        set(v) { field = v.coerceIn(0f, 1f); invalidate() }
+    private var lineCount: Int = 1
 
-    // ── speed constants (dp/s) → converted to px/s in init ───────────────────
-    // These control how many pixels per second the wipe travels.
-    // Increasing these values makes the animation faster.
-    // Tune these two numbers to adjust feel across all message lengths.
-    private val overlayInSpeedDpPerSec  = 220f   // phase 1: cream builds in
-    private val revealSpeedDpPerSec     = 160f   // phase 2: decrypt reveal
+    // Global progress: 0 → lineCount
+    private var animProgress: Float = 0f
+        set(v) { field = v.coerceAtLeast(0f); invalidate() }
 
-    // Duration bounds (ms) to prevent extremes on very short or very long messages
-    private val minDurationMs = 400L
-    private val maxDurationMs = 2000L
+    // ── timing constants ──────────────────────────────────────────────────────
+    // Lower dp/s values = slower, more readable animation
+    private val overlayInSpeedDpPerSec = 90f    // phase 1 speed (dp per second per line)
+    private val revealSpeedDpPerSec    = 70f    // phase 2 speed (dp per second per line)
+    private val minLineDurationMs      = 400L   // minimum time per line
+    private val maxLineDurationMs      = 1400L  // maximum time per line
+    private val interLinePauseMs       = 120L   // pause between lines
+    // Fraction of each line's slot that is active wipe; rest is inter-line pause gap
+    private val wipeFraction           = 0.82f
 
-    private val density: Float by lazy {
-        resources.displayMetrics.density
-    }
+    private val density get() = resources.displayMetrics.density
 
-    // Computed in onSizeChanged when we know the actual pixel width
-    private var phase1DurationMs: Long = 900L
-    private var phase2DurationMs: Long = 1400L
+    // Horizontal padding added to each cream rect beyond the encrypted text width
+    private val linePaddingPx get() = dpToPx(6f)
 
     // ── paints ────────────────────────────────────────────────────────────────
-
     private val overlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#EDE8DC")   // cream / off-white
+        color = Color.parseColor("#EDE8DC")
     }
-
-    private val encryptedTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#1C1C1C")   // dark text on cream
+    private val encryptPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#1C1C1C")
     }
-
-    private val realTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val realPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
     }
 
-    private val overlayRect = RectF()
-    private val cornerRadius: Float get() = dpToPx(6f)
+    private val rowRect = RectF()
+    private val cornerRadius get() = dpToPx(4f)
+
+    private val easeOut = DecelerateInterpolator(1.5f)
 
     private var phase1Animator: ValueAnimator? = null
     private var phase2Animator: ValueAnimator? = null
 
-    // ── size tracking ─────────────────────────────────────────────────────────
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        if (w > 0) {
-            // Recalculate durations based on actual pixel width
-            val overlayInSpeedPxPerSec = overlayInSpeedDpPerSec * density
-            val revealSpeedPxPerSec    = revealSpeedDpPerSec    * density
-
-            phase1DurationMs = ((w.toFloat() / overlayInSpeedPxPerSec) * 1000f)
-                .toLong()
-                .coerceIn(minDurationMs, maxDurationMs)
-
-            phase2DurationMs = ((w.toFloat() / revealSpeedPxPerSec) * 1000f)
-                .toLong()
-                .coerceIn(minDurationMs, maxDurationMs)
-        }
-    }
+    private val scramble = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
 
     // ── public API ────────────────────────────────────────────────────────────
 
-    /**
-     * STEP 1 — call this BEFORE setText().
-     *
-     * Sets phase = SIZING so any onDraw() call during the upcoming setText()
-     * layout pass draws nothing — no encrypted text flash.
-     */
     fun prepareForAnimation(encrypted: String) {
         phase1Animator?.cancel(); phase1Animator = null
         phase2Animator?.cancel(); phase2Animator = null
-        encryptedText = encrypted
+        encryptedSingleLine = encrypted
+        realLayout = null
+        lineEncryptedTexts = emptyList()
+        lineEncryptedWidthsPx = FloatArray(0)
+        lineCount = 1
         phase = Phase.SIZING
-        overlayInProgress = 0f
-        revealProgress = 0f
+        animProgress = 0f
     }
 
-    /**
-     * STEP 2 — call this after setText(encryptedPlaceholder).
-     *
-     * Starts Phase 1: cream + encrypted text build in LEFT → RIGHT.
-     * Duration is derived from pixel width for consistent visual speed.
-     *
-     * @param decrypted     the real message — stored internally, revealed in phase 2
-     * @param onPhase1Done  called on main thread when phase 1 fully ends
-     */
     fun startPhase1(
         decrypted: String,
         onPhase1Done: () -> Unit = {}
@@ -162,18 +129,21 @@ class DecryptRevealTextView @JvmOverloads constructor(
 
         decryptedText = decrypted
         syncPaints()
+        buildRealLayout()
 
         phase = Phase.OVERLAY_IN
-        overlayInProgress = 0f
-        revealProgress = 0f
+        animProgress = 0f
 
-        phase1Animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = phase1DurationMs
+        val total = lineCount.toFloat()
+        val dur   = computeTotalDuration(overlayInSpeedDpPerSec)
+
+        phase1Animator = ValueAnimator.ofFloat(0f, total).apply {
+            duration = dur
             interpolator = LinearInterpolator()
-            addUpdateListener { overlayInProgress = it.animatedValue as Float }
+            addUpdateListener { animProgress = it.animatedValue as Float }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
-                    overlayInProgress = 1f
+                    animProgress = total
                     phase = Phase.HOLD
                     invalidate()
                     onPhase1Done()
@@ -183,26 +153,18 @@ class DecryptRevealTextView @JvmOverloads constructor(
         }
     }
 
-    /**
-     * STEP 3 — call this from the onPhase1Done callback.
-     *
-     * Starts Phase 2: real white text reveals L→R, overlay retreats L→R.
-     * Duration is derived from pixel width for consistent visual speed.
-     * Do NOT call setText() before this — real text is already stored internally.
-     *
-     * @param onDone  called on main thread when phase 2 fully ends
-     */
-    fun beginPhase2(
-        onDone: () -> Unit = {}
-    ) {
+    fun beginPhase2(onDone: () -> Unit = {}) {
         phase2Animator?.cancel(); phase2Animator = null
         phase = Phase.DECRYPT_REVEAL
-        revealProgress = 0f
+        animProgress = 0f
 
-        phase2Animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = phase2DurationMs
+        val total = lineCount.toFloat()
+        val dur   = computeTotalDuration(revealSpeedDpPerSec)
+
+        phase2Animator = ValueAnimator.ofFloat(0f, total).apply {
+            duration = dur
             interpolator = LinearInterpolator()
-            addUpdateListener { revealProgress = it.animatedValue as Float }
+            addUpdateListener { animProgress = it.animatedValue as Float }
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: Animator) {
                     finishDecrypt()
@@ -213,7 +175,6 @@ class DecryptRevealTextView @JvmOverloads constructor(
         }
     }
 
-    /** Immediately show final state — real text, no overlay, no animation. */
     fun cancelAndShowFinal() {
         phase1Animator?.cancel(); phase1Animator = null
         phase2Animator?.cancel(); phase2Animator = null
@@ -222,107 +183,282 @@ class DecryptRevealTextView @JvmOverloads constructor(
 
     // ── internal ──────────────────────────────────────────────────────────────
 
+    private fun buildRealLayout() {
+        val availWidth = width - compoundPaddingLeft - compoundPaddingRight
+        if (availWidth <= 0 || decryptedText.isEmpty()) {
+            lineCount = 1
+            // Fallback: single encrypted line, measure its width
+            syncEncryptPaint()
+            lineEncryptedTexts = listOf(encryptedSingleLine)
+            lineEncryptedWidthsPx = floatArrayOf(encryptPaint.measureText(encryptedSingleLine))
+            return
+        }
+
+        val tp = paint as? TextPaint ?: TextPaint(paint)
+
+        @Suppress("DEPRECATION")
+        val sl: StaticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            StaticLayout.Builder
+                .obtain(decryptedText, 0, decryptedText.length, tp, availWidth)
+                .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+                .setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
+                .setIncludePad(includeFontPadding)
+                .build()
+        } else {
+            StaticLayout(
+                decryptedText, tp, availWidth,
+                Layout.Alignment.ALIGN_NORMAL,
+                lineSpacingMultiplier, lineSpacingExtra,
+                includeFontPadding
+            )
+        }
+
+        realLayout = sl
+        lineCount  = sl.lineCount.coerceAtLeast(1)
+
+        syncEncryptPaint()
+
+        val encryptedList    = ArrayList<String>(lineCount)
+        val encryptedWidths  = FloatArray(lineCount)
+
+        for (i in 0 until lineCount) {
+            // Generate encrypted chars sized to the real line's pixel width
+            val realLineWidth = sl.getLineWidth(i)
+            val charW = encryptPaint.measureText("m").coerceAtLeast(1f)
+            val count = ((realLineWidth / charW).toInt()).coerceAtLeast(3)
+            val sb = StringBuilder(count)
+            repeat(count) { sb.append(scramble[Random.nextInt(scramble.length)]) }
+            val encStr = sb.toString()
+
+            // Measure the actual encrypted string we just built
+            val encW = encryptPaint.measureText(encStr)
+
+            encryptedList.add(encStr)
+            encryptedWidths[i] = encW   // ← this is the cream rect width for this line
+        }
+
+        lineEncryptedTexts    = encryptedList
+        lineEncryptedWidthsPx = encryptedWidths
+    }
+
+    private fun syncEncryptPaint() {
+        val tp = paint as? TextPaint ?: TextPaint(paint)
+        encryptPaint.typeface = tp.typeface ?: Typeface.DEFAULT
+        encryptPaint.textSize = tp.textSize
+    }
+
     private fun finishDecrypt() {
         val finalText = decryptedText
         phase = Phase.IDLE
-        encryptedText = ""
+        encryptedSingleLine = ""
         decryptedText = ""
-        overlayInProgress = 0f
-        revealProgress = 0f
+        realLayout = null
+        lineEncryptedTexts = emptyList()
+        lineEncryptedWidthsPx = FloatArray(0)
+        lineCount = 1
+        animProgress = 0f
         if (finalText.isNotEmpty()) text = finalText else invalidate()
     }
 
     private fun syncPaints() {
-        val tf = typeface ?: Typeface.DEFAULT
-        encryptedTextPaint.typeface = tf
-        encryptedTextPaint.textSize = textSize
-        realTextPaint.typeface = tf
-        realTextPaint.textSize = textSize
+        val tp = paint as? TextPaint ?: TextPaint(paint)
+        val tf = tp.typeface ?: Typeface.DEFAULT
+        encryptPaint.typeface = tf; encryptPaint.textSize = tp.textSize
+        realPaint.typeface    = tf; realPaint.textSize    = tp.textSize
     }
+
+    /**
+     * Total duration = sum over lines of:
+     *   slotMs = (wipeMs / wipeFraction) + pauseMs
+     * where wipeMs is derived from the ENCRYPTED line width / speed.
+     */
+    private fun computeTotalDuration(speedDpPerSec: Float): Long {
+        val speedPxPerSec = speedDpPerSec * density
+        var total = 0L
+        for (i in 0 until lineCount) {
+            // Use encrypted line width for timing — matches the cream rect width
+            val lw = encryptedLineWidthFor(i).coerceAtLeast(dpToPx(40f))
+            val wipeMs = ((lw / speedPxPerSec) * 1000f)
+                .toLong().coerceIn(minLineDurationMs, maxLineDurationMs)
+            val pauseMs = if (i < lineCount - 1) interLinePauseMs else 0L
+            total += (wipeMs / wipeFraction).toLong() + pauseMs
+        }
+        return total.coerceAtLeast(300L)
+    }
+
+    /** Apply ease-out within the active wipe fraction of a line's slot. */
+    private fun toWipeFrac(rawFrac: Float): Float {
+        if (rawFrac >= wipeFraction) return 1f
+        return easeOut.getInterpolation(rawFrac / wipeFraction)
+    }
+
+    /** Width of the cream rect for line [i] = encrypted text width + padding. */
+    private fun encryptedLineWidthFor(i: Int): Float =
+        (if (i < lineEncryptedWidthsPx.size) lineEncryptedWidthsPx[i] else dpToPx(80f)) + linePaddingPx
+
+    // ── onDraw ────────────────────────────────────────────────────────────────
 
     override fun onDraw(canvas: Canvas) {
         when (phase) {
+            Phase.IDLE   -> super.onDraw(canvas)
+            Phase.SIZING -> { /* empty — prevents flash during setText */ }
+            Phase.OVERLAY_IN     -> drawOverlayIn(canvas)
+            Phase.HOLD           -> drawOverlayFull(canvas)
+            Phase.DECRYPT_REVEAL -> drawDecryptReveal(canvas)
+        }
+    }
 
-            Phase.IDLE -> super.onDraw(canvas)
+    // ── phase draw ────────────────────────────────────────────────────────────
 
-            // Draw nothing — setText() layout pass in progress, prevent flash
-            Phase.SIZING -> { /* empty bubble */ }
+    private fun drawOverlayIn(canvas: Canvas) {
+        val sl = realLayout ?: return fallbackSingleLine(canvas, toWipeFrac(animProgress))
+        val ox = compoundPaddingLeft.toFloat()
+        val oy = compoundPaddingTop.toFloat()
 
-            // Phase 1: cream + encrypted text build in LEFT → RIGHT
-            Phase.OVERLAY_IN -> {
-                val w = width.toFloat(); val h = height.toFloat()
-                if (w == 0f || h == 0f) return
-                val visibleRight = w * overlayInProgress
-                if (visibleRight > 0f) {
-                    overlayRect.set(0f, 0f, visibleRight, h)
-                    canvas.drawRoundRect(overlayRect, cornerRadius, cornerRadius, overlayPaint)
-                    canvas.save()
-                    canvas.clipRect(0f, 0f, visibleRight, h)
-                    drawEncryptedText(canvas, h)
-                    canvas.restore()
+        val done    = animProgress.toInt().coerceIn(0, lineCount)
+        val rawFrac = animProgress - done.toFloat()
+
+        for (i in 0 until done) drawCreamLine(canvas, sl, i, ox, oy, 1f)
+
+        if (done < lineCount) {
+            val wf = toWipeFrac(rawFrac)
+            if (wf > 0f) drawCreamLine(canvas, sl, done, ox, oy, wf)
+        }
+    }
+
+    private fun drawOverlayFull(canvas: Canvas) {
+        val sl = realLayout ?: return fallbackSingleLine(canvas, 1f)
+        val ox = compoundPaddingLeft.toFloat()
+        val oy = compoundPaddingTop.toFloat()
+        for (i in 0 until lineCount) drawCreamLine(canvas, sl, i, ox, oy, 1f)
+    }
+
+    private fun drawDecryptReveal(canvas: Canvas) {
+        val sl = realLayout ?: return fallbackReveal(canvas, toWipeFrac(animProgress))
+        val ox = compoundPaddingLeft.toFloat()
+        val oy = compoundPaddingTop.toFloat()
+
+        val done    = animProgress.toInt().coerceIn(0, lineCount)
+        val rawFrac = animProgress - done.toFloat()
+        val wf      = toWipeFrac(rawFrac)
+
+        for (i in 0 until lineCount) {
+            val lineTop    = sl.getLineTop(i).toFloat() + oy
+            val lineBottom = sl.getLineBottom(i).toFloat() + oy
+            val lineH      = lineBottom - lineTop
+            // Cream rect width = encrypted line width (not decrypted line width)
+            val lineW      = encryptedLineWidthFor(i)
+
+            val lineStart = sl.getLineStart(i)
+            val lineEnd   = sl.getLineVisibleEnd(i)
+            val lineText  = decryptedText.substring(
+                lineStart.coerceIn(0, decryptedText.length),
+                lineEnd.coerceIn(0, decryptedText.length)
+            )
+
+            when {
+                i < done -> {
+                    // Fully revealed — real text only, no cream
+                    val y = lineTop + lineH / 2f - (realPaint.descent() + realPaint.ascent()) / 2f
+                    canvas.drawText(lineText, ox, y, realPaint)
                 }
-            }
 
-            // HOLD: fully visible overlay, static
-            Phase.HOLD -> {
-                val w = width.toFloat(); val h = height.toFloat()
-                if (w == 0f || h == 0f) return
-                overlayRect.set(0f, 0f, w, h)
-                canvas.drawRoundRect(overlayRect, cornerRadius, cornerRadius, overlayPaint)
-                canvas.save()
-                canvas.clipRect(0f, 0f, w, h)
-                drawEncryptedText(canvas, h)
-                canvas.restore()
-            }
+                i == done && wf > 0f -> {
+                    // Currently animating — split at encrypted width * wf
+                    val splitX = lineW * wf
 
-            // Phase 2: real text reveals L→R, overlay retreats L→R
-            Phase.DECRYPT_REVEAL -> {
-                val w = width.toFloat(); val h = height.toFloat()
-                if (w == 0f || h == 0f) return
-
-                val revealRight = w * revealProgress
-                val overlayLeft = w * revealProgress
-
-                if (revealRight > 0f) {
+                    // Real text revealed left of split
                     canvas.save()
-                    canvas.clipRect(0f, 0f, revealRight, h)
-                    drawRealText(canvas, h)
+                    canvas.clipRect(ox, lineTop, ox + splitX, lineBottom)
+                    val y = lineTop + lineH / 2f - (realPaint.descent() + realPaint.ascent()) / 2f
+                    canvas.drawText(lineText, ox, y, realPaint)
                     canvas.restore()
+
+                    // Cream retreating right of split
+                    val creamLeft = ox + splitX
+                    if (creamLeft < ox + lineW) {
+                        rowRect.set(creamLeft, lineTop, ox + lineW, lineBottom)
+                        canvas.drawRoundRect(rowRect, cornerRadius, cornerRadius, overlayPaint)
+                        canvas.save()
+                        canvas.clipRect(creamLeft, lineTop, ox + lineW, lineBottom)
+                        val ey = lineTop + lineH / 2f - (encryptPaint.descent() + encryptPaint.ascent()) / 2f
+                        canvas.drawText(lineEncryptedTexts.getOrElse(i) { "" }, ox, ey, encryptPaint)
+                        canvas.restore()
+                    }
                 }
 
-                if (overlayLeft < w) {
-                    overlayRect.set(overlayLeft, 0f, w, h)
-                    canvas.drawRoundRect(overlayRect, cornerRadius, cornerRadius, overlayPaint)
-                    canvas.save()
-                    canvas.clipRect(overlayLeft, 0f, w, h)
-                    drawEncryptedText(canvas, h)
-                    canvas.restore()
+                else -> {
+                    // Not yet started — full cream row at encrypted width
+                    drawCreamLine(canvas, sl, i, ox, oy, 1f)
                 }
             }
         }
     }
 
-    // ── draw helpers ──────────────────────────────────────────────────────────
+    // ── per-line draw helper ──────────────────────────────────────────────────
 
     /**
-     * Draw encrypted text vertically centered within the cream rect of height [h].
-     * Formula: h/2 - (descent + ascent)/2 places the text baseline so the
-     * visual centre of the text cap-height aligns with the centre of the rect.
+     * Draw a cream rect for line [lineIndex].
+     * Width = encryptedLineWidthFor(lineIndex) * wipeFrac.
+     * The encrypted text is drawn and clipped to the same rect.
      */
-    private fun drawEncryptedText(canvas: Canvas, h: Float) {
-        val x = compoundPaddingLeft.toFloat()
-        // Vertically centre: midpoint of rect minus midpoint of text bounds
-        val y = h / 2f - (encryptedTextPaint.descent() + encryptedTextPaint.ascent()) / 2f
-        canvas.drawText(encryptedText, x, y, encryptedTextPaint)
+    private fun drawCreamLine(
+        canvas: Canvas, sl: StaticLayout,
+        lineIndex: Int, ox: Float, oy: Float, wipeFrac: Float
+    ) {
+        val lineTop    = sl.getLineTop(lineIndex).toFloat() + oy
+        val lineBottom = sl.getLineBottom(lineIndex).toFloat() + oy
+        val lineH      = lineBottom - lineTop
+        // Use encrypted width — the cream rect width matches the encrypted text
+        val lineW      = encryptedLineWidthFor(lineIndex)
+        val right      = ox + lineW * wipeFrac
+
+        rowRect.set(ox, lineTop, right, lineBottom)
+        canvas.drawRoundRect(rowRect, cornerRadius, cornerRadius, overlayPaint)
+
+        canvas.save()
+        canvas.clipRect(ox, lineTop, right, lineBottom)
+        val ey = lineTop + lineH / 2f - (encryptPaint.descent() + encryptPaint.ascent()) / 2f
+        canvas.drawText(lineEncryptedTexts.getOrElse(lineIndex) { "" }, ox, ey, encryptPaint)
+        canvas.restore()
     }
 
-    /**
-     * Draw real decrypted text vertically centered within the view height [h].
-     */
-    private fun drawRealText(canvas: Canvas, h: Float) {
-        val x = compoundPaddingLeft.toFloat()
-        val y = h / 2f - (realTextPaint.descent() + realTextPaint.ascent()) / 2f
-        canvas.drawText(decryptedText, x, y, realTextPaint)
+    // ── single-line fallbacks (before realLayout is built) ────────────────────
+
+    private fun fallbackSingleLine(canvas: Canvas, wf: Float) {
+        val lw = encryptPaint.measureText(encryptedSingleLine) + linePaddingPx
+        val h  = height.toFloat()
+        val ox = compoundPaddingLeft.toFloat()
+        rowRect.set(ox, 0f, ox + lw * wf, h)
+        canvas.drawRoundRect(rowRect, cornerRadius, cornerRadius, overlayPaint)
+        canvas.save()
+        canvas.clipRect(ox, 0f, ox + lw * wf, h)
+        val y = h / 2f - (encryptPaint.descent() + encryptPaint.ascent()) / 2f
+        canvas.drawText(encryptedSingleLine, ox, y, encryptPaint)
+        canvas.restore()
+    }
+
+    private fun fallbackReveal(canvas: Canvas, wf: Float) {
+        val lw     = encryptPaint.measureText(encryptedSingleLine) + linePaddingPx
+        val h      = height.toFloat()
+        val ox     = compoundPaddingLeft.toFloat()
+        val splitX = lw * wf
+
+        canvas.save()
+        canvas.clipRect(ox, 0f, ox + splitX, h)
+        val y = h / 2f - (realPaint.descent() + realPaint.ascent()) / 2f
+        canvas.drawText(decryptedText, ox, y, realPaint)
+        canvas.restore()
+
+        if (ox + splitX < ox + lw) {
+            rowRect.set(ox + splitX, 0f, ox + lw, h)
+            canvas.drawRoundRect(rowRect, cornerRadius, cornerRadius, overlayPaint)
+            canvas.save()
+            canvas.clipRect(ox + splitX, 0f, ox + lw, h)
+            val ey = h / 2f - (encryptPaint.descent() + encryptPaint.ascent()) / 2f
+            canvas.drawText(encryptedSingleLine, ox, ey, encryptPaint)
+            canvas.restore()
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
