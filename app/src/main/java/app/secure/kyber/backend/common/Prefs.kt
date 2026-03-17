@@ -8,6 +8,9 @@ object Prefs {
     private const val FILE = "kyber_prefs"
     private const val KEY_UNION_ID = "union_id"
     private const val KEY_PUBLIC_KEY = "public_key"
+    private const val KEY_ONION_ADDRESS = "onion_address"
+    private const val KEY_SESSION_TOKEN = "session_token"
+    private const val KEY_CIRCUIT_ID = "circuit_id"
     private const val KEY_NAME = "name"
     private const val KEY_PASSWORD = "password"
 
@@ -28,6 +31,27 @@ object Prefs {
         }
     }
 
+    fun setOnionAddress(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_ONION_ADDRESS) else putString(KEY_ONION_ADDRESS, value)
+            apply()
+        }
+    }
+
+    fun setSessionToken(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_SESSION_TOKEN) else putString(KEY_SESSION_TOKEN, value)
+            apply()
+        }
+    }
+
+    fun setCircuitId(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_CIRCUIT_ID) else putString(KEY_CIRCUIT_ID, value)
+            apply()
+        }
+    }
+
     fun setDisappearingMessagesStatus(ctx: Context, value: String?){
         prefs(ctx).edit().apply{
             if (value == null) remove(DISAPPEARING_MESSAGES_STATUS) else putString(DISAPPEARING_MESSAGES_STATUS, value)
@@ -41,7 +65,6 @@ object Prefs {
             apply()
         }
     }
-
 
     fun setPublicKey(ctx: Context, value: String?) {
         prefs(ctx).edit().apply {
@@ -78,6 +101,9 @@ object Prefs {
 
     // Getters
     fun getUnionId(ctx: Context): String? = prefs(ctx).getString(KEY_UNION_ID, null)
+    fun getOnionAddress(ctx: Context): String? = prefs(ctx).getString(KEY_ONION_ADDRESS, null)
+    fun getSessionToken(ctx: Context): String? = prefs(ctx).getString(KEY_SESSION_TOKEN, null)
+    fun getCircuitId(ctx: Context): String? = prefs(ctx).getString(KEY_CIRCUIT_ID, null)
     fun getPublicKey(ctx: Context): String? = prefs(ctx).getString(KEY_PUBLIC_KEY, null)
     fun getName(ctx: Context): String? = prefs(ctx).getString(KEY_NAME, null)
     fun getPassword(ctx: Context): String? = prefs(ctx).getString(KEY_PASSWORD, null)
@@ -94,7 +120,6 @@ object Prefs {
             null
         }
     }
-
 
     // Utilities
     fun clear(ctx: Context) = prefs(ctx).edit().clear().apply()

@@ -110,8 +110,13 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // JSON parsing
-    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+    // Retrofit & Networking
+    implementation libs.retrofit
+    implementation libs.retrofit.moshi
+    implementation libs.okhttp
+    implementation libs.okhttp.logging
+    implementation libs.moshi
+    ksp libs.moshi.kotlin.codegen
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")

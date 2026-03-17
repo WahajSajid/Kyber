@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -55,6 +56,7 @@ import app.secure.kyber.adapters.MessageAdapter
 import app.secure.kyber.adapters.SelectedMediaAdapter
 import app.secure.kyber.adapters.emoji_adapter.CustomRecentEmojiProvider
 import app.secure.kyber.audio.AudioRecordingManager
+import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.dataClasses.SelectedMediaParcelable
 import app.secure.kyber.databinding.FragmentChatBinding
@@ -75,10 +77,14 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Locale
+import javax.inject.Inject
 
 @Suppress("UNCHECKED_CAST")
 @AndroidEntryPoint
 class ChatFragment : Fragment(R.layout.fragment_chat) {
+
+    @Inject
+    lateinit var repository: KyberRepository
 
     private lateinit var unionClient: UnionClient
     private var serverHost by mutableStateOf("139.59.96.43")
@@ -200,8 +206,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 )
             }
             if (!list.isNullOrEmpty()) {
-                val unionId = Prefs.getUnionId(requireContext()).toString()
-                val name = Prefs.getName(requireContext()).toString()
+                val unionId = Prefs.getUnionId(requireContext()) ?: ""
+                val name = Prefs.getName(requireContext()) ?: ""
                 for (item in list) {
                     val caption = if (item.caption.isBlank()) {
                         if (item.type == "VIDEO") "video" else "photo"
@@ -220,14 +226,16 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             )
                         }
                     } else {
+                        val timestamp = System.currentTimeMillis().toString()
                         vm.saveMessage(
                             msg = caption,
                             senderId = targetUnionId,
-                            timestamp = System.currentTimeMillis().toString(),
+                            timestamp = timestamp,
                             isSent = true,
                             type = item.type,
                             uri = item.uriString
                         )
+                        sendMessage(caption, item.type, item.uriString)
                     }
                 }
             }
@@ -260,8 +268,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     @SuppressLint("ClickableViewAccessibility")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        val name = Prefs.getName(requireContext()).toString()
-        val unionId = Prefs.getUnionId(requireContext()).toString()
+        val name = Prefs.getName(requireContext()) ?: ""
+        val unionId = Prefs.getUnionId(requireContext()) ?: ""
 
         messageEdit = binding.etMsg
         emojiPickerContainer = binding.emojiPickerContainer
@@ -506,11 +514,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 binding.etMsg.setText("")
                             }
                         } else {
-                            sendMessage(text)
                             vm.saveMessage(
                                 text, targetUnionId,
                                 System.currentTimeMillis().toString(), true
                             )
+                            sendMessage(text)
                             binding.etMsg.setText("")
                         }
                     }
@@ -533,11 +541,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
-                        sendMessage(text)
                         vm.saveMessage(
                             text, targetUnionId,
                             System.currentTimeMillis().toString(), true
                         )
+                        sendMessage(text)
                         binding.etMsg.setText("")
                     }
                 }
@@ -694,21 +702,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             recentEmojis = recentEmojisList
         )
 
-        // ── Demo decryptor ────────────────────────────────────────────────────
-        // Simulates a secure decryption delay then reveals the real message text
-        // via the scramble animation in MessageAdapter.
-        //
-        // When real crypto is ready, replace the body of this lambda:
-        //   adapterMsg.messageDecryptor = { encryptedText ->
-        //       YourCryptoEngine.decrypt(encryptedText)   // suspend fun, runs on IO
-        //   }
         adapterMsg.messageDecryptor = { encryptedText ->
-            // Simulate crypto latency (300–700 ms random per message)
             delay((300L..700L).random())
-            // Return the plaintext. For the demo this is the raw stored text.
             encryptedText
         }
-        // ─────────────────────────────────────────────────────────────────────
 
         recyclerview.apply {
             viewLifecycleOwner.lifecycleScope.launch {
@@ -780,7 +777,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             encryptedText
         }
 
-        // 1. Configure the RecyclerView ONCE, outside the observer
         recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
             override fun supportsPredictiveItemAnimations() = false
         }.apply { stackFromEnd = false }
@@ -788,7 +784,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         recyclerview.clipChildren = false
         recyclerview.clipToPadding = false
 
-        // 2. Observe the LiveData and only submit the updated list
         vm1.getMessagesForGroupChat(groupId) { liveData ->
             liveData.observe(viewLifecycleOwner) { messages ->
                 groupMessageAdapter.submitList(messages) {
@@ -901,6 +896,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 System.currentTimeMillis().toString(), true,
                 "AUDIO", fileUri, ampsJson
             )
+            sendMessage("Voice Message ($durationStr)", "AUDIO", fileUri)
         }
     }
 
@@ -1121,8 +1117,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun performSendForSelectedMedia() {
-        val unionId = Prefs.getUnionId(requireContext()).toString()
-        val name = Prefs.getName(requireContext()).toString()
+        val unionId = Prefs.getUnionId(requireContext()) ?: ""
+        val name = Prefs.getName(requireContext()) ?: ""
         for (m in selectedMedias) {
             val caption = if (m.caption.isNullOrBlank())
                 (if (m.type == "VIDEO") "video" else "photo") else m.caption
@@ -1137,6 +1133,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     caption!!, targetUnionId,
                     System.currentTimeMillis().toString(), true, m.type, m.uri.toString()
                 )
+                sendMessage(caption, m.type, m.uri.toString())
             }
         }
         val count = selectedMedias.size
@@ -1146,9 +1143,27 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.etMsg.setText("")
     }
 
-    private fun sendMessage(text: String) {
-        if (targetUnionId.isNotEmpty()) lifecycleScope.launch {
-            unionClient.sendMessage(targetUnionId, text)
+    private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
+        if (targetUnionId.isEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                // Determine payload: if image/video/audio, we might send URI or base64. 
+                // For now, following existing logic of sending text.
+                val payload = if (type == "TEXT") text else "[$type] $uri"
+                val circuitId = Prefs.getCircuitId(requireContext()) ?: ""
+                
+                // Old Socket implementation (backup)
+                unionClient.sendMessage(targetUnionId, payload)
+                
+                // New API implementation
+                val response = repository.sendMessage(targetUnionId, payload, circuitId)
+                if (!response.isSuccessful) {
+                    Log.e("ChatFragment", "Failed to send via API: ${response.errorBody()?.string()}")
+                }
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Error in sendMessage: ${e.message}")
+            }
         }
     }
 
@@ -1160,8 +1175,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         } else {
             unionClient.importIdentity(
                 mapOf(
-                    "unionId" to Prefs.getUnionId(requireContext())!!,
-                    "publicKey" to Prefs.getPublicKey(requireContext())!!
+                    "unionId" to (Prefs.getUnionId(requireContext()) ?: ""),
+                    "publicKey" to (Prefs.getPublicKey(requireContext()) ?: "")
                 )
             )
         }

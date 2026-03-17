@@ -20,9 +20,11 @@ class UnionClient {
     
     companion object {
         private const val TAG = "UnionClient"
-        private const val CONNECTION_TIMEOUT = 30000 // 30 seconds
+        private const val CONNECTION_TIMEOUT = 60000 // Increased to 60 seconds
         private const val READ_TIMEOUT = 60000 // 1 minute
         private const val HEARTBEAT_INTERVAL = 30000L // 30 seconds
+        private const val MAX_RETRIES = 3
+        private const val RETRY_DELAY = 5000L // 5 seconds
     }
 
     // Connection state
@@ -109,56 +111,89 @@ class UnionClient {
     }
 
     /**
-     * Connect to Union server
+     * Connect to Union server with retry logic
      */
     suspend fun connect(
         serverHost: String, 
         serverPort: Int = 8080,
         onConnectionChanged: ((ConnectionState) -> Unit)? = null
     ): Result<String> = withContext(Dispatchers.IO) {
+        connectionCallback = onConnectionChanged
+        var lastException: Exception? = null
+        
+        for (attempt in 1..MAX_RETRIES) {
+            try {
+                if (attempt > 1) {
+                    Log.d(TAG, "Reconnection attempt $attempt/$MAX_RETRIES...")
+                    _connectionState.value = ConnectionState.RECONNECTING
+                    connectionCallback?.invoke(ConnectionState.RECONNECTING)
+                    delay(RETRY_DELAY)
+                } else {
+                    _connectionState.value = ConnectionState.CONNECTING
+                    connectionCallback?.invoke(ConnectionState.CONNECTING)
+                }
+                
+                Log.d(TAG, "Connecting to Union server at $serverHost:$serverPort (Attempt $attempt)")
+                
+                // Close existing socket if any
+                closeSocket()
+                
+                // Create socket connection
+                val newSocket = Socket()
+                newSocket.soTimeout = READ_TIMEOUT
+                newSocket.connect(InetSocketAddress(serverHost, serverPort), CONNECTION_TIMEOUT)
+                socket = newSocket
+                
+                // Setup streams
+                outputStream = PrintWriter(newSocket.getOutputStream(), true)
+                inputStream = BufferedReader(InputStreamReader(newSocket.getInputStream()))
+                
+                // Register with server
+                val registrationResult = registerWithServer()
+                if (!registrationResult.isSuccess) {
+                    throw Exception("Registration failed: ${registrationResult.exceptionOrNull()?.message}")
+                }
+                
+                isConnected = true
+                _connectionState.value = ConnectionState.CONNECTED
+                connectionCallback?.invoke(ConnectionState.CONNECTED)
+                
+                // Start message listening
+                startMessageListener()
+                
+                // Start heartbeat
+                startHeartbeat()
+                
+                Log.d(TAG, "Successfully connected to Union server as $unionId")
+                return@withContext Result.success("Connected as $unionId")
+                
+            } catch (e: Exception) {
+                lastException = e
+                Log.e(TAG, "Connection attempt $attempt failed: ${e.message}")
+                
+                if (attempt == MAX_RETRIES) {
+                    Log.e(TAG, "All connection attempts failed", e)
+                    _connectionState.value = ConnectionState.ERROR
+                    connectionCallback?.invoke(ConnectionState.ERROR)
+                    return@withContext Result.failure(e)
+                }
+            }
+        }
+        
+        Result.failure(lastException ?: Exception("Unknown connection error"))
+    }
+
+    private fun closeSocket() {
         try {
-            connectionCallback = onConnectionChanged
-            _connectionState.value = ConnectionState.CONNECTING
-            
-            Log.d(TAG, "Connecting to Union server at $serverHost:$serverPort")
-            
-            // Create socket connection
-            socket = Socket().apply {
-                soTimeout = READ_TIMEOUT
-                connect(InetSocketAddress(serverHost, serverPort), CONNECTION_TIMEOUT)
-            }
-            
-            // Setup streams
-            outputStream = PrintWriter(socket!!.getOutputStream(), true)
-            inputStream = BufferedReader(InputStreamReader(socket!!.getInputStream()))
-            
-            // Register with server
-            val registrationResult = registerWithServer()
-            if (!registrationResult.isSuccess) {
-                disconnect()
-                return@withContext Result.failure(
-                    Exception("Registration failed: ${registrationResult.exceptionOrNull()?.message}")
-                )
-            }
-            
-            isConnected = true
-            _connectionState.value = ConnectionState.CONNECTED
-            connectionCallback?.invoke(ConnectionState.CONNECTED)
-            
-            // Start message listening
-            startMessageListener()
-            
-            // Start heartbeat
-            startHeartbeat()
-            
-            Log.d(TAG, "Successfully connected to Union server as $unionId")
-            Result.success("Connected as $unionId")
-            
+            isConnected = false
+            connectionJob?.cancel()
+            heartbeatJob?.cancel()
+            outputStream?.close()
+            inputStream?.close()
+            socket?.close()
+            socket = null
         } catch (e: Exception) {
-            Log.e(TAG, "Connection failed", e)
-            _connectionState.value = ConnectionState.ERROR
-            connectionCallback?.invoke(ConnectionState.ERROR)
-            Result.failure(e)
+            Log.w(TAG, "Error closing socket: ${e.message}")
         }
     }
 
@@ -198,7 +233,7 @@ class UnionClient {
     private fun startMessageListener() {
         connectionJob = clientScope.launch {
             try {
-                while (isConnected && !isActive.not()) {
+                while (isConnected && isActive) {
                     val line = inputStream?.readLine()
                     if (line != null) {
                         handleServerMessage(line)
@@ -208,8 +243,10 @@ class UnionClient {
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Message listener error", e)
-                handleConnectionError(e)
+                if (isConnected) {
+                    Log.e(TAG, "Message listener error", e)
+                    handleConnectionError(e)
+                }
             }
         }
     }
@@ -480,20 +517,9 @@ class UnionClient {
      */
     suspend fun disconnect() = withContext(Dispatchers.IO) {
         try {
-            isConnected = false
-            
-            // Cancel jobs
-            connectionJob?.cancel()
-            heartbeatJob?.cancel()
-            
-            // Close streams and socket
-            outputStream?.close()
-            inputStream?.close()
-            socket?.close()
-            
+            closeSocket()
             _connectionState.value = ConnectionState.DISCONNECTED
             connectionCallback?.invoke(ConnectionState.DISCONNECTED)
-            
             Log.d(TAG, "Disconnected from Union server")
         } catch (e: Exception) {
             Log.e(TAG, "Error during disconnect", e)

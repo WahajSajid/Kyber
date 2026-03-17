@@ -2,28 +2,33 @@ package app.secure.kyber.fragments
 
 import android.os.Bundle
 import android.view.*
+import android.widget.Toast
 import androidx.core.os.bundleOf
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import app.secure.kyber.R
+import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
-import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.ContactsViewModel
-import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import kotlin.getValue
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-
+@AndroidEntryPoint
 class ContactBottomSheet : BottomSheetDialogFragment() {
 
+    @Inject
+    lateinit var repository: KyberRepository
+
     private val vm: ContactsViewModel by viewModels {
-        // quick factory — wire up Room
         val db = AppDb.get(requireContext())
         val repo = ContactRepository(db.contactDao())
         object : ViewModelProvider.Factory {
@@ -59,14 +64,37 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         val btnSave = view.findViewById<View>(R.id.btnSave)
         val btnCancel = view.findViewById<View>(R.id.btnCancel)
 
-
-        // Make trailing icon clickable
+        // Discovery Feature: Search by Username Hash
         tilId.setEndIconOnClickListener {
-           val unionId = Prefs.getUnionId(requireContext())
+            val query = etId.text?.toString()?.trim()
+            if (query.isNullOrEmpty()) {
+                Toast.makeText(requireContext(), "Enter a name or hash to search", Toast.LENGTH_SHORT).show()
+                return@setEndIconOnClickListener
+            }
 
-
+            lifecycleScope.launch {
+                try {
+                    // In a real app, we'd hash the query if it's a username. 
+                    // For now, we search directly as per Postman search?usernameHash=...
+                    val response = repository.searchUser(query)
+                    if (response.isSuccessful && response.body()?.found == true) {
+                        val data = response.body()!!
+                        etId.setText(data.onionAddress)
+                        Toast.makeText(requireContext(), "User found!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // If not found by hash, try treating it as an onion address to get Public Key
+                        val pkResponse = repository.getPublicKey(query)
+                        if (pkResponse.isSuccessful) {
+                            Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(requireContext(), "User not found on network", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(requireContext(), "Discovery service unavailable", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
-
 
         // Prefill if provided
         etId.setText(arguments?.getString(ARG_ID).orEmpty())
@@ -76,7 +104,7 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             val idOk = !etId.text.isNullOrBlank()
             val nameOk = !etName.text.isNullOrBlank()
 
-            tilId.error = if (idOk) null else "ID is required"
+            tilId.error = if (idOk) null else "ID/Onion is required"
             tilName.error = if (nameOk) null else "Name is required"
             btnSave.isEnabled = idOk && nameOk
             return btnSave.isEnabled
@@ -90,17 +118,13 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
 
         btnSave.setOnClickListener {
             if (validate()) {
+                val id = etId.text!!.toString().trim()
+                val name = etName.text!!.toString().trim()
+                
                 parentFragmentManager.setFragmentResult(
-                    REQUEST_KEY,
-                    bundleOf(
-                        KEY_ID to etId.text!!.toString().trim(),
-                        KEY_NAME to etName.text!!.toString().trim()
-                    )
+                    REQUEST_KEY, bundleOf(KEY_ID to id, KEY_NAME to name)
                 )
-                vm.saveContact(
-                    etId.text!!.toString().trim(),
-                    name = etName.text!!.toString().trim()
-                )
+                vm.saveContact(id, name)
                 dismiss()
             }
         }
