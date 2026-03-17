@@ -718,7 +718,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }
             layoutManager = object : LinearLayoutManager(requireContext()) {
                 override fun supportsPredictiveItemAnimations() = false
-            }.apply { stackFromEnd = true }
+            }.apply { stackFromEnd = false }
             adapter = adapterMsg
             clipChildren = false
             clipToPadding = false
@@ -783,7 +783,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         // 1. Configure the RecyclerView ONCE, outside the observer
         recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
             override fun supportsPredictiveItemAnimations() = false
-        }.apply { stackFromEnd = true }
+        }.apply { stackFromEnd = false }
         recyclerview.adapter = groupMessageAdapter
         recyclerview.clipChildren = false
         recyclerview.clipToPadding = false

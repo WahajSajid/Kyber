@@ -87,13 +87,27 @@ class MessageAdapter(
     private var firstLoadDone = false
 
     override fun submitList(list: List<MessageEntity>?) {
+        val prevSize = currentList.size
         handlePreCache(list)
-        super.submitList(list)
+        super.submitList(list) {
+            // After DiffUtil commits: if list grew, a new message arrived — scroll to bottom.
+            // On the initial history load (prevSize == 0, list.size > 1) we do NOT scroll,
+            // so the user sees the top of the conversation first.
+            if (list != null && list.size > prevSize && prevSize > 0) {
+                recyclerView?.scrollToPosition(list.size - 1)
+            }
+        }
     }
 
     override fun submitList(list: List<MessageEntity>?, commitCallback: Runnable?) {
+        val prevSize = currentList.size
         handlePreCache(list)
-        super.submitList(list, commitCallback)
+        super.submitList(list) {
+            if (list != null && list.size > prevSize && prevSize > 0) {
+                recyclerView?.scrollToPosition(list.size - 1)
+            }
+            commitCallback?.run()
+        }
     }
 
     /**
@@ -118,10 +132,9 @@ class MessageAdapter(
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         recyclerView = rv
-        // Ensure messages stack from the bottom so new messages in an empty chat
-        // appear at the bottom of the screen (standard chat behaviour).
-        (rv.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager)
-            ?.stackFromEnd = true
+        // stackFromEnd is intentionally NOT set. Messages start from the top in
+        // new/short conversations. Auto-scroll happens in submitList only when a
+        // new message is appended to an existing list.
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {

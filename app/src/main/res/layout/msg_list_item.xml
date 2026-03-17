@@ -251,7 +251,7 @@
         android:background="@drawable/reaction_bg"
         android:paddingHorizontal="@dimen/_1sdp"
         android:paddingVertical="@dimen/_1sdp"
-        android:text="👌"
+        android:text=""
         android:textSize="@dimen/reaction_size"
         android:visibility="gone"
         app:layout_constraintEnd_toEndOf="@id/rlMsgRcvd"
