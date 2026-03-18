@@ -2,12 +2,10 @@ package app.secure.kyber.fragments
 
 import android.app.AlertDialog
 import android.os.Bundle
-import android.util.TypedValue
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
@@ -18,13 +16,12 @@ import app.secure.kyber.R
 import app.secure.kyber.activities.MainActivity
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
-import kotlin.math.roundToInt
 
 class ChatDetailsFragment : Fragment() {
     private lateinit var binding: FragmentChatDetailsBinding
 
-    private val targetUnionId by lazy {
-        requireArguments().getString("contact_id").orEmpty()
+    private val contactOnion by lazy {
+        requireArguments().getString("contact_onion").orEmpty()
     }
     private val contactName by lazy {
         requireArguments().getString("contact_name").orEmpty()
@@ -41,8 +38,8 @@ class ChatDetailsFragment : Fragment() {
 
         (requireActivity() as MainActivity).setAppChatUser("Chat Details")
         binding.tvName.text = contactName
-        binding.tvHandle.text = targetUnionId
-        binding.avatar.text = contactName.first().toString()
+        binding.tvHandle.text = contactOnion
+        binding.avatar.text = if (contactName.isNotEmpty()) contactName.first().toString() else "?"
         binding.disappearingMessagesState.text =
             Prefs.getDisappearingMessageStatus(requireContext())
         binding.muteNotificationsStatus.text = Prefs.getMuteNotificationStatus(requireContext())
@@ -220,7 +217,6 @@ class ChatDetailsFragment : Fragment() {
             if (it.id != selectedRadioId) it.setImageResource(R.drawable.radio_unchecked)
             else it.setImageResource(R.drawable.radio_checked)
         }
-//            dialogView.findViewById<ImageButton>(selectedRadioId).setImageResource(R.drawable.radio_checked)
         dialog.dismiss()
     }
 

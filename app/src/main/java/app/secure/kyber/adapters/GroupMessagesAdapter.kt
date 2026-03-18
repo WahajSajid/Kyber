@@ -207,7 +207,7 @@ class GroupMessagesAdapter(
         val item = getItem(pos)
         val showTime = if (pos < itemCount - 1) convertDatetime(item.time) != convertDatetime(getItem(pos + 1).time) else true
         val type = item.type.uppercase(Locale.US)
-        val isSent = item.senderId == myId
+        val isSent = item.senderOnion == myId
         val isMedia = type == "IMAGE" || type == "VIDEO"
         val isAudio = type == "AUDIO"
 
@@ -234,7 +234,7 @@ class GroupMessagesAdapter(
         when { isAudio -> bindAudio(holder, item, isSent); isMedia -> bindMedia(holder, item, isSent, type); else -> bindText(holder, item, isSent) }
 
         if (isSent) holder.tvSendTime.text = convertDatetime(item.time)
-        else { holder.senderName.text = item.senderName; holder.senderId.text = item.senderId; holder.tvRcvTime.text = convertDatetime(item.time) }
+        else { holder.senderName.text = item.senderName; holder.senderId.text = item.senderOnion; holder.tvRcvTime.text = convertDatetime(item.time) }
 
         val rv = holder.reaction(isSent)
         if (item.reaction.isNotEmpty()) { rv.text = item.reaction; rv.visibility = View.VISIBLE } else rv.visibility = View.GONE
@@ -247,7 +247,7 @@ class GroupMessagesAdapter(
     fun showReactionImmediately(itemId: String, emoji: String) {
         val pos = currentList.indexOfFirst { it.messageId == itemId }; if (pos == -1) return
         (rvRef?.findViewHolderForAdapterPosition(pos) as? VH)?.let { h ->
-            val r = h.reaction(getItem(pos).senderId == myId)
+            val r = h.reaction(getItem(pos).senderOnion == myId)
             if (emoji.isEmpty()) r.visibility = View.GONE else { r.text = emoji; r.visibility = View.VISIBLE }
         }
     }
@@ -268,7 +268,7 @@ class GroupMessagesAdapter(
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
         if (payloads.isEmpty()) { onBindViewHolder(holder, position); return }
         val pos = holder.bindingAdapterPosition; if (pos == RecyclerView.NO_POSITION) return
-        if (payloads.contains("START_PLAYBACK")) { val item = getItem(pos); startPlayback(holder, item.senderId == myId, item.uri ?: return) }
+        if (payloads.contains("START_PLAYBACK")) { val item = getItem(pos); startPlayback(holder, item.senderOnion == myId, item.uri ?: return) }
         else onBindViewHolder(holder, position)
     }
 
@@ -446,7 +446,7 @@ class GroupMessagesAdapter(
 
     private fun stopPlayback(resetUi: Boolean) {
         activeHandler?.removeCallbacksAndMessages(null); activePlayer?.stop(); activePlayer?.release(); activePlayer = null
-        if (resetUi) activeHolder?.let { h -> val pos = h.bindingAdapterPosition; if (pos != -1) { val s = getItem(pos).senderId == myId; h.playIcon(s).setImageResource(R.drawable.play_ic); h.waveform(s).setProgress(0f) } }
+        if (resetUi) activeHolder?.let { h -> val pos = h.bindingAdapterPosition; if (pos != -1) { val s = getItem(pos).senderOnion == myId; h.playIcon(s).setImageResource(R.drawable.play_ic); h.waveform(s).setProgress(0f) } }
         activeUri = null; activeHolder = null
     }
 

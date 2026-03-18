@@ -9,32 +9,21 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.secure.kyber.GroupCreationBackend.LoadGroups
 import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
-import app.secure.kyber.adapters.ChatListAdapter
 import app.secure.kyber.adapters.GroupChatListAdapter
 import app.secure.kyber.backend.common.Prefs
-import app.secure.kyber.backend.models.ChatModel
-import app.secure.kyber.databinding.FragmentChatBinding
 import app.secure.kyber.databinding.FragmentGroupChatListBinding
 import app.secure.kyber.roomdb.AppDb
-import app.secure.kyber.roomdb.GroupMessageRepository
 import app.secure.kyber.roomdb.GroupRepository
-import app.secure.kyber.roomdb.MessageRepository
-import app.secure.kyber.roomdb.roomViewModel.GroupMessagesViewModel
 import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
-import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import com.google.firebase.database.FirebaseDatabase
-import kotlinx.coroutines.launch
-import kotlin.getValue
 
 @Suppress("UNCHECKED_CAST")
 class GroupChatListFragment : Fragment() {
@@ -78,7 +67,7 @@ class GroupChatListFragment : Fragment() {
             myApp.tabBtnState = "individual_chat"
             controller.navigate(R.id.action_groupChatListFragment_to_chatListFragment)
         }
-        val unionId = Prefs.getUnionId(requireContext()).toString()
+        val unionId = Prefs.getOnionAddress(requireContext()).toString()
 
         //Retrieve the groups from the database
         LoadGroups.loadGroup(unionId, database, vm)
@@ -104,7 +93,7 @@ class GroupChatListFragment : Fragment() {
         })
 
         vm.getGroupList { groupsList ->
-            groupsList.observe(context as LifecycleOwner) { groups ->
+            groupsList.observe(viewLifecycleOwner) { groups ->
                 Log.d("### Groups ###", groups.size.toString())
                 groupChatListAdapter.submitList(groups)
                 recyclerview.adapter = groupChatListAdapter

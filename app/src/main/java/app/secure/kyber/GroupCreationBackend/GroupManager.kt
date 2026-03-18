@@ -18,6 +18,9 @@ class GroupManager {
     private val groupMessagesRef = database.getReference("group_messages")
     private val userGroupsRef = database.getReference("user_groups")
 
+    private fun encodeKey(key: String): String = key.replace(".", ",")
+    private fun decodeKey(key: String): String = key.replace(",", ".")
+
     suspend fun createGroup(
         groupName: String,
         groupImage: String = "",
@@ -31,9 +34,9 @@ class GroupManager {
 
             Log.d("GroupManager", "Starting group creation for: $groupName with ID: $groupId")
 
-            val membersMap = members.associate { it.id to mapOf("id" to it.id, "name" to it.name) }.toMutableMap()
+            val membersMap = members.associate { encodeKey(it.id) to mapOf("id" to it.id, "name" to it.name) }.toMutableMap()
             // Ensure the creator is always in the member list
-            membersMap[currentUserId] = mapOf("id" to currentUserId, "name" to currentUserName)
+            membersMap[encodeKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
 
             val group = Group(
                 groupId = groupId,
@@ -80,8 +83,8 @@ class GroupManager {
 
             // Step 3: Update user_groups for all members
             try {
-                membersMap.keys.forEach { userId ->
-                    userGroupsRef.child(userId).child(groupId).setValue(true).await()
+                membersMap.keys.forEach { encodedUserId ->
+                    userGroupsRef.child(encodedUserId).child(groupId).setValue(true).await()
                 }
                 Log.d("GroupManager", "User groups updated successfully")
             } catch (e: Exception) {
@@ -114,14 +117,14 @@ class GroupManager {
             val message = GroupMessageEntity(
                 messageId = messageId,
                 group_id = groupId,
-                senderId = senderId,
+                senderOnion = senderId,
                 senderName = senderName,
                 msg = messageText,
                 time = System.currentTimeMillis().toString(),
                 isSent = true,
                 type = type,
                 uri = uri,
-                ampsJson = ampsJson
+                ampsJson = ampsJson.toString()
             )
 
             groupMessagesViewModel.saveMessage(message)
@@ -173,7 +176,7 @@ class GroupManager {
                                 messageId = messageId,
                                 group_id = group_id,
                                 msg = messageText,
-                                senderId = sender_id,
+                                senderOnion = sender_id,
                                 senderName = senderName,
                                 time = timeStamp,
                                 isSent = isSent,
@@ -188,7 +191,7 @@ class GroupManager {
                                 messageId = messageId,
                                 group_id = group_id,
                                 msg = messageText,
-                                senderId = sender_id,
+                                senderOnion = sender_id,
                                 senderName = senderName,
                                 time = timeStamp,
                                 isSent = true,
@@ -272,7 +275,7 @@ class GroupManager {
         userId: String,
         onGroupsReceived: (List<Group>) -> Unit
     ) {
-        userGroupsRef.child(userId).addValueEventListener(object : ValueEventListener {
+        userGroupsRef.child(encodeKey(userId)).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = mutableListOf<Group>()
                 val groupIds = snapshot.children.mapNotNull { it.key }
@@ -307,9 +310,5 @@ class GroupManager {
             }
         })
     }
-
-    fun removeListener(reference: DatabaseReference) {
-        // Correct implementation for removing listeners (usually you'd need the actual listener object)
-        // reference.removeEventListener(listener)
-    }
+    
 }

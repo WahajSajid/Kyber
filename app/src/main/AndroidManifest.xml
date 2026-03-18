@@ -13,7 +13,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" /> <!-- Storage Permissions for Media -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
@@ -42,6 +41,11 @@
         <activity
             android:name=".activities.FullScreenMediaActivity"
             android:exported="false" />
+        <activity
+            android:name=".activities.ScannerActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Kyber" />
 
         <service
             android:name=".onionrouting.UnionService"

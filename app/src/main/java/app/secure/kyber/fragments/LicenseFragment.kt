@@ -6,8 +6,8 @@ import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
@@ -51,8 +51,9 @@ class LicenseFragment : Fragment(R.layout.fragment_license) {
                 try {
                     val response = repository.validateLicense(key)
                     if (response.isSuccessful && response.body()?.valid == true) {
+                        Log.d("#### License Fragment ###", "License key is valid")
                         Prefs.setLicense(requireContext(), key)
-                        loadFragment(SetPasswordFragment())
+                        findNavController().navigate(R.id.action_licenseFragment_to_setPasswordFragment)
                     } else {
                         val errorMsg = response.body()?.message ?: "Invalid license key"
                         Snackbar.make(binding.root, errorMsg, Snackbar.LENGTH_SHORT).show()
@@ -65,12 +66,5 @@ class LicenseFragment : Fragment(R.layout.fragment_license) {
                 }
             }
         }
-    }
-
-    private fun loadFragment(toFragment: Fragment) {
-        val transaction = (context as AppCompatActivity).supportFragmentManager.beginTransaction()
-        transaction.replace(R.id.auth_fragment, toFragment)
-        transaction.addToBackStack(null)
-        transaction.commit()
     }
 }

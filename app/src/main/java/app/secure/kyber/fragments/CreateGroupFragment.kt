@@ -210,7 +210,7 @@ class CreateGroupFragment : Fragment() {
     }
 
     private fun getCurrentUserId(): String {
-        return Prefs.getUnionId(requireContext()) ?: ""
+        return Prefs.getOnionAddress(requireContext()) ?: ""
     }
 
     override fun onDestroy() {

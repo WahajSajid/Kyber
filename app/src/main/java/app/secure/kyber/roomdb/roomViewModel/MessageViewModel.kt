@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class MessagesViewModel(private val repo: MessageRepository, private val senderId: String) : ViewModel() {
+class MessagesViewModel(private val repo: MessageRepository, private val onionAddress: String) : ViewModel() {
     // live, auto-updating list
-    val messagesFlow = repo.observeAll(senderId)
+    val messagesFlow = repo.observeAll(onionAddress)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val lastMessagesFlow = repo.observeAllLastMsgs()
@@ -18,7 +18,7 @@ class MessagesViewModel(private val repo: MessageRepository, private val senderI
 
     fun saveMessage(
         msg: String,
-        senderId: String,
+        senderOnion: String,
         timestamp: String,
         isSent: Boolean,
         type: String = "TEXT",
@@ -26,7 +26,7 @@ class MessagesViewModel(private val repo: MessageRepository, private val senderI
         ampsJson: String? = null
     ) {
         viewModelScope.launch {
-            repo.saveMsg(msg, senderId, timestamp, isSent, type, uri, ampsJson)
+            repo.saveMsg(msg, senderOnion, timestamp, isSent, type, uri, ampsJson)
         }
     }
 

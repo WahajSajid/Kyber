@@ -11,7 +11,7 @@
         android:label="EncryptMsgPwdFragment"
         tools:layout="@layout/fragment_encrypt_msg_pwd" >
         <action
-            android:id="@+id/action_encryptMsgPwdFragment_to_displayNameFragment2"
+            android:id="@+id/action_encryptMsgPwdFragment_to_displayNameFragment"
             app:destination="@id/displayNameFragment" />
     </fragment>
     <fragment
@@ -19,11 +19,24 @@
         android:name="app.secure.kyber.fragments.LicenseFragment"
         android:label="LicenseFragment" >
         <action
+            android:id="@+id/action_licenseFragment_to_setPasswordFragment"
+            app:destination="@id/setPasswordFragment" />
+        <action
             android:id="@+id/action_licenseFragment_to_encryptMsgPwdFragment"
             app:destination="@id/encryptMsgPwdFragment" />
     </fragment>
     <fragment
+        android:id="@+id/setPasswordFragment"
+        android:name="app.secure.kyber.fragments.SetPasswordFragment"
+        android:label="SetPasswordFragment"
+        tools:layout="@layout/fragment_set_password">
+        <action
+            android:id="@+id/action_setPasswordFragment_to_displayNameFragment"
+            app:destination="@id/displayNameFragment" />
+    </fragment>
+    <fragment
         android:id="@+id/displayNameFragment"
         android:name="app.secure.kyber.fragments.DisplayNameFragment"
-        android:label="DisplayNameFragment" />
+        android:label="DisplayNameFragment"
+        tools:layout="@layout/fragment_display_name" />
 </navigation>

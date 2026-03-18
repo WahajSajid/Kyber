@@ -74,7 +74,7 @@ class NewMessagesFragment : Fragment() {
         contactListAdapter = ContactListAdapter(requireContext(), onItemClick = { contactEntity ->
 
             val args = bundleOf(
-                "contact_id" to contactEntity.id,
+                "contact_id" to contactEntity.onionAddress,
                 "contact_name" to contactEntity.name
             )
             findNavController().navigate(R.id.chatFragment, args)

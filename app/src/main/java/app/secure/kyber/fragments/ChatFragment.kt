@@ -144,7 +144,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    private val targetUnionId by lazy { requireArguments().getString("contact_id").orEmpty() }
+    private val contactOnion by lazy { requireArguments().getString("contact_onion").orEmpty() }
     private val contactName by lazy { requireArguments().getString("contact_name").orEmpty() }
     private val comingFrom by lazy { requireArguments().getString("coming_from").orEmpty() }
     private val groupId by lazy { requireArguments().getString("group_id").orEmpty() }
@@ -155,7 +155,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val repo = MessageRepository(db.messageDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                MessagesViewModel(repo, targetUnionId) as T
+                MessagesViewModel(repo, contactOnion) as T
         }
     }
 
@@ -206,7 +206,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 )
             }
             if (!list.isNullOrEmpty()) {
-                val unionId = Prefs.getUnionId(requireContext()) ?: ""
+                val onionAddr = Prefs.getOnionAddress(requireContext()) ?: ""
                 val name = Prefs.getName(requireContext()) ?: ""
                 for (item in list) {
                     val caption = if (item.caption.isBlank()) {
@@ -217,7 +217,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         lifecycleScope.launch {
                             groupManager.sendMessage(
                                 groupId = groupId,
-                                senderId = unionId,
+                                senderId = onionAddr,
                                 senderName = name,
                                 messageText = caption,
                                 groupMessagesViewModel = vm1,
@@ -229,7 +229,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         val timestamp = System.currentTimeMillis().toString()
                         vm.saveMessage(
                             msg = caption,
-                            senderId = targetUnionId,
+                            senderOnion = contactOnion,
                             timestamp = timestamp,
                             isSent = true,
                             type = item.type,
@@ -269,7 +269,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val name = Prefs.getName(requireContext()) ?: ""
-        val unionId = Prefs.getUnionId(requireContext()) ?: ""
+        val onionAddr = Prefs.getOnionAddress(requireContext()) ?: ""
 
         messageEdit = binding.etMsg
         emojiPickerContainer = binding.emojiPickerContainer
@@ -453,7 +453,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     if (!isRecordingStarted) return@setOnTouchListener true
                     if (isRecordingLocked) return@setOnTouchListener true
                     if (audioRecordingManager.isCurrentlyRecording()) {
-                        stopAndSendAudioRecording(unionId, name)
+                        stopAndSendAudioRecording(onionAddr, name)
                     }
                     true
                 }
@@ -482,7 +482,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
         binding.ivRecordSend.setOnClickListener {
-            if (isRecordingLocked) stopAndSendAudioRecording(unionId, name)
+            if (isRecordingLocked) stopAndSendAudioRecording(onionAddr, name)
         }
 
         // ── Menu / Add ────────────────────────────────────────────────────────
@@ -510,12 +510,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     if (text.isNotEmpty()) {
                         if (comingFrom == "group_chat_list") {
                             lifecycleScope.launch {
-                                groupManager.sendMessage(groupId, unionId, name, text, vm1)
+                                groupManager.sendMessage(groupId, onionAddr, name, text, vm1)
                                 binding.etMsg.setText("")
                             }
                         } else {
                             vm.saveMessage(
-                                text, targetUnionId,
+                                text, contactOnion,
                                 System.currentTimeMillis().toString(), true
                             )
                             sendMessage(text)
@@ -536,36 +536,36 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             "chat_list" -> {
                 (requireActivity() as MainActivity).setAppChatUser(
                     if (contactName.length > 15) contactName.substring(0, 14)
-                    else contactName.takeUnless { it.isBlank() } ?: targetUnionId
+                    else contactName.takeUnless { it.isBlank() } ?: contactOnion
                 )
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
                         vm.saveMessage(
-                            text, targetUnionId,
+                            text, contactOnion,
                             System.currentTimeMillis().toString(), true
                         )
                         sendMessage(text)
                         binding.etMsg.setText("")
                     }
                 }
-                (requireActivity() as MainActivity).onChatDetailsClick(targetUnionId, contactName)
+                (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
                 setListMessageAdapter()
             }
 
             "group_chat_list" -> {
-                groupManager.listenForMessages(groupId, unionId, vm1)
+                groupManager.listenForMessages(groupId, onionAddr, vm1)
                 (requireActivity() as MainActivity).setAppChatUser(groupName)
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
                         lifecycleScope.launch {
-                            groupManager.sendMessage(groupId, unionId, name, text, vm1)
+                            groupManager.sendMessage(groupId, onionAddr, name, text, vm1)
                             binding.etMsg.setText("")
                         }
                     }
                 }
-                setListGroupMessageAdapter(unionId)
+                setListGroupMessageAdapter(onionAddr)
             }
         }
 
@@ -613,7 +613,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val time = if (msg is MessageEntity) convertDatetime(msg.time)
         else convertDatetime((msg as GroupMessageEntity).time)
         val senderInfo = if (msg is GroupMessageEntity)
-            String.format("Sender: %s\nID: %s\n", msg.senderName, msg.senderId)
+            String.format("Sender: %s\nOnion: %s\n", msg.senderName, msg.senderOnion)
         else ""
         val infoMessage = String.format("%sTime: %s\nStatus: Delivered", senderInfo, time)
         Toast.makeText(requireContext(), infoMessage, Toast.LENGTH_LONG).show()
@@ -645,7 +645,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 groupId,
                 updatedGroup.lastMessage,
                 updatedGroup.timeSpan.toString(),
-                latest?.senderId ?: ""
+                latest?.senderOnion ?: ""
             )
         }
     }
@@ -722,7 +722,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    private fun setListGroupMessageAdapter(unionId: String) {
+    private fun setListGroupMessageAdapter(onionAddr: String) {
         recyclerview = binding.rvMsg
         groupMessageAdapter = GroupMessagesAdapter(
             onClick = { msg ->
@@ -768,7 +768,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     messageEdit.postDelayed({ showEmojiPicker() }, 150)
                 }
             },
-            myId = unionId,
+            myId = onionAddr,
             recentEmojis = recentEmojisList
         )
 
@@ -854,7 +854,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }.start()
     }
 
-    private fun stopAndSendAudioRecording(unionId: String, senderName: String) {
+    private fun stopAndSendAudioRecording(onionAddr: String, senderName: String) {
         val filePath = audioRecordingManager.stopRecording()
         val amplitudes = audioRecordingManager.amplitudeSamples
 
@@ -885,14 +885,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
                 groupManager.sendMessage(
-                    groupId, unionId, senderName,
+                    groupId, onionAddr, senderName,
                     "Voice Message ($durationStr)", vm1,
                     "AUDIO", fileUri, ampsJson
                 )
             }
         } else {
             vm.saveMessage(
-                "Voice Message ($durationStr)", targetUnionId,
+                "Voice Message ($durationStr)", contactOnion,
                 System.currentTimeMillis().toString(), true,
                 "AUDIO", fileUri, ampsJson
             )
@@ -1117,7 +1117,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun performSendForSelectedMedia() {
-        val unionId = Prefs.getUnionId(requireContext()) ?: ""
+        val onionAddr = Prefs.getOnionAddress(requireContext()) ?: ""
         val name = Prefs.getName(requireContext()) ?: ""
         for (m in selectedMedias) {
             val caption = if (m.caption.isNullOrBlank())
@@ -1125,12 +1125,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             if (comingFrom == "group_chat_list") {
                 lifecycleScope.launch {
                     groupManager.sendMessage(
-                        groupId, unionId, name, caption!!, vm1, m.type, m.uri.toString()
+                        groupId, onionAddr, name, caption!!, vm1, m.type, m.uri.toString()
                     )
                 }
             } else {
                 vm.saveMessage(
-                    caption!!, targetUnionId,
+                    caption!!, contactOnion,
                     System.currentTimeMillis().toString(), true, m.type, m.uri.toString()
                 )
                 sendMessage(caption, m.type, m.uri.toString())
@@ -1144,23 +1144,32 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
-        if (targetUnionId.isEmpty()) return
+        if (contactOnion.isEmpty()) return
 
         lifecycleScope.launch {
             try {
-                // Determine payload: if image/video/audio, we might send URI or base64. 
-                // For now, following existing logic of sending text.
                 val payload = if (type == "TEXT") text else "[$type] $uri"
-                val circuitId = Prefs.getCircuitId(requireContext()) ?: ""
+                var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
                 
-                // Old Socket implementation (backup)
-                unionClient.sendMessage(targetUnionId, payload)
-                
-                // New API implementation
-                val response = repository.sendMessage(targetUnionId, payload, circuitId)
-                if (!response.isSuccessful) {
-                    Log.e("ChatFragment", "Failed to send via API: ${response.errorBody()?.string()}")
+                // If circuit is missing, attempt to create it
+                if (circuitId.isEmpty()) {
+                    val circuitResp = repository.createCircuit()
+                    if (circuitResp.isSuccessful) {
+                        circuitId = circuitResp.body()?.circuitId ?: ""
+                        Prefs.setCircuitId(requireContext(), circuitId)
+                    }
                 }
+
+                // New API implementation
+                val response = repository.sendMessage(contactOnion, payload, circuitId)
+                if (!response.isSuccessful) {
+                    val errorBody = response.errorBody()?.string()
+                    Log.e("ChatFragment", "Failed to send via API: $errorBody")
+                }
+                
+                // Backup Socket implementation
+                unionClient.sendMessage(contactOnion, payload)
+
             } catch (e: Exception) {
                 Log.e("ChatFragment", "Error in sendMessage: ${e.message}")
             }
@@ -1170,12 +1179,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     fun onionAppConnection() {
         if (Prefs.getPublicKey(requireContext()).isNullOrEmpty()) {
             val exported = unionClient.exportIdentity()
-            Prefs.setUnionId(requireContext(), exported["unionId"])
+            Prefs.setOnionAddress(requireContext(), exported["onionAddress"])
             Prefs.setPublicKey(requireContext(), exported["publicKey"])
         } else {
             unionClient.importIdentity(
                 mapOf(
-                    "unionId" to (Prefs.getUnionId(requireContext()) ?: ""),
+                    "onionAddress" to (Prefs.getOnionAddress(requireContext()) ?: ""),
                     "publicKey" to (Prefs.getPublicKey(requireContext()) ?: "")
                 )
             )
@@ -1192,8 +1201,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun recieveMessage() {
-        unionClient.setMessageCallback(targetUnionId) {
-            vm.saveMessage(it.content, targetUnionId, it.timestamp.toString(), false)
+        unionClient.setMessageCallback(contactOnion) {
+            vm.saveMessage(it.content, contactOnion, it.timestamp.toString(), false)
         }
     }
 

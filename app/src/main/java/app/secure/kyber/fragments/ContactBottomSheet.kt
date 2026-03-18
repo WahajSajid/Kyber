@@ -1,8 +1,11 @@
 package app.secure.kyber.fragments
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
 import android.view.*
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.os.bundleOf
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
@@ -10,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import app.secure.kyber.R
+import app.secure.kyber.activities.ScannerActivity
 import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.roomdb.AppDb
@@ -34,6 +38,23 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 ContactsViewModel(repo) as T
+        }
+    }
+
+    private val scanLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val onionAddress = result.data?.getStringExtra("onionAddress")
+            val name = result.data?.getStringExtra("name")
+            
+            val etId = view?.findViewById<TextInputEditText>(R.id.etId)
+            val etName = view?.findViewById<TextInputEditText>(R.id.etName)
+            
+            etId?.setText(onionAddress)
+            name?.let { etName?.setText(it) }
+            
+            if (!onionAddress.isNullOrEmpty()) {
+                searchUser(onionAddress)
+            }
         }
     }
 
@@ -64,35 +85,14 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         val btnSave = view.findViewById<View>(R.id.btnSave)
         val btnCancel = view.findViewById<View>(R.id.btnCancel)
 
-        // Discovery Feature: Search by Username Hash
+        // Discovery Feature: Search by Username Hash or Scan QR
         tilId.setEndIconOnClickListener {
             val query = etId.text?.toString()?.trim()
             if (query.isNullOrEmpty()) {
-                Toast.makeText(requireContext(), "Enter a name or hash to search", Toast.LENGTH_SHORT).show()
-                return@setEndIconOnClickListener
-            }
-
-            lifecycleScope.launch {
-                try {
-                    // In a real app, we'd hash the query if it's a username. 
-                    // For now, we search directly as per Postman search?usernameHash=...
-                    val response = repository.searchUser(query)
-                    if (response.isSuccessful && response.body()?.found == true) {
-                        val data = response.body()!!
-                        etId.setText(data.onionAddress)
-                        Toast.makeText(requireContext(), "User found!", Toast.LENGTH_SHORT).show()
-                    } else {
-                        // If not found by hash, try treating it as an onion address to get Public Key
-                        val pkResponse = repository.getPublicKey(query)
-                        if (pkResponse.isSuccessful) {
-                            Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(requireContext(), "User not found on network", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(requireContext(), "Discovery service unavailable", Toast.LENGTH_SHORT).show()
-                }
+                // If empty, open scanner
+                scanLauncher.launch(Intent(requireContext(), ScannerActivity::class.java))
+            } else {
+                searchUser(query)
             }
         }
 
@@ -126,6 +126,31 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
                 )
                 vm.saveContact(id, name)
                 dismiss()
+            }
+        }
+    }
+
+    private fun searchUser(query: String) {
+        val etId = view?.findViewById<TextInputEditText>(R.id.etId)
+        lifecycleScope.launch {
+            try {
+                // Search by hash first (existing logic)
+                val response = repository.searchUser(query)
+                if (response.isSuccessful && response.body()?.found == true) {
+                    val data = response.body()!!
+                    etId?.setText(data.onionAddress)
+                    Toast.makeText(requireContext(), "User found!", Toast.LENGTH_SHORT).show()
+                } else {
+                    // Try as onion address directly
+                    val pkResponse = repository.getPublicKey(query)
+                    if (pkResponse.isSuccessful) {
+                        Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "User not found on network", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Discovery service unavailable", Toast.LENGTH_SHORT).show()
             }
         }
     }

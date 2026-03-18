@@ -1,18 +1,17 @@
 package app.secure.kyber.roomdb
 
 import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import app.secure.kyber.backend.models.ChatModel
 import kotlinx.coroutines.flow.Flow
 
 class MessageRepository(private val dao: MessageDao) {
 
-    suspend fun saveMsg(msg: String, senderId: String, timestamp: String, isSent: Boolean, type: String = "TEXT", uri: String? = null, ampsJson: String? = null) {
+    suspend fun saveMsg(msg: String, senderOnion: String, timestamp: String, isSent: Boolean, type: String = "TEXT", uri: String? = null, ampsJson: String? = null) {
 
         dao.insert(
             MessageEntity(
                 msg = msg,
-                senderId = senderId,
+                senderOnion = senderOnion,
                 time = timestamp,
                 isSent = isSent,
                 type = type,
@@ -31,10 +30,10 @@ class MessageRepository(private val dao: MessageDao) {
     }
 
     suspend fun getAllOnce(): List<MessageEntity> = dao.getAll()
-    fun observeAll(senderId: String): kotlinx.coroutines.flow.Flow<List<MessageEntity>> =
-        dao.observeAll(senderId)
+    fun observeAll(senderOnion: String): Flow<List<MessageEntity>> =
+        dao.observeAll(senderOnion)
 
-    fun observeAllLastMsgs(): kotlinx.coroutines.flow.Flow<List<ChatModel>> =
+    fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
 }
 
@@ -65,21 +64,21 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
     suspend fun getAllGroupMessages(groupId: String): LiveData<List<GroupMessageEntity>> =
         dao.getGroupMessages(groupId = groupId)
 
-    fun observeAll(groupId: String): kotlinx.coroutines.flow.Flow<MutableList<GroupMessageEntity>> =
+    fun observeAll(groupId: String): Flow<MutableList<GroupMessageEntity>> =
         dao.observeAllGroupMessages(groupId = groupId)
 
-    fun observeAllLastMsgs(): kotlinx.coroutines.flow.Flow<List<ChatModel>> =
+    fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
 }
 
 
 class ContactRepository(private val dao: ContactDao) {
 
-    suspend fun saveContact(id: String, name: String) {
+    suspend fun saveContact(onionAddress: String, name: String) {
 
         dao.insert(
             ContactEntity(
-                id = id,
+                onionAddress = onionAddress,
                 name = name
             )
         )

@@ -18,7 +18,7 @@ class ContactListAdapter(
 
     companion object {
         val DIFF = object : DiffUtil.ItemCallback<ContactEntity>() {
-            override fun areItemsTheSame(old: ContactEntity, new: ContactEntity) = old.id == new.id
+            override fun areItemsTheSame(old: ContactEntity, new: ContactEntity) = old.onionAddress == new.onionAddress
             override fun areContentsTheSame(old: ContactEntity, new: ContactEntity) = old == new
         }
     }
@@ -27,7 +27,7 @@ class ContactListAdapter(
         setHasStableIds(true) // smooth animations
     }
 
-    override fun getItemId(position: Int) = getItem(position).id.hashCode().toLong()
+    override fun getItemId(position: Int) = getItem(position).onionAddress.hashCode().toLong()
 
     // Inner class for the ViewHolder
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -37,7 +37,7 @@ class ContactListAdapter(
 
         fun bind(item: ContactEntity) {
             titleTextView.text = item.name ?: ""
-            userId.text = item.id ?: "" // keep the id visible if needed
+            userId.text = item.onionAddress ?: "" // keep the id visible if needed
         }
     }
 

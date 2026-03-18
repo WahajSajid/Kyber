@@ -5,27 +5,20 @@ import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.appcompat.app.AppCompatActivity
+import androidx.navigation.fragment.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.backend.common.Prefs
-import app.secure.kyber.databinding.FragmentEncryptMsgPwdBinding
 import app.secure.kyber.databinding.FragmentSetPasswordBinding
 import com.google.android.material.snackbar.Snackbar
-import kotlin.collections.contains
 
 class SetPasswordFragment : Fragment( R.layout.fragment_set_password) {
 
     private lateinit var binding: FragmentSetPasswordBinding
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-    }
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         binding = FragmentSetPasswordBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -47,17 +40,9 @@ class SetPasswordFragment : Fragment( R.layout.fragment_set_password) {
              }
              else{
                 Prefs.setPassword(requireContext(),binding.etPwd.text.toString().trim())
-                loadFragment(DisplayNameFragment())
+                findNavController().navigate(R.id.action_setPasswordFragment_to_displayNameFragment)
             }
 
         }
     }
-
-    private fun loadFragment(toFragment: Fragment) {
-        val transaction = (context as AppCompatActivity).supportFragmentManager.beginTransaction()
-        transaction.replace(R.id.auth_fragment,toFragment)
-        transaction.addToBackStack(null)
-        transaction.commit()
-    }
-
 }

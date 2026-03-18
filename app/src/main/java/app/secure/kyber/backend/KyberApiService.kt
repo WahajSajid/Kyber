@@ -9,6 +9,8 @@ interface KyberApiService {
     @GET("health")
     suspend fun healthCheck(): Response<Unit>
 
+    // --- Authentication ---
+
     @POST("api/v1/auth/register")
     suspend fun register(
         @Body request: RegisterRequest
@@ -19,6 +21,8 @@ interface KyberApiService {
         @Body request: RegisterRequest
     ): Response<RegisterResponse>
 
+    // --- Circuit Management ---
+
     @POST("api/v1/circuit/create")
     suspend fun createCircuit(): Response<CircuitResponse>
 
@@ -27,10 +31,24 @@ interface KyberApiService {
         @Path("circuitId") circuitId: String
     ): Response<Unit>
 
+    // --- Hidden Services ---
+
+    @POST("api/v1/hidden-service/create")
+    suspend fun createHiddenService(): Response<Unit>
+
+    @GET("api/v1/hidden-service/{onionAddress}/messages")
+    suspend fun getMessages(
+        @Path("onionAddress") onionAddress: String
+    ): Response<HiddenServiceMessageResponse>
+
+    // --- Messaging ---
+
     @POST("api/v1/message/send")
     suspend fun sendMessage(
         @Body request: SendMessageRequest
     ): Response<SendMessageResponse>
+
+    // --- Discovery ---
 
     @GET("api/v1/discovery/search")
     suspend fun searchUser(
@@ -41,6 +59,21 @@ interface KyberApiService {
     suspend fun getPublicKey(
         @Query("onionAddress") onionAddress: String
     ): Response<PublicKeyResponse>
+
+    // --- Admin - License Keys ---
+
+    @POST("api/v1/admin/license-keys")
+    suspend fun createLicenseKey(
+        @Body request: LicenseKeyRequest
+    ): Response<LicenseActionResponse>
+
+    @GET("api/v1/admin/license-keys")
+    suspend fun listLicenseKeys(): Response<LicenseListResponse>
+
+    @POST("api/v1/admin/license-keys/revoke")
+    suspend fun revokeLicenseKey(
+        @Body request: LicenseKeyRequest
+    ): Response<LicenseActionResponse>
 
     @GET("api/v1/admin/license-keys/validate")
     suspend fun validateLicenseKey(
