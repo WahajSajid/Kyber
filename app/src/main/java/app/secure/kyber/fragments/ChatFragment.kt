@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -87,7 +88,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     lateinit var repository: KyberRepository
 
     private lateinit var unionClient: UnionClient
-    private var serverHost by mutableStateOf("139.59.96.43")
+    
+    // --- UPDATED: Using the verified working IP from your API logs ---
+    private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
     private lateinit var binding: FragmentChatBinding
@@ -1147,35 +1150,56 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.etMsg.setText("")
     }
 
+    /**
+     * Sends a message through the backend API.
+     * Implements encryption (Base64 for now as placeholder for Kyber) and circuit management.
+     */
     private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
         if (contactOnion.isEmpty()) return
 
         lifecycleScope.launch {
             try {
-                val payload = if (type == "TEXT") text else "[$type] $uri"
+                val rawPayload = if (type == "TEXT") text else "[$type] $uri"
+                
+                // Base64 encode the payload as required by API contract
+                val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                
                 var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
 
-                // If circuit is missing, attempt to create it
-                if (circuitId.isEmpty()) {
-                    val circuitResp = repository.createCircuit()
-                    if (circuitResp.isSuccessful) {
-                        circuitId = circuitResp.body()?.circuitId ?: ""
-                        Prefs.setCircuitId(requireContext(), circuitId)
+                // Attempt API delivery
+                var apiSuccess = false
+                try {
+                    if (circuitId.isEmpty()) {
+                        val circuitResp = repository.createCircuit()
+                        if (circuitResp.isSuccessful) {
+                            circuitId = circuitResp.body()?.circuitId ?: ""
+                            Prefs.setCircuitId(requireContext(), circuitId)
+                        }
                     }
+
+                    if (circuitId.isNotEmpty()) {
+                        val response = repository.sendMessage(contactOnion, payload, circuitId)
+                        if (response.isSuccessful) {
+                            Log.d("ChatFragment", "Message sent via Tor Gateway")
+                            apiSuccess = true
+                        } else {
+                            Log.e("ChatFragment", "API Send Error: ${response.errorBody()?.string()}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ChatFragment", "API call failed: ${e.message}")
                 }
 
-                // New API implementation
-                val response = repository.sendMessage(contactOnion, payload, circuitId)
-                if (!response.isSuccessful) {
-                    val errorBody = response.errorBody()?.string()
-                    Log.e("ChatFragment", "Failed to send via API: $errorBody")
+                // --- INTEGRATION FIX: Proceed to Socket even if API/Circuit fails ---
+                if (!apiSuccess) {
+                    Log.w("ChatFragment", "Falling back to socket backup delivery")
                 }
-
-                // Backup Socket implementation
+                
+                // Backup Socket delivery
                 unionClient.sendMessage(contactOnion, payload)
 
             } catch (e: Exception) {
-                Log.e("ChatFragment", "Error in sendMessage: ${e.message}")
+                Log.e("ChatFragment", "Final delivery failure: ${e.message}")
             }
         }
     }
@@ -1198,6 +1222,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun connectToServer() {
         lifecycleScope.launch {
+            // Updated to the correct server IP
             unionClient.connect(serverHost, serverPort.toIntOrNull() ?: 8080) {
                 if (it == UnionClient.ConnectionState.CONNECTED) recieveMessage()
             }

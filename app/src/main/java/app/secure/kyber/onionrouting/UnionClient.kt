@@ -626,10 +626,12 @@ class UnionClient {
      * Export current identity for backup/transfer
      * @return Map containing onion address and public key (as hex)
      */
+    @OptIn(ExperimentalEncodingApi::class)
     fun exportIdentity(): Map<String, String> {
         return mapOf(
             "onionAddress" to onionAddress,
             "publicKey" to publicKey.joinToString("") { "%02x".format(it) },
+            "publicKeyBase64" to Base64.encode(publicKey),
             "exportTime" to System.currentTimeMillis().toString()
         )
     }

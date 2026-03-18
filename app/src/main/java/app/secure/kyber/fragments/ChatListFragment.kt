@@ -40,7 +40,8 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     @Inject
     lateinit var unionClient: UnionClient
 
-    private var serverHost by mutableStateOf("139.59.96.43")
+    // --- INTEGRATION FIX: Use the verified working host IP from the API ---
+    private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
     private lateinit var binding: FragmentChatListBinding

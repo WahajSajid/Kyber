@@ -24,7 +24,9 @@ interface KyberApiService {
     // --- Circuit Management ---
 
     @POST("api/v1/circuit/create")
-    suspend fun createCircuit(): Response<CircuitResponse>
+    suspend fun createCircuit(
+        @Body body: EmptyRequest = EmptyRequest()
+    ): Response<CircuitResponse>
 
     @DELETE("api/v1/circuit/{circuitId}")
     suspend fun closeCircuit(
@@ -34,7 +36,9 @@ interface KyberApiService {
     // --- Hidden Services ---
 
     @POST("api/v1/hidden-service/create")
-    suspend fun createHiddenService(): Response<Unit>
+    suspend fun createHiddenService(
+        @Body body: EmptyRequest = EmptyRequest()
+    ): Response<Unit>
 
     @GET("api/v1/hidden-service/{onionAddress}/messages")
     suspend fun getMessages(

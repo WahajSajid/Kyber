@@ -3,6 +3,7 @@ package app.secure.kyber.fragments
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import android.util.Base64
 import android.view.*
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -24,6 +25,7 @@ import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import java.security.MessageDigest
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -53,7 +55,8 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             name?.let { etName?.setText(it) }
             
             if (!onionAddress.isNullOrEmpty()) {
-                searchUser(onionAddress)
+                // For onion address, we don't need to search by hash, but we can verify it
+                verifyOnion(onionAddress)
             }
         }
     }
@@ -92,7 +95,11 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
                 // If empty, open scanner
                 scanLauncher.launch(Intent(requireContext(), ScannerActivity::class.java))
             } else {
-                searchUser(query)
+                if (query.endsWith(".onion")) {
+                    verifyOnion(query)
+                } else {
+                    searchByUsername(query)
+                }
             }
         }
 
@@ -130,28 +137,46 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         }
     }
 
-    private fun searchUser(query: String) {
+    private fun searchByUsername(username: String) {
         val etId = view?.findViewById<TextInputEditText>(R.id.etId)
         lifecycleScope.launch {
             try {
-                // Search by hash first (existing logic)
-                val response = repository.searchUser(query)
+                // 1. Hash username and Base64 encode it as required by API
+                val hash = hashUsername(username)
+                
+                // 2. Call discovery API
+                val response = repository.searchUser(hash)
                 if (response.isSuccessful && response.body()?.found == true) {
                     val data = response.body()!!
                     etId?.setText(data.onionAddress)
-                    Toast.makeText(requireContext(), "User found!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "User found: ${data.onionAddress}", Toast.LENGTH_SHORT).show()
                 } else {
-                    // Try as onion address directly
-                    val pkResponse = repository.getPublicKey(query)
-                    if (pkResponse.isSuccessful) {
-                        Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(requireContext(), "User not found on network", Toast.LENGTH_SHORT).show()
-                    }
+                    Toast.makeText(requireContext(), "User not found by username", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Discovery service unavailable", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), "Search failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun verifyOnion(onionAddress: String) {
+        lifecycleScope.launch {
+            try {
+                val pkResponse = repository.getPublicKey(onionAddress)
+                if (pkResponse.isSuccessful) {
+                    Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "Address not found on network", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Verification failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun hashUsername(name: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(name.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(hashBytes, Base64.NO_WRAP)
     }
 }

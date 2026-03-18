@@ -3,6 +3,10 @@ package app.secure.kyber.backend.beans
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
+// Empty request for POST endpoints that require {}
+@JsonClass(generateAdapter = true)
+class EmptyRequest
+
 // Auth
 @JsonClass(generateAdapter = true)
 data class RegisterRequest(

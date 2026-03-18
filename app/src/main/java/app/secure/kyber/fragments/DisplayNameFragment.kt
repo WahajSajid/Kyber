@@ -2,6 +2,7 @@ package app.secure.kyber.fragments
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
@@ -59,12 +60,19 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
                     val identity = client.exportIdentity()
                     val onionAddress = identity["onionAddress"] ?: ""
                     val publicKeyHex = identity["publicKey"] ?: ""
+                    val publicKeyBase64 = identity["publicKeyBase64"] ?: ""
 
-                    // 2. Hash the display name for the discovery service
+                    // 2. Hash the display name for the discovery service (API expects Base64)
                     val nameHash = hashUsername(name)
-
-                    // 3. Register with unique key and username hash
-                    val response = repository.register(licenseKey, publicKeyHex, nameHash)
+                    
+                    // 3. Register using the Discovery endpoint since we are providing a username hash
+                    // API expects Base64 encoded public key
+                    val response = repository.registerDiscovery(
+                        licenseKey = licenseKey,
+                        publicKey = publicKeyBase64,
+                        usernameHash = nameHash,
+                        usernameEncrypted = "" // Placeholder
+                    )
 
                     if (response.isSuccessful && response.body()?.success == true) {
                         val body = response.body()!!
@@ -74,16 +82,17 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
                         Prefs.setOnionAddress(requireContext(), onionAddress)
                         Prefs.setPublicKey(requireContext(), publicKeyHex)
                         Prefs.setSessionToken(requireContext(), body.sessionToken)
-                        Prefs.setOnionAddress(requireContext(), body.onionAddress)
+                        
+                        // Backend might return a different onion address or session info
+                        body.onionAddress?.let { Prefs.setOnionAddress(requireContext(), it) }
 
-                        // Create circuit after registration
-                        repository.createCircuit().also { circuitResp ->
-                            if (circuitResp.isSuccessful) {
-                                Prefs.setCircuitId(
-                                    requireContext(),
-                                    circuitResp.body()?.circuitId
-                                )
-                            }
+                        // Create initial circuit after registration
+                        val circuitResp = repository.createCircuit()
+                        if (circuitResp.isSuccessful) {
+                            Prefs.setCircuitId(
+                                requireContext(),
+                                circuitResp.body()?.circuitId
+                            )
                         }
 
                         goToMainActivity()
@@ -93,6 +102,7 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
                         Snackbar.make(binding.root, errorMsg, Snackbar.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
+                    Log.e("DisplayNameFragment", "Error: ${e.message}", e)
                     Snackbar.make(
                         binding.root,
                         "Registration error: ${e.message}",
@@ -105,9 +115,13 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
         }
     }
 
+    /**
+     * Hashes username using SHA-256 and encodes to Base64 as required by the backend API.
+     */
     private fun hashUsername(name: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(name.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(name.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(hashBytes, Base64.NO_WRAP)
     }
 
     private fun goToMainActivity() {
