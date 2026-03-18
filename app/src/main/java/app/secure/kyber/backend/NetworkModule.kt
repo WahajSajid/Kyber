@@ -2,6 +2,7 @@ package app.secure.kyber.backend
 
 import android.content.Context
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.onionrouting.UnionClient
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -54,5 +55,11 @@ object NetworkModule {
             .addConverterFactory(MoshiConverterFactory.create())
             .build()
             .create(KyberApiService::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUnionClient(): UnionClient {
+        return UnionClient()
     }
 }

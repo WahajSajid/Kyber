@@ -269,7 +269,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val name = Prefs.getName(requireContext()) ?: ""
-        val onionAddr = Prefs.getOnionAddress(requireContext()) ?: ""
+        val onionAddr = Prefs.getOnionAddress(requireContext()).toString()
 
         messageEdit = binding.etMsg
         emojiPickerContainer = binding.emojiPickerContainer
@@ -515,8 +515,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             }
                         } else {
                             vm.saveMessage(
-                                text, contactOnion,
-                                System.currentTimeMillis().toString(), true
+                                text,
+                                contactOnion,
+                                System.currentTimeMillis().toString(),
+                                true
                             )
                             sendMessage(text)
                             binding.etMsg.setText("")
@@ -541,6 +543,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
+                        Log.d("SENDER ONION ADDRESS", contactOnion)
                         vm.saveMessage(
                             text, contactOnion,
                             System.currentTimeMillis().toString(), true
@@ -559,6 +562,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
+                        Log.d("SENDER ONION ADDRESS", onionAddr)
                         lifecycleScope.launch {
                             groupManager.sendMessage(groupId, onionAddr, name, text, vm1)
                             binding.etMsg.setText("")
@@ -1150,7 +1154,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             try {
                 val payload = if (type == "TEXT") text else "[$type] $uri"
                 var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
-                
+
                 // If circuit is missing, attempt to create it
                 if (circuitId.isEmpty()) {
                     val circuitResp = repository.createCircuit()
@@ -1166,7 +1170,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val errorBody = response.errorBody()?.string()
                     Log.e("ChatFragment", "Failed to send via API: $errorBody")
                 }
-                
+
                 // Backup Socket implementation
                 unionClient.sendMessage(contactOnion, payload)
 

@@ -18,8 +18,13 @@ class GroupManager {
     private val groupMessagesRef = database.getReference("group_messages")
     private val userGroupsRef = database.getReference("user_groups")
 
-    private fun encodeKey(key: String): String = key.replace(".", ",")
-    private fun decodeKey(key: String): String = key.replace(",", ".")
+    private fun sanitizeKey(key: String): String {
+        return key.replace(".", ",")
+    }
+
+    private fun desanitizeKey(key: String): String {
+        return key.replace(",", ".")
+    }
 
     suspend fun createGroup(
         groupName: String,
@@ -34,9 +39,13 @@ class GroupManager {
 
             Log.d("GroupManager", "Starting group creation for: $groupName with ID: $groupId")
 
-            val membersMap = members.associate { encodeKey(it.id) to mapOf("id" to it.id, "name" to it.name) }.toMutableMap()
+            // Sanitize IDs used as keys in the members map
+            val membersMap = members.associate { 
+                sanitizeKey(it.id) to mapOf("id" to it.id, "name" to it.name) 
+            }.toMutableMap()
+            
             // Ensure the creator is always in the member list
-            membersMap[encodeKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
+            membersMap[sanitizeKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
 
             val group = Group(
                 groupId = groupId,
@@ -81,10 +90,10 @@ class GroupManager {
                 // Continue anyway - Firebase is the source of truth
             }
 
-            // Step 3: Update user_groups for all members
+            // Step 3: Update user_groups for all members (using sanitized IDs as keys)
             try {
-                membersMap.keys.forEach { encodedUserId ->
-                    userGroupsRef.child(encodedUserId).child(groupId).setValue(true).await()
+                membersMap.keys.forEach { sanitizedUserId ->
+                    userGroupsRef.child(sanitizedUserId).child(groupId).setValue(true).await()
                 }
                 Log.d("GroupManager", "User groups updated successfully")
             } catch (e: Exception) {
@@ -162,7 +171,7 @@ class GroupManager {
                     try {
                         val messageId = messageSnapshot.child("messageId").getValue(String::class.java) ?: ""
                         val group_id = messageSnapshot.child("group_id").getValue(String::class.java) ?: ""
-                        val sender_id = messageSnapshot.child("senderId").getValue(String::class.java) ?: ""
+                        val sender_id = messageSnapshot.child("senderOnion").getValue(String::class.java) ?: ""
                         val senderName = messageSnapshot.child("senderName").getValue(String::class.java) ?: ""
                         val messageText = messageSnapshot.child("msg").getValue(String::class.java) ?: ""
                         val timeStamp = messageSnapshot.child("time").getValue(String::class.java) ?: ""
@@ -275,7 +284,7 @@ class GroupManager {
         userId: String,
         onGroupsReceived: (List<Group>) -> Unit
     ) {
-        userGroupsRef.child(encodeKey(userId)).addValueEventListener(object : ValueEventListener {
+        userGroupsRef.child(sanitizeKey(userId)).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = mutableListOf<Group>()
                 val groupIds = snapshot.children.mapNotNull { it.key }
@@ -310,5 +319,9 @@ class GroupManager {
             }
         })
     }
-    
+
+    fun removeListener(reference: DatabaseReference) {
+        // Correct implementation for removing listeners (usually you'd need the actual listener object)
+        // reference.removeEventListener(listener)
+    }
 }

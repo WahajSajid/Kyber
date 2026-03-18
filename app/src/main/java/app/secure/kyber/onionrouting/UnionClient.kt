@@ -34,7 +34,7 @@ class UnionClient {
     private var isConnected = false
     
     // Client identity
-    var unionId: String = ""
+    var onionAddress: String = ""
         private set
     private var publicKey: ByteArray = ByteArray(32)
     
@@ -97,17 +97,17 @@ class UnionClient {
     }
 
     /**
-     * Generate client identity and Union ID
+     * Generate client identity and Onion Address
      */
     private fun generateClientIdentity() {
         val random = SecureRandom()
         random.nextBytes(publicKey)
         
-        // Generate Union ID (simulating deterministic generation from public key)
+        // Generate Onion Address (simulating deterministic generation from public key)
         val hash = publicKey.fold(0) { acc, byte -> acc * 31 + byte.toInt() }
-        unionId = "union_${Math.abs(hash).toString(16).padStart(16, '0')}"
+        onionAddress = "union_${Math.abs(hash).toString(16).padStart(16, '0')}"
         
-        Log.d(TAG, "Generated Union ID: $unionId")
+        Log.d(TAG, "Generated Onion Address: $onionAddress")
     }
 
     /**
@@ -164,8 +164,8 @@ class UnionClient {
                 // Start heartbeat
                 startHeartbeat()
                 
-                Log.d(TAG, "Successfully connected to Union server as $unionId")
-                return@withContext Result.success("Connected as $unionId")
+                Log.d(TAG, "Successfully connected to Union server as $onionAddress")
+                return@withContext Result.success("Connected as $onionAddress")
                 
             } catch (e: Exception) {
                 lastException = e
@@ -205,7 +205,8 @@ class UnionClient {
             val publicKeyHex = publicKey.joinToString("") { "%02x".format(it) }
             val metadata = """{"client_type":"android","algorithm":"Kyber1024-fallback","platform":"Android"}"""
             
-            val connectCommand = "CONNECT $unionId $publicKeyHex $metadata"
+            // Internal protocol still uses CONNECT command
+            val connectCommand = "CONNECT $onionAddress $publicKeyHex $metadata"
             
             Log.d(TAG, "Sending registration: $connectCommand")
             outputStream?.println(connectCommand)
@@ -293,7 +294,7 @@ class UnionClient {
                 currentMessages.add(message)
                 _messages.value = currentMessages
 
-                if (message.to == unionId || message.to == "*" || message.messageType == MessageType.BROADCAST) {
+                if (message.to == onionAddress || message.to == "*" || message.messageType == MessageType.BROADCAST) {
                     globalMessageCallback?.invoke(message)
                 }
                 // Notify callback
@@ -328,7 +329,7 @@ class UnionClient {
                 UnionMessage(
                     id = idMatch?.groupValues?.get(1) ?: "unknown",
                     from = fromMatch.groupValues[1],
-                    to = unionId,
+                    to = onionAddress,
                     content = decodedString,//contentMatch.groupValues[1],
                     timestamp = System.currentTimeMillis(),
                     messageType = MessageType.DIRECT
@@ -349,10 +350,10 @@ class UnionClient {
     }
 
     /**
-     * Send message to specific Union ID
+     * Send message to specific Onion Address
      */
     suspend fun sendMessage(
-        targetUnionId: String, 
+        targetOnionAddress: String, 
         message: String
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
@@ -360,7 +361,7 @@ class UnionClient {
                 return@withContext Result.failure(Exception("Not connected to Union server"))
             }
             
-            val command = "SEND $unionId $targetUnionId $message"
+            val command = "SEND $onionAddress $targetOnionAddress $message"
             Log.d(TAG, "Sending: $command")
             
             outputStream?.println(command)
@@ -457,17 +458,17 @@ class UnionClient {
     }
 
     /**
-     * Set callback for messages from specific Union ID
+     * Set callback for messages from specific Onion Address
      */
-    fun setMessageCallback(fromUnionId: String, callback: (UnionMessage) -> Unit) {
-        messageCallbacks[fromUnionId] = callback
+    fun setMessageCallback(fromOnionAddress: String, callback: (UnionMessage) -> Unit) {
+        messageCallbacks[fromOnionAddress] = callback
     }
 
     /**
      * Remove message callback
      */
-    fun removeMessageCallback(fromUnionId: String) {
-        messageCallbacks.remove(fromUnionId)
+    fun removeMessageCallback(fromOnionAddress: String) {
+        messageCallbacks.remove(fromOnionAddress)
     }
 
     fun setMessageCallback(callback: (UnionMessage) -> Unit) {
@@ -541,7 +542,7 @@ class UnionClient {
      */
     fun getConnectionInfo(): Map<String, Any> {
         return mapOf(
-            "unionId" to unionId,
+            "onionAddress" to onionAddress,
             "connected" to isConnected,
             "connectionState" to _connectionState.value,
             "messageCount" to _messages.value.size
@@ -550,18 +551,18 @@ class UnionClient {
 
     /**
      * Set client identity from external source
-     * @param customUnionId Custom Union ID to use
+     * @param customOnionAddress Custom Onion Address to use
      * @param customPublicKey Optional custom public key (if null, generates new one)
      * @return Result indicating success or failure
      */
     fun setClientIdentity(
-        customUnionId: String,
+        customOnionAddress: String,
         customPublicKey: ByteArray? = null
     ): Result<String> {
         return try {
-            // Validate Union ID format
-            if (!customUnionId.startsWith("union_") || customUnionId.length < 10) {
-                return Result.failure(Exception("Invalid Union ID format. Must start with 'union_' and be at least 10 characters"))
+            // Validate Onion Address format
+            if (!customOnionAddress.startsWith("union_") || customOnionAddress.length < 10) {
+                return Result.failure(Exception("Invalid Onion Address format. Must start with 'union_' and be at least 10 characters"))
             }
 
             // Check if already connected - should set identity before connecting
@@ -569,8 +570,8 @@ class UnionClient {
                 return Result.failure(Exception("Cannot change identity while connected. Please disconnect first."))
             }
 
-            // Set the Union ID
-            unionId = customUnionId
+            // Set the Onion Address
+            onionAddress = customOnionAddress
 
             // Set or generate public key
             if (customPublicKey != null) {
@@ -584,8 +585,8 @@ class UnionClient {
                 random.nextBytes(publicKey)
             }
 
-            Log.d(TAG, "Set custom Union ID: $unionId")
-            Result.success("Identity set successfully: $unionId")
+            Log.d(TAG, "Set custom Onion Address: $onionAddress")
+            Result.success("Identity set successfully: $onionAddress")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error setting client identity", e)
@@ -595,12 +596,12 @@ class UnionClient {
 
     /**
      * Set client identity from hex strings (convenient for importing)
-     * @param customUnionId Custom Union ID to use
+     * @param customOnionAddress Custom Onion Address to use
      * @param publicKeyHex Optional public key as hex string (64 characters for 32 bytes)
      * @return Result indicating success or failure
      */
     fun setClientIdentityFromHex(
-        customUnionId: String,
+        customOnionAddress: String,
         publicKeyHex: String? = null
     ): Result<String> {
         return try {
@@ -615,7 +616,7 @@ class UnionClient {
                 }
             }
 
-            setClientIdentity(customUnionId, publicKeyBytes)
+            setClientIdentity(customOnionAddress, publicKeyBytes)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -623,11 +624,11 @@ class UnionClient {
 
     /**
      * Export current identity for backup/transfer
-     * @return Map containing union ID and public key (as hex)
+     * @return Map containing onion address and public key (as hex)
      */
     fun exportIdentity(): Map<String, String> {
         return mapOf(
-            "unionId" to unionId,
+            "onionAddress" to onionAddress,
             "publicKey" to publicKey.joinToString("") { "%02x".format(it) },
             "exportTime" to System.currentTimeMillis().toString()
         )
@@ -640,13 +641,13 @@ class UnionClient {
      */
     fun importIdentity(identityData: Map<String, String>): Result<String> {
         return try {
-            val importedUnionId = identityData["unionId"]
-                ?: return Result.failure(Exception("Missing unionId in identity data"))
+            val importedOnionAddress = identityData["onionAddress"]
+                ?: return Result.failure(Exception("Missing onionAddress in identity data"))
 
             val importedPublicKeyHex = identityData["publicKey"]
                 ?: return Result.failure(Exception("Missing publicKey in identity data"))
 
-            setClientIdentityFromHex(importedUnionId, importedPublicKeyHex)
+            setClientIdentityFromHex(importedOnionAddress, importedPublicKeyHex)
         } catch (e: Exception) {
             Result.failure(Exception("Failed to import identity: ${e.message}"))
         }

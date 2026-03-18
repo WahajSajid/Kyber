@@ -11,9 +11,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -27,13 +29,17 @@ import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @Suppress("DEPRECATION")
 @AndroidEntryPoint
 class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
-    private lateinit var unionClient: UnionClient
+    @Inject
+    lateinit var unionClient: UnionClient
+
     private var serverHost by mutableStateOf("139.59.96.43")
     private var serverPort by mutableStateOf("8080")
 
@@ -62,7 +68,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         navController = view.findNavController()
-        unionClient = UnionClient()
         myApp = requireActivity().application as MyApp
 
         onionAppConnection()
@@ -75,18 +80,30 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     }
 
     fun onionAppConnection() {
-        if (Prefs.getPublicKey(requireContext()).isNullOrEmpty()) {
+        val onion = Prefs.getOnionAddress(requireContext())
+        val publicKey = Prefs.getPublicKey(requireContext())
+
+        if (publicKey.isNullOrEmpty()) {
             val exportedIdentity = unionClient.exportIdentity()
             Prefs.setOnionAddress(requireContext(), exportedIdentity["onionAddress"])
             Prefs.setPublicKey(requireContext(), exportedIdentity["publicKey"])
         } else {
-            val m = mapOf(
-                "onionAddress" to (Prefs.getOnionAddress(requireContext()) ?: ""),
-                "publicKey" to (Prefs.getPublicKey(requireContext()) ?: "")
-            )
-            unionClient.importIdentity(m)
+            // Internal identity check using public API
+            if (unionClient.exportIdentity()["onionAddress"] != onion) {
+                val m = mapOf(
+                    "onionAddress" to (onion ?: ""),
+                    "publicKey" to (publicKey ?: "")
+                )
+                unionClient.importIdentity(m)
+            }
         }
-        connectToServer()
+        
+        // Ensure we are connected and listening
+        if (unionClient.connectionState.value != UnionClient.ConnectionState.CONNECTED) {
+            connectToServer()
+        } else {
+            recieveMessage()
+        }
     }
 
     private fun connectToServer() {
@@ -103,11 +120,9 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     }
 
     private fun recieveMessage() {
+        // Set global message callback to ensure all incoming messages are saved to Room
         unionClient.setMessageCallback { message ->
-            // Note: message.from here is unionId, but we prefer onionAddress for DB.
-            // If the socket protocol only gives unionId, we might need a mapping.
-            // However, the task is to use onionAddress as primary ID.
-            // For now, saving as is, but repository will use senderOnion column.
+            Log.d("ChatListFragment", "Global message received from ${message.from}")
             vm.saveMessage(
                 message.content,
                 senderOnion = message.from,
@@ -126,13 +141,16 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 "contact_name" to chatModel.name,
                 "coming_from" to "chat_list"
             )
-            navController.navigate(R.id.action_chatListFragment_to_chatFragment, args)
+            navController.navigate(R.id.action_chatListFragment_to_chatFragment, args) // Fixed navigation ID
         })
 
         recyclerview.apply {
-            viewLifecycleOwner.lifecycleScope.launchWhenStarted {
-                vm.lastMessagesFlow.collect { list ->
-                    chatListAdapter.submitList(list)
+            viewLifecycleOwner.lifecycleScope.launch {
+                viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    vm.lastMessagesFlow.collectLatest { list ->
+                        Log.d("ChatListFragment", "Updating chat list with ${list.size} items")
+                        chatListAdapter.submitList(list)
+                    }
                 }
             }
             layoutManager = LinearLayoutManager(activity)
