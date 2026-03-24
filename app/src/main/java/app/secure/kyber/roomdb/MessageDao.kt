@@ -14,16 +14,19 @@ interface MessageDao {
     @Delete
     suspend fun delete(message: MessageEntity)
 
-    @Query("SELECT * FROM messages ORDER BY time ASC")
+    // FIX: Cast time to INTEGER for numeric sorting
+    @Query("SELECT * FROM messages ORDER BY CAST(time AS INTEGER) ASC")
     suspend fun getAll(): List<MessageEntity>
 
-    @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY time ASC")
+    // FIX: Cast time to INTEGER for numeric sorting
+    @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     suspend fun getBySender(senderOnion: String): List<MessageEntity>
 
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 
-    @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY time ASC")
+    // FIX: Cast time to INTEGER for numeric sorting
+    @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     fun observeAll(senderOnion: String): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
 
     @Query("WITH latest_time AS (\n" +
@@ -55,5 +58,4 @@ interface MessageDao {
             "  ON c.onionAddress = lr.senderOnion\n" +
             "ORDER BY CAST(lr.time AS INTEGER) DESC, lr.id DESC;")
     fun observeAllLastMsgs(): kotlinx.coroutines.flow.Flow<List<ChatModel>>
-
 }

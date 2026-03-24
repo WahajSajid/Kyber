@@ -624,74 +624,128 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private suspend fun fetchMessagesFromApi() {
         try {
             val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
-            var circuitId = refreshCircuitIfNeeded()
+            var circuitId = Prefs.getCircuitId(requireContext())
 
-            var response = repository.getMessages(myOnion, circuitId)
-
-            // Auto-refresh circuit on expiry then retry once
-            if (!response.isSuccessful && response.code() == 400) {
-                Log.w("ChatFragment", "Circuit expired during poll, refreshing...")
-                circuitId = refreshCircuitIfNeeded(forceNew = true)
-                if (circuitId.isEmpty()) return
-                response = repository.getMessages(myOnion, circuitId)
+            // Auto-create circuit for receiving if it doesn't exist
+            if (circuitId.isNullOrEmpty()) {
+                val circuitResp = repository.createCircuit()
+                if (circuitResp.isSuccessful) {
+                    circuitId = circuitResp.body()?.circuitId ?: ""
+                    Prefs.setCircuitId(requireContext(), circuitId)
+                }
             }
 
+            if (circuitId.isNullOrEmpty()) return // Still no circuit, abort fetch
+
+            val response = repository.getMessages(myOnion, circuitId)
+
             if (response.isSuccessful) {
-                response.body()?.messages?.forEach { apiMsg ->
-                    // Only process messages from the current contact
-                    if (apiMsg.senderOnion == contactOnion) {
-                        val decodedPayload = try {
-                            String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
-                        } catch (e: Exception) {
-                            apiMsg.payload
-                        }
+                val apiResponse = response.body()
+                apiResponse?.messages?.forEach { apiMsg ->
 
-                        var msgText = decodedPayload
-                        var msgType = "TEXT"
-                        var msgUri: String? = null
+                    // 1. Decode Base64 payload
+                    val decodedPayload = try {
+                        String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
+                    } catch (e: Exception) {
+                        Log.e("ChatFragment", "Base64 decode failed", e)
+                        return@forEach
+                    }
 
-                        when {
-                            decodedPayload.startsWith("[IMAGE] ") -> {
+                    // 2. Extract Sender and actual Message (Format expected: SENDER::MESSAGE)
+                    val parts = decodedPayload.split("::", limit = 2)
+
+                    if (parts.size == 2) {
+                        val embeddedSender = parts[0]
+                        val actualMessage = parts[1]
+
+                        // 3. ONLY save if this message is from the person we are chatting with
+                        if (embeddedSender.equals(contactOnion, ignoreCase = true)) {
+                            var msgText = actualMessage
+                            var msgType = "TEXT"
+                            var msgUri: String? = null
+
+                            if (actualMessage.startsWith("[IMAGE] ")) {
                                 msgType = "IMAGE"
-                                msgUri = decodedPayload.removePrefix("[IMAGE] ")
+                                msgUri = actualMessage.removePrefix("[IMAGE] ")
                                 msgText = "photo"
-                            }
-                            decodedPayload.startsWith("[VIDEO] ") -> {
+                            } else if (actualMessage.startsWith("[VIDEO] ")) {
                                 msgType = "VIDEO"
-                                msgUri = decodedPayload.removePrefix("[VIDEO] ")
+                                msgUri = actualMessage.removePrefix("[VIDEO] ")
                                 msgText = "video"
-                            }
-                            decodedPayload.startsWith("[AUDIO] ") -> {
+                            } else if (actualMessage.startsWith("[AUDIO] ")) {
                                 msgType = "AUDIO"
-                                msgUri = decodedPayload.removePrefix("[AUDIO] ")
+                                msgUri = actualMessage.removePrefix("[AUDIO] ")
                                 msgText = "Voice Message"
                             }
-                        }
 
-                        // apiMessageId unique constraint in Room prevents duplicate saves
-                        vm.saveMessage(
-                            msg = msgText,
-                            senderOnion = contactOnion,
-                            timestamp = parseApiTimestamp(apiMsg.timestamp),
-                            isSent = false,
-                            type = msgType,
-                            uri = msgUri,
-                            apiMessageId = apiMsg.id
-                        )
+                            vm.saveMessage(
+                                msg = msgText,
+                                senderOnion = contactOnion,
+                                timestamp = parseApiTimestamp(apiMsg.timestamp),
+                                isSent = false,
+                                type = msgType,
+                                uri = msgUri,
+                                apiMessageId = apiMsg.id
+                            )
+                        } else {
+                            Log.d("ChatFragment", "Ignored message from $embeddedSender (Not current chat)")
+                        }
+                    } else {
+                        Log.e("ChatFragment", "Received malformed payload without sender identity: $decodedPayload")
                     }
                 }
+            } else if (response.code() == 404 || response.code() == 400) {
+                // Circuit expired, clear it so next loop creates a fresh one
+                Prefs.setCircuitId(requireContext(), "")
             }
         } catch (e: Exception) {
             Log.e("ChatFragment", "Error fetching messages from API", e)
         }
     }
 
+    // Fix the Socket Receiver as well:
+    private fun recieveMessage() {
+        unionClient.setMessageCallback(contactOnion) { socketMsg ->
+            try {
+                // Decode Base64
+                val decodedPayload = String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
+
+                // Extract Sender
+                val parts = decodedPayload.split("::", limit = 2)
+
+                if (parts.size == 2) {
+                    val embeddedSender = parts[0]
+                    val actualMessage = parts[1]
+
+                    // Verify Sender
+                    if (embeddedSender.equals(contactOnion, ignoreCase = true)) {
+                        vm.saveMessage(actualMessage, contactOnion, socketMsg.timestamp.toString(), false)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Socket receive error: ${e.message}")
+            }
+        }
+    }
+
     private fun parseApiTimestamp(timestamp: String): String {
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-            val date = sdf.parse(timestamp)
-            date?.time?.toString() ?: System.currentTimeMillis().toString()
+            // Modern Android (API 26+) handles ISO 8601 automatically
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                java.time.Instant.parse(timestamp).toEpochMilli().toString()
+            } else {
+                // Fallback for older Android versions
+                // We use 'Z' at the end of the format string to parse the offset
+                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault())
+
+                // Old SimpleDateFormat expects "+0000" instead of "Z" for UTC
+                val formattedTimestamp = timestamp.replace("Z", "+0000")
+
+                val date = sdf.parse(formattedTimestamp)
+                date?.time?.toString() ?: System.currentTimeMillis().toString()
+            }
         } catch (e: Exception) {
+            Log.e("ChatFragment", "Failed to parse timestamp: $timestamp", e)
             System.currentTimeMillis().toString()
         }
     }
@@ -707,39 +761,51 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
         lifecycleScope.launch {
             try {
-                val rawPayload = if (type == "TEXT") text else "[$type] $uri"
-                val payload = Base64.encodeToString(
-                    rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP
-                )
+                // 1. Get YOUR onion address
+                val myOnion = Prefs.getOnionAddress(requireContext()) ?: "UNKNOWN"
 
+                // 2. Format the content
+                val rawMessage = if (type == "TEXT") text else "[$type] $uri"
+
+                // 3. EMBED the sender identity inside the payload (Format: SENDER::MESSAGE)
+                val rawPayload = "$myOnion::$rawMessage"
+
+                // 4. Base64 encode the combined string
+                val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+                var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
                 var apiSuccess = false
+
                 try {
-                    var circuitId = refreshCircuitIfNeeded()
+                    // Create circuit if missing
+                    if (circuitId.isEmpty()) {
+                        val circuitResp = repository.createCircuit()
+                        if (circuitResp.isSuccessful) {
+                            circuitId = circuitResp.body()?.circuitId ?: ""
+                            Prefs.setCircuitId(requireContext(), circuitId)
+                        }
+                    }
 
                     if (circuitId.isNotEmpty()) {
-                        val response = repository.sendMessage(contactOnion, payload, circuitId)
-                        when {
-                            response.isSuccessful -> {
-                                Log.d("ChatFragment", "Message sent via Tor Gateway")
-                                apiSuccess = true
+                        var response = repository.sendMessage(contactOnion, payload, circuitId)
+
+                        // Retry logic if circuit expired (404 Not Found)
+                        if (!response.isSuccessful && (response.code() == 404 || response.code() == 400)) {
+                            Log.w("ChatFragment", "Circuit expired. Getting new one...")
+                            val retryCircuitResp = repository.createCircuit()
+                            if (retryCircuitResp.isSuccessful) {
+                                circuitId = retryCircuitResp.body()?.circuitId ?: ""
+                                Prefs.setCircuitId(requireContext(), circuitId)
+                                // Retry sending
+                                response = repository.sendMessage(contactOnion, payload, circuitId)
                             }
-                            response.code() == 400 -> {
-                                // Circuit expired — create a fresh one and retry once
-                                Log.w("ChatFragment", "Circuit expired, creating new circuit and retrying...")
-                                circuitId = refreshCircuitIfNeeded(forceNew = true)
-                                if (circuitId.isNotEmpty()) {
-                                    val retry = repository.sendMessage(contactOnion, payload, circuitId)
-                                    if (retry.isSuccessful) {
-                                        Log.d("ChatFragment", "Message sent on retry with new circuit")
-                                        apiSuccess = true
-                                    } else {
-                                        Log.e("ChatFragment", "Retry failed: ${retry.errorBody()?.string()}")
-                                    }
-                                }
-                            }
-                            else -> {
-                                Log.e("ChatFragment", "API Send Error: ${response.errorBody()?.string()}")
-                            }
+                        }
+
+                        if (response.isSuccessful) {
+                            Log.d("ChatFragment", "Message sent via Tor Gateway")
+                            apiSuccess = true
+                        } else {
+                            Log.e("ChatFragment", "API Send Error: ${response.code()}")
                         }
                     }
                 } catch (e: Exception) {
@@ -750,7 +816,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     Log.w("ChatFragment", "Falling back to socket backup delivery")
                 }
 
-                // Backup Socket delivery
+                // Socket backup
                 unionClient.sendMessage(contactOnion, payload)
 
             } catch (e: Exception) {
@@ -1348,12 +1414,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             unionClient.connect(serverHost, serverPort.toIntOrNull() ?: 8080) {
                 if (it == UnionClient.ConnectionState.CONNECTED) recieveMessage()
             }
-        }
-    }
-
-    private fun recieveMessage() {
-        unionClient.setMessageCallback(contactOnion) {
-            vm.saveMessage(it.content, contactOnion, it.timestamp.toString(), false)
         }
     }
 
