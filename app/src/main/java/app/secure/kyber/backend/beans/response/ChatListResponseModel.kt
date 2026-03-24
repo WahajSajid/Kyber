@@ -28,7 +28,7 @@ fun ChatListResponseModel.toChatModel(): ChatListModel {
 
 fun ChatListResponse.toChatModel(): ChatModel {
     return ChatModel(
-        id = id,
+        onionAddress = id,
         name = name,
         lastMessage = lastMessage,
         time = time,

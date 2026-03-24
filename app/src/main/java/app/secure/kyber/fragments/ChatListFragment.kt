@@ -11,36 +11,37 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
-import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import app.secure.kyber.ApplicationClass
 import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
 import app.secure.kyber.adapters.ChatListAdapter
-import app.secure.kyber.adapters.ContactListAdapter
 import app.secure.kyber.backend.common.Prefs
-import app.secure.kyber.backend.models.ChatModel
 import app.secure.kyber.databinding.FragmentChatListBinding
 import app.secure.kyber.onionrouting.UnionClient
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
-import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlin.getValue
+import javax.inject.Inject
 
 @Suppress("DEPRECATION")
 @AndroidEntryPoint
 class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
-    private lateinit var unionClient: UnionClient
-    private var serverHost by mutableStateOf("139.59.96.43")  // Replace with your server IP
+    @Inject
+    lateinit var unionClient: UnionClient
+
+    // --- INTEGRATION FIX: Use the verified working host IP from the API ---
+    private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
     private lateinit var binding: FragmentChatListBinding
@@ -49,18 +50,12 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private lateinit var myApp: MyApp
 
     private val vm: MessagesViewModel by viewModels {
-        // quick factory — wire up Room
         val db = AppDb.get(requireContext())
         val repo = MessageRepository(db.messageDao())
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 MessagesViewModel(repo, "") as T
         }
-    }
-
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
     }
 
     override fun onCreateView(
@@ -74,91 +69,67 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         navController = view.findNavController()
-        unionClient = UnionClient()
         myApp = requireActivity().application as MyApp
 
-
         onionAppConnection()
-
         setListAdapter()
 
-        //Click listener for the group btn
         binding.btnGroupChat.setOnClickListener {
             myApp.tabBtnState = "group_chat"
             navController.navigate(R.id.action_chatListFragment_to_groupChatListFragment)
         }
-
-
     }
 
-
     fun onionAppConnection() {
-        if (Prefs.getPublicKey(requireContext()) == null || Prefs.getPublicKey(requireContext())!!
-                .isEmpty()
-        ) {
+        val onion = Prefs.getOnionAddress(requireContext())
+        val publicKey = Prefs.getPublicKey(requireContext())
+
+        if (publicKey.isNullOrEmpty()) {
             val exportedIdentity = unionClient.exportIdentity()
-            Prefs.setUnionId(requireContext(), exportedIdentity["unionId"])
+            Prefs.setOnionAddress(requireContext(), exportedIdentity["onionAddress"])
             Prefs.setPublicKey(requireContext(), exportedIdentity["publicKey"])
         } else {
-            val m: Map<String, String> = mapOf(
-                "unionId" to Prefs.getUnionId(requireContext())!!,
-                "publicKey" to Prefs.getPublicKey(requireContext())!!
-            )
-            val importedIdentity = unionClient.importIdentity(m)
-            Log.d("TAG", "onionAppConnection: $importedIdentity")
+            // Internal identity check using public API
+            if (unionClient.exportIdentity()["onionAddress"] != onion) {
+                val m = mapOf(
+                    "onionAddress" to (onion ?: ""),
+                    "publicKey" to (publicKey ?: "")
+                )
+                unionClient.importIdentity(m)
+            }
         }
-        connectToServer()
-
+        
+        // Ensure we are connected and listening
+        if (unionClient.connectionState.value != UnionClient.ConnectionState.CONNECTED) {
+            connectToServer()
+        } else {
+            recieveMessage()
+        }
     }
 
     private fun connectToServer() {
         lifecycleScope.launch {
-            val result = unionClient.connect(
+            unionClient.connect(
                 serverHost = serverHost,
                 serverPort = serverPort.toIntOrNull() ?: 8080
             ) { state ->
-                // Connection state callback
-                when (state) {
-                    UnionClient.ConnectionState.CONNECTED -> {
-                        // Successfully connected
-
-                        //   Snackbar.make(binding.root, "Server Connected Successfully", Snackbar.LENGTH_SHORT).show()
-                        recieveMessage()
-                    }
-
-                    UnionClient.ConnectionState.ERROR -> {
-                        // Handle connection error
-                        // Snackbar.make(binding.root, "Error Connecting Server", Snackbar.LENGTH_SHORT).show()
-                    }
-
-                    else -> { /* Handle other states */
-                        // Snackbar.make(binding.root, "Something went wrong", Snackbar.LENGTH_SHORT).show()
-                    }
+                if (state == UnionClient.ConnectionState.CONNECTED) {
+                    recieveMessage()
                 }
             }
-
-            result.fold(
-                onSuccess = { message ->
-                    // Connection successful
-                },
-                onFailure = { error ->
-                    // Handle connection failure
-                }
-            )
         }
     }
 
     private fun recieveMessage() {
-
+        // Set global message callback to ensure all incoming messages are saved to Room
         unionClient.setMessageCallback { message ->
-
+            Log.d("ChatListFragment", "Global message received from ${message.from}")
             vm.saveMessage(
                 message.content,
-                senderId = message.from,
+                senderOnion = message.from,
                 timestamp = message.timestamp.toString(),
                 isSent = false,
             )
-            //Log.d("Union", "Message from specific sender: ${message.content}")
         }
     }
 
@@ -167,29 +138,24 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         recyclerview.setHasFixedSize(false)
         chatListAdapter = ChatListAdapter(requireContext(), onItemClick = { chatModel ->
             val args = bundleOf(
-                "contact_id" to chatModel.id,
+                "contact_onion" to chatModel.onionAddress,
                 "contact_name" to chatModel.name,
                 "coming_from" to "chat_list"
             )
-            navController.navigate(R.id.action_chatListFragment_to_chatFragment, args)
+            navController.navigate(R.id.action_chatListFragment_to_chatFragment, args) // Fixed navigation ID
         })
 
-
-        chatListAdapter.notifyDataSetChanged()
         recyclerview.apply {
-            viewLifecycleOwner.lifecycleScope.launchWhenStarted {
-                vm.lastMessagesFlow.collect { list ->
-                    chatListAdapter.submitList(list)
+            viewLifecycleOwner.lifecycleScope.launch {
+                viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    vm.lastMessagesFlow.collectLatest { list ->
+                        Log.d("ChatListFragment", "Updating chat list with ${list.size} items")
+                        chatListAdapter.submitList(list)
+                    }
                 }
             }
             layoutManager = LinearLayoutManager(activity)
             adapter = chatListAdapter
         }
-
-
-//        val emptyDataObserver = EmptyDataObserver(recyclerview, empty_data_parent)
-//        chatListAdapter.registerAdapterDataObserver(emptyDataObserver)
     }
-
-
 }

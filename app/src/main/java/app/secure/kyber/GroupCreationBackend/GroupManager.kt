@@ -18,6 +18,14 @@ class GroupManager {
     private val groupMessagesRef = database.getReference("group_messages")
     private val userGroupsRef = database.getReference("user_groups")
 
+    private fun sanitizeKey(key: String): String {
+        return key.replace(".", ",")
+    }
+
+    private fun desanitizeKey(key: String): String {
+        return key.replace(",", ".")
+    }
+
     suspend fun createGroup(
         groupName: String,
         groupImage: String = "",
@@ -31,9 +39,13 @@ class GroupManager {
 
             Log.d("GroupManager", "Starting group creation for: $groupName with ID: $groupId")
 
-            val membersMap = members.associate { it.id to mapOf("id" to it.id, "name" to it.name) }.toMutableMap()
+            // Sanitize IDs used as keys in the members map
+            val membersMap = members.associate { 
+                sanitizeKey(it.id) to mapOf("id" to it.id, "name" to it.name) 
+            }.toMutableMap()
+            
             // Ensure the creator is always in the member list
-            membersMap[currentUserId] = mapOf("id" to currentUserId, "name" to currentUserName)
+            membersMap[sanitizeKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
 
             val group = Group(
                 groupId = groupId,
@@ -78,10 +90,10 @@ class GroupManager {
                 // Continue anyway - Firebase is the source of truth
             }
 
-            // Step 3: Update user_groups for all members
+            // Step 3: Update user_groups for all members (using sanitized IDs as keys)
             try {
-                membersMap.keys.forEach { userId ->
-                    userGroupsRef.child(userId).child(groupId).setValue(true).await()
+                membersMap.keys.forEach { sanitizedUserId ->
+                    userGroupsRef.child(sanitizedUserId).child(groupId).setValue(true).await()
                 }
                 Log.d("GroupManager", "User groups updated successfully")
             } catch (e: Exception) {
@@ -114,14 +126,14 @@ class GroupManager {
             val message = GroupMessageEntity(
                 messageId = messageId,
                 group_id = groupId,
-                senderId = senderId,
+                senderOnion = senderId,
                 senderName = senderName,
                 msg = messageText,
                 time = System.currentTimeMillis().toString(),
                 isSent = true,
                 type = type,
                 uri = uri,
-                ampsJson = ampsJson
+                ampsJson = ampsJson.toString()
             )
 
             groupMessagesViewModel.saveMessage(message)
@@ -159,7 +171,7 @@ class GroupManager {
                     try {
                         val messageId = messageSnapshot.child("messageId").getValue(String::class.java) ?: ""
                         val group_id = messageSnapshot.child("group_id").getValue(String::class.java) ?: ""
-                        val sender_id = messageSnapshot.child("senderId").getValue(String::class.java) ?: ""
+                        val sender_id = messageSnapshot.child("senderOnion").getValue(String::class.java) ?: ""
                         val senderName = messageSnapshot.child("senderName").getValue(String::class.java) ?: ""
                         val messageText = messageSnapshot.child("msg").getValue(String::class.java) ?: ""
                         val timeStamp = messageSnapshot.child("time").getValue(String::class.java) ?: ""
@@ -173,7 +185,7 @@ class GroupManager {
                                 messageId = messageId,
                                 group_id = group_id,
                                 msg = messageText,
-                                senderId = sender_id,
+                                senderOnion = sender_id,
                                 senderName = senderName,
                                 time = timeStamp,
                                 isSent = isSent,
@@ -188,7 +200,7 @@ class GroupManager {
                                 messageId = messageId,
                                 group_id = group_id,
                                 msg = messageText,
-                                senderId = sender_id,
+                                senderOnion = sender_id,
                                 senderName = senderName,
                                 time = timeStamp,
                                 isSent = true,
@@ -272,7 +284,7 @@ class GroupManager {
         userId: String,
         onGroupsReceived: (List<Group>) -> Unit
     ) {
-        userGroupsRef.child(userId).addValueEventListener(object : ValueEventListener {
+        userGroupsRef.child(sanitizeKey(userId)).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = mutableListOf<Group>()
                 val groupIds = snapshot.children.mapNotNull { it.key }

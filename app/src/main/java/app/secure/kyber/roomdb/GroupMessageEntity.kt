@@ -8,12 +8,12 @@ data class GroupMessageEntity(
     @PrimaryKey val messageId: String,
     val group_id: String,
     val msg: String,
-    val senderId: String,
+    val senderOnion: String,
     val senderName: String,
     val time: String,
     val isSent: Boolean,
     val type: String = "TEXT",
     val uri: String? = null,
-    val ampsJson: String? = null,
+    val ampsJson: String = "",
     var reaction: String = ""
 )

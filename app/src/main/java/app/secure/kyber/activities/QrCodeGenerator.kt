@@ -1,6 +1,5 @@
 package app.secure.kyber.activities
 
-
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -14,10 +13,10 @@ import org.json.JSONObject
 object QrCodeGenerator {
 
     @SuppressLint("UseKtx")
-    fun generateQrCode(unionId: String, name: String, width: Int, height: Int): Bitmap? {
+    fun generateQrCode(onionAddress: String, name: String, width: Int, height: Int): Bitmap? {
         // Pack both values into a JSON string so scanners can parse reliably
         val payload = JSONObject().apply {
-            put("unionId", unionId)
+            put("onionAddress", onionAddress)
             put("name", name)
         }.toString()
 

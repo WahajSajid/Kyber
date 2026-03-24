@@ -12,9 +12,7 @@ import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.activities.QrCodeDialog
-import app.secure.kyber.activities.QrCodeGenerator
 import app.secure.kyber.backend.common.Prefs
-import app.secure.kyber.databinding.FragmentDisplayNameBinding
 import app.secure.kyber.databinding.FragmentSettingBinding
 
 
@@ -44,20 +42,20 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         navController = requireView().findNavController()
 
         val name = Prefs.getName(requireContext()).toString()
-        val unionId = Prefs.getUnionId(requireContext()).toString()
+        val onionAddress = Prefs.getOnionAddress(requireContext()).toString()
 
-        binding.tvName.text = unionId
+        binding.tvName.text = onionAddress
         binding.tvNameDis.text = name
 
         binding.btnQR.setOnClickListener {
-            QrCodeDialog.showQrDialog(requireContext(), unionId, name)
+            QrCodeDialog.showQrDialog(requireContext(), onionAddress, name)
         }
 
         binding.btnShare.setOnClickListener {
-            requireContext().shareText(unionId, subject = "Please use my this Id to add me on Kyber Chat")
+            requireContext().shareText(onionAddress, subject = "Please use my this Id to add me on Kyber Chat")
         }
 
-       val firstLetter = name[0]
+       val firstLetter = if (name.isNotEmpty()) name[0] else '?'
         binding.avatarLetter.text = firstLetter.toString()
 
 
