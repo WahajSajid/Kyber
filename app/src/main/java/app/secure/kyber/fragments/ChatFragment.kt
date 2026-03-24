@@ -90,8 +90,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     lateinit var repository: KyberRepository
 
     private lateinit var unionClient: UnionClient
-    
-    // --- UPDATED: Using the verified working IP from your API logs ---
+
     private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
@@ -589,56 +588,87 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         updatePreviewVisibility()
     }
 
+    // ── API Polling ───────────────────────────────────────────────────────────
+
     private fun startApiMessagePolling() {
         apiMessageJob?.cancel()
         apiMessageJob = lifecycleScope.launch {
             while (isActive) {
                 fetchMessagesFromApi()
-                delay(5000) // Poll every 5 seconds
+                delay(5000)
             }
         }
+    }
+
+    /**
+     * Ensures a valid circuit exists.
+     * Pass forceNew = true to discard the cached circuitId and create a fresh one.
+     */
+    private suspend fun refreshCircuitIfNeeded(forceNew: Boolean = false): String {
+        var circuitId = if (forceNew) "" else (Prefs.getCircuitId(requireContext()) ?: "")
+        if (circuitId.isEmpty()) {
+            try {
+                val resp = repository.createCircuit()
+                if (resp.isSuccessful) {
+                    circuitId = resp.body()?.circuitId ?: ""
+                    Prefs.setCircuitId(requireContext(), circuitId)
+                    Log.d("ChatFragment", "New circuit created: $circuitId")
+                }
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Circuit creation failed: ${e.message}")
+            }
+        }
+        return circuitId
     }
 
     private suspend fun fetchMessagesFromApi() {
         try {
             val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
-            val circuitId = Prefs.getCircuitId(requireContext())
-            
-            val response = repository.getMessages(myOnion, circuitId)
+            var circuitId = refreshCircuitIfNeeded()
+
+            var response = repository.getMessages(myOnion, circuitId)
+
+            // Auto-refresh circuit on expiry then retry once
+            if (!response.isSuccessful && response.code() == 400) {
+                Log.w("ChatFragment", "Circuit expired during poll, refreshing...")
+                circuitId = refreshCircuitIfNeeded(forceNew = true)
+                if (circuitId.isEmpty()) return
+                response = repository.getMessages(myOnion, circuitId)
+            }
+
             if (response.isSuccessful) {
-                val apiResponse = response.body()
-                apiResponse?.messages?.forEach { apiMsg ->
+                response.body()?.messages?.forEach { apiMsg ->
                     // Only process messages from the current contact
                     if (apiMsg.senderOnion == contactOnion) {
-                        // Decode Base64 payload
                         val decodedPayload = try {
                             String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
                         } catch (e: Exception) {
                             apiMsg.payload
                         }
 
-                        // Parse type and content if it's not plain text
                         var msgText = decodedPayload
                         var msgType = "TEXT"
                         var msgUri: String? = null
 
-                        if (decodedPayload.startsWith("[IMAGE] ")) {
-                            msgType = "IMAGE"
-                            msgUri = decodedPayload.removePrefix("[IMAGE] ")
-                            msgText = "photo"
-                        } else if (decodedPayload.startsWith("[VIDEO] ")) {
-                            msgType = "VIDEO"
-                            msgUri = decodedPayload.removePrefix("[VIDEO] ")
-                            msgText = "video"
-                        } else if (decodedPayload.startsWith("[AUDIO] ")) {
-                            msgType = "AUDIO"
-                            msgUri = decodedPayload.removePrefix("[AUDIO] ")
-                            msgText = "Voice Message"
+                        when {
+                            decodedPayload.startsWith("[IMAGE] ") -> {
+                                msgType = "IMAGE"
+                                msgUri = decodedPayload.removePrefix("[IMAGE] ")
+                                msgText = "photo"
+                            }
+                            decodedPayload.startsWith("[VIDEO] ") -> {
+                                msgType = "VIDEO"
+                                msgUri = decodedPayload.removePrefix("[VIDEO] ")
+                                msgText = "video"
+                            }
+                            decodedPayload.startsWith("[AUDIO] ") -> {
+                                msgType = "AUDIO"
+                                msgUri = decodedPayload.removePrefix("[AUDIO] ")
+                                msgText = "Voice Message"
+                            }
                         }
 
-                        // Save to Room - the DB will handle duplicate apiMessageId via @Insert(onConflict = REPLACE)
-                        // Actually Room is currently auto-generating IDs. We should check for existing apiMessageId first or rely on unique constraints.
-                        // For now, simple save.
+                        // apiMessageId unique constraint in Room prevents duplicate saves
                         vm.saveMessage(
                             msg = msgText,
                             senderOnion = contactOnion,
@@ -658,7 +688,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun parseApiTimestamp(timestamp: String): String {
         return try {
-            // ISO 8601 format: 2026-03-24T04:45:32+05:00
             val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
             val date = sdf.parse(timestamp)
             date?.time?.toString() ?: System.currentTimeMillis().toString()
@@ -666,6 +695,71 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             System.currentTimeMillis().toString()
         }
     }
+
+    // ── Message sending ───────────────────────────────────────────────────────
+
+    /**
+     * Sends a message through the backend API.
+     * Auto-refreshes the circuit if it has expired (400 response) and retries once.
+     */
+    private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
+        if (contactOnion.isEmpty()) return
+
+        lifecycleScope.launch {
+            try {
+                val rawPayload = if (type == "TEXT") text else "[$type] $uri"
+                val payload = Base64.encodeToString(
+                    rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP
+                )
+
+                var apiSuccess = false
+                try {
+                    var circuitId = refreshCircuitIfNeeded()
+
+                    if (circuitId.isNotEmpty()) {
+                        val response = repository.sendMessage(contactOnion, payload, circuitId)
+                        when {
+                            response.isSuccessful -> {
+                                Log.d("ChatFragment", "Message sent via Tor Gateway")
+                                apiSuccess = true
+                            }
+                            response.code() == 400 -> {
+                                // Circuit expired — create a fresh one and retry once
+                                Log.w("ChatFragment", "Circuit expired, creating new circuit and retrying...")
+                                circuitId = refreshCircuitIfNeeded(forceNew = true)
+                                if (circuitId.isNotEmpty()) {
+                                    val retry = repository.sendMessage(contactOnion, payload, circuitId)
+                                    if (retry.isSuccessful) {
+                                        Log.d("ChatFragment", "Message sent on retry with new circuit")
+                                        apiSuccess = true
+                                    } else {
+                                        Log.e("ChatFragment", "Retry failed: ${retry.errorBody()?.string()}")
+                                    }
+                                }
+                            }
+                            else -> {
+                                Log.e("ChatFragment", "API Send Error: ${response.errorBody()?.string()}")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("ChatFragment", "API call failed: ${e.message}")
+                }
+
+                if (!apiSuccess) {
+                    Log.w("ChatFragment", "Falling back to socket backup delivery")
+                }
+
+                // Backup Socket delivery
+                unionClient.sendMessage(contactOnion, payload)
+
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Final delivery failure: ${e.message}")
+            }
+        }
+    }
+
+    // ── Reactions / Reply / Forward / Info / Delete ───────────────────────────
 
     private fun handleReaction(emoji: String) {
         lifecycleScope.launch {
@@ -765,10 +859,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-
                     R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-
                     R.id.btnForwardSent -> handleForward()
                     R.id.btnForwardRcv -> handleForward()
                     R.id.btnInfoSent -> handleInfo(msg)
@@ -834,10 +926,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-
                     R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
-
                     R.id.btnForwardSent -> handleForward()
                     R.id.btnForwardRcv -> handleForward()
                     R.id.btnInfoSent -> handleInfo(msg)
@@ -1095,7 +1185,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         return array.toString()
     }
 
-    // ── Standard Chat Helpers ─────────────────────────────────────────────────
+    // ── Emoji Picker ──────────────────────────────────────────────────────────
 
     private fun showEmojiPicker() {
         isEmojiPickerVisible = true
@@ -1112,6 +1202,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.ivCamera.isVisible = true
         binding.ivMic.isVisible = true
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onPause() {
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer()
@@ -1139,6 +1231,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         lifecycleScope.launch { unionClient.disconnect() }
     }
 
+    // ── Recent Emojis ─────────────────────────────────────────────────────────
+
     private fun loadRecentEmojis() {
         val saved = Prefs.getRecentEmojis(requireContext())
         if (saved != null) {
@@ -1155,10 +1249,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         Prefs.setRecentEmojis(requireContext(), recentEmojisList)
         if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList, msgId)
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(
-            recentEmojisList
-        )
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(recentEmojisList)
     }
+
+    // ── Media Picker ──────────────────────────────────────────────────────────
 
     private fun openPicker() {
         pickMediaLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1184,13 +1278,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (uri in uris) {
             try {
                 requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) { }
             val mime = try {
                 requireContext().contentResolver.getType(uri)
-            } catch (_: Exception) {
-                null
-            }
+            } catch (_: Exception) { null }
             val type = if (mime?.startsWith("video") == true ||
                 uri.toString().endsWith(".mp4", true)
             ) "VIDEO" else "IMAGE"
@@ -1234,59 +1325,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.etMsg.setText("")
     }
 
-    /**
-     * Sends a message through the backend API.
-     * Implements encryption (Base64 for now as placeholder for Kyber) and circuit management.
-     */
-    private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
-        if (contactOnion.isEmpty()) return
-
-        lifecycleScope.launch {
-            try {
-                val rawPayload = if (type == "TEXT") text else "[$type] $uri"
-                
-                // Base64 encode the payload as required by API contract
-                val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                
-                var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
-
-                // Attempt API delivery
-                var apiSuccess = false
-                try {
-                    if (circuitId.isEmpty()) {
-                        val circuitResp = repository.createCircuit()
-                        if (circuitResp.isSuccessful) {
-                            circuitId = circuitResp.body()?.circuitId ?: ""
-                            Prefs.setCircuitId(requireContext(), circuitId)
-                        }
-                    }
-
-                    if (circuitId.isNotEmpty()) {
-                        val response = repository.sendMessage(contactOnion, payload, circuitId)
-                        if (response.isSuccessful) {
-                            Log.d("ChatFragment", "Message sent via Tor Gateway")
-                            apiSuccess = true
-                        } else {
-                            Log.e("ChatFragment", "API Send Error: ${response.errorBody()?.string()}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("ChatFragment", "API call failed: ${e.message}")
-                }
-
-                // --- INTEGRATION FIX: Proceed to Socket even if API/Circuit fails ---
-                if (!apiSuccess) {
-                    Log.w("ChatFragment", "Falling back to socket backup delivery")
-                }
-                
-                // Backup Socket delivery
-                unionClient.sendMessage(contactOnion, payload)
-
-            } catch (e: Exception) {
-                Log.e("ChatFragment", "Final delivery failure: ${e.message}")
-            }
-        }
-    }
+    // ── Union / Socket Connection ─────────────────────────────────────────────
 
     fun onionAppConnection() {
         if (Prefs.getPublicKey(requireContext()).isNullOrEmpty()) {
@@ -1306,7 +1345,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun connectToServer() {
         lifecycleScope.launch {
-            // Updated to the correct server IP
             unionClient.connect(serverHost, serverPort.toIntOrNull() ?: 8080) {
                 if (it == UnionClient.ConnectionState.CONNECTED) recieveMessage()
             }
@@ -1319,6 +1357,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
+    // ── Keyboard Helpers ──────────────────────────────────────────────────────
+
     private fun hideKeyboard(view: View) {
         (requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .hideSoftInputFromWindow(view.windowToken, 0)
@@ -1330,6 +1370,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             .showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
 
+    // ── Utility ───────────────────────────────────────────────────────────────
+
     private fun formatDuration(ms: Int): String {
         val totalSec = (ms / 1000).coerceAtLeast(0)
         return String.format(Locale.getDefault(), "%d:%02d", totalSec / 60, totalSec % 60)
@@ -1337,23 +1379,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun getTotalDuration(context: Context, uriStr: String): Int {
         if (uriStr.isBlank()) return 0
-        val uri = try {
-            uriStr.toUri()
-        } catch (_: Exception) {
-            return 0
-        }
+        val uri = try { uriStr.toUri() } catch (_: Exception) { return 0 }
         val retriever = MediaMetadataRetriever()
         return try {
             if (uri.scheme == "file") retriever.setDataSource(uri.path)
             else retriever.setDataSource(context, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (_: Exception) {
-            0
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Exception) {
-            }
+        } catch (_: Exception) { 0 } finally {
+            try { retriever.release() } catch (_: Exception) { }
         }
     }
 
@@ -1361,9 +1394,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         return try {
             val formatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (_: Exception) {
-            ""
-        }
+        } catch (_: Exception) { "" }
     }
 
     private fun formatTimestamp(timeInMillis: Long): String {

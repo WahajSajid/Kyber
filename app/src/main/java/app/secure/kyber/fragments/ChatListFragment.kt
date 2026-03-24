@@ -50,7 +50,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     @Inject
     lateinit var repository: KyberRepository
 
-    // --- INTEGRATION FIX: Use the verified working host IP from the API ---
     private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
@@ -93,68 +92,129 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
+    // ── Polling ───────────────────────────────────────────────────────────────
+
     private fun startGlobalPolling() {
         pollingJob?.cancel()
         pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            // Eagerly refresh the circuit on app start so a stale/expired circuit
+            // from a previous session is replaced before the first poll fires.
+            refreshCircuitOnStart()
             while (isActive) {
                 fetchGlobalMessages()
-                delay(5000) // Poll every 5 seconds
+                delay(5000)
             }
         }
+    }
+
+    /**
+     * Creates a new circuit on app start only if one doesn't already exist in Prefs.
+     * This avoids hitting the "Circuit expired or inactive" error on the very first poll
+     * after the app is reopened.
+     */
+    private suspend fun refreshCircuitOnStart() {
+        try {
+            val existing = Prefs.getCircuitId(requireContext())
+            if (existing.isNullOrEmpty()) {
+                val resp = repository.createCircuit()
+                if (resp.isSuccessful) {
+                    Prefs.setCircuitId(requireContext(), resp.body()?.circuitId)
+                    Log.d("ChatListFragment", "Circuit created on start: ${resp.body()?.circuitId}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ChatListFragment", "Circuit refresh on start failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Ensures a valid circuit exists.
+     * Pass forceNew = true to discard the cached circuitId and create a fresh one.
+     * Returns the circuitId, or null on failure.
+     */
+    private suspend fun refreshCircuitIfNeeded(forceNew: Boolean = false): String? {
+        var circuitId = if (forceNew) null else Prefs.getCircuitId(requireContext())
+        if (circuitId.isNullOrEmpty()) {
+            try {
+                val resp = repository.createCircuit()
+                if (resp.isSuccessful) {
+                    circuitId = resp.body()?.circuitId
+                    Prefs.setCircuitId(requireContext(), circuitId)
+                    Log.d("ChatListFragment", "New circuit created: $circuitId")
+                }
+            } catch (e: Exception) {
+                Log.e("ChatListFragment", "Circuit creation failed: ${e.message}")
+            }
+        }
+        return circuitId
     }
 
     private suspend fun fetchGlobalMessages() {
         try {
             val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
-            val circuitId = Prefs.getCircuitId(requireContext())
-            
-            val response = repository.getMessages(myOnion, circuitId)
+            var circuitId = refreshCircuitIfNeeded()
+
+            var response = repository.getMessages(myOnion, circuitId)
+
+            // If circuit expired, create a new one and retry the fetch once
+            if (!response.isSuccessful && response.code() == 400) {
+                Log.w("ChatListFragment", "Circuit expired during poll, refreshing...")
+                circuitId = refreshCircuitIfNeeded(forceNew = true)
+                if (circuitId.isNullOrEmpty()) return
+                response = repository.getMessages(myOnion, circuitId)
+            }
+
             if (response.isSuccessful) {
-                val apiResponse = response.body()
-                apiResponse?.messages?.forEach { apiMsg ->
-                    val senderOnion = apiMsg.senderOnion ?: ""
-                    if (senderOnion.isNotEmpty()) {
-                        // Decode Base64 payload
-                        val decodedPayload = try {
-                            String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
-                        } catch (e: Exception) {
-                            apiMsg.payload
-                        }
-
-                        // Parse type and content
-                        var msgText = decodedPayload
-                        var msgType = "TEXT"
-                        var msgUri: String? = null
-
-                        if (decodedPayload.startsWith("[IMAGE] ")) {
-                            msgType = "IMAGE"
-                            msgUri = decodedPayload.removePrefix("[IMAGE] ")
-                            msgText = "photo"
-                        } else if (decodedPayload.startsWith("[VIDEO] ")) {
-                            msgType = "VIDEO"
-                            msgUri = decodedPayload.removePrefix("[VIDEO] ")
-                            msgText = "video"
-                        } else if (decodedPayload.startsWith("[AUDIO] ")) {
-                            msgType = "AUDIO"
-                            msgUri = decodedPayload.removePrefix("[AUDIO] ")
-                            msgText = "Voice Message"
-                        }
-
-                        // Save to Room
-                        vm.saveMessage(
-                            msg = msgText,
-                            senderOnion = senderOnion,
-                            timestamp = parseApiTimestamp(apiMsg.timestamp),
-                            isSent = false,
-                            type = msgType,
-                            uri = msgUri,
-                            apiMessageId = apiMsg.id
-                        )
-                    }
-                }
+                processApiMessages(response.body()?.messages ?: emptyList())
             }
         } catch (e: Exception) {
             Log.e("ChatListFragment", "Global polling error", e)
+        }
+    }
+
+    private fun processApiMessages(messages: List<app.secure.kyber.backend.beans.ApiMessage>) {
+        messages.forEach { apiMsg ->
+            val senderOnion = apiMsg.senderOnion ?: return@forEach
+            if (senderOnion.isEmpty()) return@forEach
+
+            val decodedPayload = try {
+                String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
+            } catch (e: Exception) {
+                apiMsg.payload
+            }
+
+            var msgText = decodedPayload
+            var msgType = "TEXT"
+            var msgUri: String? = null
+
+            when {
+                decodedPayload.startsWith("[IMAGE] ") -> {
+                    msgType = "IMAGE"
+                    msgUri = decodedPayload.removePrefix("[IMAGE] ")
+                    msgText = "photo"
+                }
+                decodedPayload.startsWith("[VIDEO] ") -> {
+                    msgType = "VIDEO"
+                    msgUri = decodedPayload.removePrefix("[VIDEO] ")
+                    msgText = "video"
+                }
+                decodedPayload.startsWith("[AUDIO] ") -> {
+                    msgType = "AUDIO"
+                    msgUri = decodedPayload.removePrefix("[AUDIO] ")
+                    msgText = "Voice Message"
+                }
+            }
+
+            // apiMessageId unique constraint in Room prevents duplicate saves
+            vm.saveMessage(
+                msg = msgText,
+                senderOnion = senderOnion,
+                timestamp = parseApiTimestamp(apiMsg.timestamp),
+                isSent = false,
+                type = msgType,
+                uri = msgUri,
+                apiMessageId = apiMsg.id
+            )
         }
     }
 
@@ -168,6 +228,8 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
+    // ── Union / Socket Connection ─────────────────────────────────────────────
+
     fun onionAppConnection() {
         val onion = Prefs.getOnionAddress(requireContext())
         val publicKey = Prefs.getPublicKey(requireContext())
@@ -177,7 +239,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             Prefs.setOnionAddress(requireContext(), exportedIdentity["onionAddress"])
             Prefs.setPublicKey(requireContext(), exportedIdentity["publicKey"])
         } else {
-            // Internal identity check using public API
             if (unionClient.exportIdentity()["onionAddress"] != onion) {
                 val m = mapOf(
                     "onionAddress" to (onion ?: ""),
@@ -186,8 +247,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 unionClient.importIdentity(m)
             }
         }
-        
-        // Ensure we are connected and listening
+
         if (unionClient.connectionState.value != UnionClient.ConnectionState.CONNECTED) {
             connectToServer()
         } else {
@@ -209,7 +269,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     }
 
     private fun recieveMessage() {
-        // Set global message callback to ensure all incoming messages are saved to Room
         unionClient.setMessageCallback { message ->
             Log.d("ChatListFragment", "Global message received from ${message.from}")
             vm.saveMessage(
@@ -220,6 +279,8 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             )
         }
     }
+
+    // ── Adapter ───────────────────────────────────────────────────────────────
 
     private fun setListAdapter() {
         val recyclerview = binding.rv
@@ -246,6 +307,8 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             adapter = chatListAdapter
         }
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onDestroyView() {
         pollingJob?.cancel()
