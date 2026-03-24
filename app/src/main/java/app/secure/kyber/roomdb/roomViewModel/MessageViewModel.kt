@@ -23,10 +23,11 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
         isSent: Boolean,
         type: String = "TEXT",
         uri: String? = null,
-        ampsJson: String? = null
+        ampsJson: String? = null,
+        apiMessageId: String? = null
     ) {
         viewModelScope.launch {
-            repo.saveMsg(msg, senderOnion, timestamp, isSent, type, uri, ampsJson)
+            repo.saveMsg(msg, senderOnion, timestamp, isSent, type, uri, ampsJson, apiMessageId)
         }
     }
 

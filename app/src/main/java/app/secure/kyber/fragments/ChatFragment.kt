@@ -73,7 +73,9 @@ import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.text.SimpleDateFormat
@@ -244,6 +246,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }
         }
     }
+
+    private var apiMessageJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -557,6 +561,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
                 (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
                 setListMessageAdapter()
+                startApiMessagePolling()
             }
 
             "group_chat_list" -> {
@@ -582,6 +587,84 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             adapter = selectedMediaAdapter
         }
         updatePreviewVisibility()
+    }
+
+    private fun startApiMessagePolling() {
+        apiMessageJob?.cancel()
+        apiMessageJob = lifecycleScope.launch {
+            while (isActive) {
+                fetchMessagesFromApi()
+                delay(5000) // Poll every 5 seconds
+            }
+        }
+    }
+
+    private suspend fun fetchMessagesFromApi() {
+        try {
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
+            val circuitId = Prefs.getCircuitId(requireContext())
+            
+            val response = repository.getMessages(myOnion, circuitId)
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                apiResponse?.messages?.forEach { apiMsg ->
+                    // Only process messages from the current contact
+                    if (apiMsg.senderOnion == contactOnion) {
+                        // Decode Base64 payload
+                        val decodedPayload = try {
+                            String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
+                        } catch (e: Exception) {
+                            apiMsg.payload
+                        }
+
+                        // Parse type and content if it's not plain text
+                        var msgText = decodedPayload
+                        var msgType = "TEXT"
+                        var msgUri: String? = null
+
+                        if (decodedPayload.startsWith("[IMAGE] ")) {
+                            msgType = "IMAGE"
+                            msgUri = decodedPayload.removePrefix("[IMAGE] ")
+                            msgText = "photo"
+                        } else if (decodedPayload.startsWith("[VIDEO] ")) {
+                            msgType = "VIDEO"
+                            msgUri = decodedPayload.removePrefix("[VIDEO] ")
+                            msgText = "video"
+                        } else if (decodedPayload.startsWith("[AUDIO] ")) {
+                            msgType = "AUDIO"
+                            msgUri = decodedPayload.removePrefix("[AUDIO] ")
+                            msgText = "Voice Message"
+                        }
+
+                        // Save to Room - the DB will handle duplicate apiMessageId via @Insert(onConflict = REPLACE)
+                        // Actually Room is currently auto-generating IDs. We should check for existing apiMessageId first or rely on unique constraints.
+                        // For now, simple save.
+                        vm.saveMessage(
+                            msg = msgText,
+                            senderOnion = contactOnion,
+                            timestamp = parseApiTimestamp(apiMsg.timestamp),
+                            isSent = false,
+                            type = msgType,
+                            uri = msgUri,
+                            apiMessageId = apiMsg.id
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Error fetching messages from API", e)
+        }
+    }
+
+    private fun parseApiTimestamp(timestamp: String): String {
+        return try {
+            // ISO 8601 format: 2026-03-24T04:45:32+05:00
+            val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
+            val date = sdf.parse(timestamp)
+            date?.time?.toString() ?: System.currentTimeMillis().toString()
+        } catch (e: Exception) {
+            System.currentTimeMillis().toString()
+        }
     }
 
     private fun handleReaction(emoji: String) {
@@ -1047,6 +1130,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         waveformHandler.removeCallbacks(waveformUpdateRunnable)
         longPressHandler.removeCallbacks(longPressRunnable)
         audioRecordingManager.cancelRecording()
+        apiMessageJob?.cancel()
         disconnectFromServer()
         super.onDestroy()
     }

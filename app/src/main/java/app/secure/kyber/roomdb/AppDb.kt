@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GroupMessageEntity::class,
         GroupsEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -36,7 +36,8 @@ abstract class AppDb : RoomDatabase() {
                 )
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
-                        MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9
+                        MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+                        MIGRATION_9_10
                     )
                     .build()
                     .also { INSTANCE = it }
@@ -165,6 +166,13 @@ abstract class AppDb : RoomDatabase() {
                 """.trimIndent())
                 database.execSQL("DROP TABLE group_messages")
                 database.execSQL("ALTER TABLE group_messages_new RENAME TO group_messages")
+            }
+        }
+
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE messages ADD COLUMN apiMessageId TEXT")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_messages_apiMessageId ON messages (apiMessageId)")
             }
         }
     }
