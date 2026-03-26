@@ -1,5 +1,6 @@
 package app.secure.kyber.fragments
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
@@ -360,6 +361,10 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
     // ── Adapter ───────────────────────────────────────────────────────────────
 
+    // ── Adapter ───────────────────────────────────────────────────────────────
+
+    // ── Adapter ───────────────────────────────────────────────────────────────
+
     private fun setListAdapter() {
         val recyclerview = binding.rv
         recyclerview.setHasFixedSize(false)
@@ -376,8 +381,44 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             viewLifecycleOwner.lifecycleScope.launch {
                 viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     vm.lastMessagesFlow.collectLatest { list ->
-                        Log.d("ChatListFragment", "Updating chat list with ${list.size} items")
-                        chatListAdapter.submitList(list)
+
+                        // 1. Grab SharedPreferences and DAO once for efficiency
+                        val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+                        val dao = AppDb.get(requireContext()).messageDao()
+
+                        // 2. Map the DB flow into a display-ready UI flow
+                        val displayList = list.map { chat ->
+                            val rawMsg = chat.lastMessage ?: ""
+
+                            // Safely decrypt text/media payload
+                            val decrypted = try {
+                                val d = app.secure.kyber.Utils.EncryptionUtils.decrypt(rawMsg)
+                                if (d.isNotBlank()) d else rawMsg
+                            } catch (e: Exception) {
+                                rawMsg
+                            }
+
+                            // Format media for human-readability
+                            val formattedMessage = when {
+                                decrypted == "photo" -> "📷 Photo"
+                                decrypted == "video" -> "🎥 Video"
+                                decrypted.startsWith("Voice Message") -> "🎤 $decrypted"
+                                else -> decrypted
+                            }
+
+                            // 3. CRITICAL FIX: Calculate the accurate Unread Count
+                            val onion = chat.onionAddress ?: ""
+                            // Fetch the highest ID the user has seen inside that chat
+                            val lastSeenId = sharedPrefs.getLong("last_seen_id_$onion", 0L)
+                            // Query the database for how many messages arrived AFTER that ID
+                            val unread = dao.getUnreadCount(onion, lastSeenId)
+
+                            // Inject the decrypted text AND the unread count into the model
+                            chat.copy(lastMessage = formattedMessage, unreadCount = unread)
+                        }
+
+                        Log.d("ChatListFragment", "Updating chat list with ${displayList.size} items")
+                        chatListAdapter.submitList(displayList)
                     }
                 }
             }

@@ -28,6 +28,10 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 
+    // FIX: Dynamically count unread private messages based on the highest seen ID
+    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND id > :lastSeenId")
+    suspend fun getUnreadCount(senderOnion: String, lastSeenId: Long): Int
+
     // FIX: Cast time to INTEGER for numeric sorting
     @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     fun observeAll(senderOnion: String): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
