@@ -57,11 +57,19 @@ class MessageAdapter(
         private val SCRAMBLE_CHARS =
             "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
 
-        fun generateEncryptedPlaceholder(length: Int): String {
-            if (length <= 0) return "••••••••"
-            return (1..length.coerceAtLeast(8))
-                .map { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }
-                .joinToString("")
+        fun generateEncryptedPlaceholder(originalText: String): String {
+            if (originalText.isEmpty()) return "••••••••"
+
+            val builder = StringBuilder(originalText.length)
+            for (char in originalText) {
+                // Preserve spaces, tabs, and newlines so the TextView wraps lines identically
+                if (char.isWhitespace()) {
+                    builder.append(char)
+                } else {
+                    builder.append(SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)])
+                }
+            }
+            return builder.toString()
         }
 
         private val persistentCache = mutableMapOf<Long, String>()
@@ -228,6 +236,9 @@ class MessageAdapter(
         val isSent = item.isSent
         val isMedia = type == "IMAGE" || type == "VIDEO"
         val isAudio = type == "AUDIO"
+        val rawReaction = item.reaction
+        val actualEmoji = extractEmoji(rawReaction)
+        val reactionOwner = extractOwner(rawReaction)
 
         holder.rlSent.isVisible = isSent
         holder.rlRcvd.isVisible = !isSent
@@ -240,22 +251,35 @@ class MessageAdapter(
 
         val isMenuOpen = openMenuPositions.contains(pos)
         if (isMenuOpen) {
-            val emojiAdapter = RecentEmojiAdapter(recentEmojis, item.reaction) { emoji ->
-                val finalEmoji = if (emoji == item.reaction) "" else emoji
-                closeMenu(); onEmojiSelected(item, finalEmoji)
+
+            // FIX: Restrict emoji editing to the reaction owner (or allow if empty)
+            val canEditReaction = rawReaction.isEmpty() || reactionOwner == myId || reactionOwner.isEmpty()
+
+            if (canEditReaction) {
+                val emojiAdapter = RecentEmojiAdapter(recentEmojis, actualEmoji) { emoji ->
+                    val finalEmoji = if (emoji == actualEmoji) "" else emoji
+                    closeMenu(); onEmojiSelected(item, finalEmoji)
+                }
+                holder.rvEmojis(isSent).apply {
+                    layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
+                    adapter = emojiAdapter
+                }
+                holder.btnMore(isSent).setOnClickListener { onMoreEmojisClicked(item); closeMenu() }
+                holder.emojiBar(isSent).visibility = View.VISIBLE
+            } else {
+                // Not the owner -> View Only. Hide the emoji bar.
+                holder.rvEmojis(isSent).adapter = null
+                holder.emojiBar(isSent).visibility = View.GONE
             }
-            holder.rvEmojis(isSent).apply {
-                layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false)
-                adapter = emojiAdapter
-            }
-            holder.btnMore(isSent).setOnClickListener { onMoreEmojisClicked(item); closeMenu() }
-            holder.emojiBar(isSent).visibility = View.VISIBLE
+            // Always show the action menu (Reply, Delete, etc.)
             holder.actionMenu(isSent).visibility = View.VISIBLE
+
         } else {
             holder.rvEmojis(isSent).adapter = null
             holder.emojiBar(isSent).visibility = View.GONE
             holder.actionMenu(isSent).visibility = View.GONE
         }
+
         holder.emojiBar(!isSent).visibility = View.GONE
         holder.actionMenu(!isSent).visibility = View.GONE
         holder.rvEmojis(!isSent).adapter = null
@@ -265,9 +289,19 @@ class MessageAdapter(
         holder.sentTimeAudio?.text = convertDatetime(item.time)
         holder.rcvTimeAudio?.text = convertDatetime(item.time)
 
-        val reactionView = holder.reaction(isSent)
-        if (item.reaction.isNotEmpty()) { reactionView.text = item.reaction; reactionView.visibility = View.VISIBLE }
-        else reactionView.visibility = View.GONE
+        // Render the actual parsed emoji
+        val activeReactionView = holder.reaction(isSent)
+        if (actualEmoji.isNotEmpty()) {
+            activeReactionView.text = actualEmoji
+            activeReactionView.visibility = View.VISIBLE
+        } else {
+            activeReactionView.visibility = View.GONE
+            activeReactionView.text = ""
+        }
+
+        val inactiveReactionView = holder.reaction(!isSent)
+        inactiveReactionView.visibility = View.GONE
+        inactiveReactionView.text = ""
 
         holder.itemView.setOnLongClickListener {
             val p = holder.bindingAdapterPosition
@@ -317,9 +351,22 @@ class MessageAdapter(
         val pos = currentList.indexOfFirst { it.id.toString() == itemId }
         if (pos == -1) return
         (recyclerView?.findViewHolderForAdapterPosition(pos) as? VH)?.let { h ->
-            val rv = h.reaction(getItem(pos).isSent)
-            if (emoji.isEmpty()) rv.visibility = View.GONE
-            else { rv.text = emoji; rv.visibility = View.VISIBLE }
+            val isSent = getItem(pos).isSent
+
+            // Render active side
+            val activeRv = h.reaction(isSent)
+            if (emoji.isEmpty()) {
+                activeRv.visibility = View.GONE
+                activeRv.text = ""
+            } else {
+                activeRv.text = emoji
+                activeRv.visibility = View.VISIBLE
+            }
+
+            // Forcefully clear inactive side
+            val inactiveRv = h.reaction(!isSent)
+            inactiveRv.visibility = View.GONE
+            inactiveRv.text = ""
         }
     }
 
@@ -360,7 +407,7 @@ class MessageAdapter(
             return
         }
 
-        val encryptedPlaceholder = generateEncryptedPlaceholder(item.decryptedMsg.length)
+        val encryptedPlaceholder = generateEncryptedPlaceholder(item.decryptedMsg)
 
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
@@ -598,6 +645,16 @@ class MessageAdapter(
         } catch (e: Exception) {
             cleanPayload // Fallback if decoding fails
         }
+    }
+
+    fun extractEmoji(rawReaction: String): String {
+        val parts = rawReaction.split("|", limit = 2)
+        return if (parts.size == 2) parts[1] else rawReaction
+    }
+
+    fun extractOwner(rawReaction: String): String {
+        val parts = rawReaction.split("|", limit = 2)
+        return if (parts.size == 2) parts[0] else ""
     }
 
 }

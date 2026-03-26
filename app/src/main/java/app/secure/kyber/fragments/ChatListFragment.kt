@@ -205,6 +205,16 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 reaction = transport.reaction
                             )
                         }
+                        else {
+                            // FIX: Catch reaction updates globally while user is away from chat
+                            if (existing.reaction != transport.reaction) {
+                                existing.reaction = transport.reaction
+                                // Track activity time, or clear it if reaction is removed
+                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                vm.updateMessage(existing)
+                            }
+                        }
                     }
                 } else {
                     handleLegacyMessage(apiMsg, decodedPayload)
@@ -339,6 +349,16 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 reaction = transport.reaction
                             )
                         }
+                        else {
+                            // FIX: Catch reaction updates globally while user is away from chat
+                            if (existing.reaction != transport.reaction) {
+                                existing.reaction = transport.reaction
+                                // Track activity time, or clear it if reaction is removed
+                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                vm.updateMessage(existing)
+                            }
+                        }
                     }
                 } else {
                     saveLegacySocketMessage(message, decodedPayload)
@@ -365,6 +385,8 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
     // ── Adapter ───────────────────────────────────────────────────────────────
 
+    // ── Adapter ───────────────────────────────────────────────────────────────
+
     private fun setListAdapter() {
         val recyclerview = binding.rv
         recyclerview.setHasFixedSize(false)
@@ -382,13 +404,13 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     vm.lastMessagesFlow.collectLatest { list ->
 
-                        // 1. Grab SharedPreferences and DAO once for efficiency
                         val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
                         val dao = AppDb.get(requireContext()).messageDao()
 
-                        // 2. Map the DB flow into a display-ready UI flow
                         val displayList = list.map { chat ->
                             val rawMsg = chat.lastMessage ?: ""
+                            val rawReaction = chat.reaction ?: "" // <--- Pull newly selected reaction
+                            val msgType = chat.type ?: "TEXT"     // <--- Pull newly selected media type
 
                             // Safely decrypt text/media payload
                             val decrypted = try {
@@ -398,26 +420,50 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 rawMsg
                             }
 
+                            // EXTRACT REACTION INFO
+                            var actualEmoji = ""
+                            var isMyReaction = false
+                            if (rawReaction.isNotEmpty()) {
+                                val parts = rawReaction.split("|", limit = 2)
+                                if (parts.size == 2) {
+                                    val myRealOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                                    isMyReaction = (parts[0] == myRealOnion)
+                                    actualEmoji = parts[1]
+                                } else {
+                                    actualEmoji = rawReaction // Fallback
+                                }
+                            }
+
                             // Format media for human-readability
-                            val formattedMessage = when {
+                            var formattedMessage = when {
                                 decrypted == "photo" -> "📷 Photo"
                                 decrypted == "video" -> "🎥 Video"
                                 decrypted.startsWith("Voice Message") -> "🎤 $decrypted"
                                 else -> decrypted
                             }
 
-                            // 3. CRITICAL FIX: Calculate the accurate Unread Count
+                            // OVERLAY REACTION PREVIEW (If reaction exists)
+                            if (actualEmoji.isNotEmpty()) {
+                                val prefix = if (isMyReaction) "You reacted $actualEmoji to" else "Reacted $actualEmoji to"
+                                val suffix = when (msgType.uppercase(java.util.Locale.US)) {
+                                    "IMAGE" -> "a photo"
+                                    "VIDEO" -> "a video"
+                                    "AUDIO" -> "a voice message"
+                                    else -> "a message"
+                                }
+                                formattedMessage = "$prefix $suffix"
+                            }
+
+                            // Calculate the accurate Unread Count
                             val onion = chat.onionAddress ?: ""
-                            // Fetch the highest ID the user has seen inside that chat
                             val lastSeenId = sharedPrefs.getLong("last_seen_id_$onion", 0L)
-                            // Query the database for how many messages arrived AFTER that ID
                             val unread = dao.getUnreadCount(onion, lastSeenId)
 
-                            // Inject the decrypted text AND the unread count into the model
+                            // Inject the preview and unread count into the model
                             chat.copy(lastMessage = formattedMessage, unreadCount = unread)
                         }
 
-                        Log.d("ChatListFragment", "Updating chat list with ${displayList.size} items")
+                        android.util.Log.d("ChatListFragment", "Updating chat list with ${displayList.size} items")
                         chatListAdapter.submitList(displayList)
                     }
                 }

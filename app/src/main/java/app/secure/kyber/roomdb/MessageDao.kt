@@ -38,7 +38,7 @@ interface MessageDao {
 
     @Query("WITH latest_time AS (\n" +
             "  SELECT senderOnion,\n" +
-            "         MAX(CAST(time AS INTEGER)) AS maxTime\n" +
+            "         MAX(CAST(CASE WHEN updatedAt != '' THEN updatedAt ELSE time END AS INTEGER)) AS maxTime\n" +
             "  FROM messages\n" +
             "  GROUP BY senderOnion\n" +
             "),\n" +
@@ -47,22 +47,23 @@ interface MessageDao {
             "  FROM messages m\n" +
             "  JOIN latest_time lt\n" +
             "    ON lt.senderOnion = m.senderOnion\n" +
-            "   AND CAST(m.time AS INTEGER) = lt.maxTime\n" +
-            "  -- break ties on identical time by picking the greatest id\n" +
+            "   AND CAST(CASE WHEN m.updatedAt != '' THEN m.updatedAt ELSE m.time END AS INTEGER) = lt.maxTime\n" +
             "  WHERE m.id = (\n" +
             "    SELECT MAX(m2.id)\n" +
             "    FROM messages m2\n" +
             "    WHERE m2.senderOnion = m.senderOnion\n" +
-            "      AND CAST(m2.time AS INTEGER) = lt.maxTime\n" +
+            "      AND CAST(CASE WHEN m2.updatedAt != '' THEN m2.updatedAt ELSE m2.time END AS INTEGER) = lt.maxTime\n" +
             "  )\n" +
             ")\n" +
             "SELECT lr.senderOnion AS onionAddress,\n" +
             "       c.name AS name,\n" +
             "       lr.msg  AS lastMessage,\n" +
-            "       lr.time\n" +
+            "       CASE WHEN lr.updatedAt != '' THEN lr.updatedAt ELSE lr.time END AS time,\n" +
+            "       lr.reaction AS reaction,\n" +
+            "       lr.type AS type\n" +
             "FROM latest_row lr\n" +
             "LEFT JOIN contacts c\n" +
             "  ON c.onionAddress = lr.senderOnion\n" +
-            "ORDER BY CAST(lr.time AS INTEGER) DESC, lr.id DESC;")
+            "ORDER BY CAST(CASE WHEN lr.updatedAt != '' THEN lr.updatedAt ELSE lr.time END AS INTEGER) DESC, lr.id DESC;")
     fun observeAllLastMsgs(): kotlinx.coroutines.flow.Flow<List<ChatModel>>
 }

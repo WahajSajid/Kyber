@@ -698,6 +698,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                     reaction = transport.reaction
                                 )
                             }
+                            else {
+                                if (existing.reaction != transport.reaction) {
+                                    existing.reaction = transport.reaction
+                                    val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                    existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                    vm.updateMessage(existing)
+                                }
+                            }
                         }
                     } catch (e: Exception) {
                         Log.e("ChatFragment", "JSON parse failed: $decodedPayload", e)
@@ -740,6 +748,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 ampsJson = transport.ampsJson,
                                 reaction = transport.reaction
                             )
+                        }
+                        else {
+                            if (existing.reaction != transport.reaction) {
+                                existing.reaction = transport.reaction
+                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                vm.updateMessage(existing)
+                            }
                         }
                     }
                 }
@@ -823,10 +839,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
             } else {
                 selectedMsg?.let { msg ->
-                    msg.reaction = emoji
+                    val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+                    val formattedReaction = if (emoji.isEmpty()) "" else "$myOnion|$emoji"
+
+                    msg.reaction = formattedReaction
+                    // FIX: Set activity timestamp (or clear if removed) to bubble up chat
+                    msg.updatedAt = if (emoji.isEmpty()) "" else System.currentTimeMillis().toString()
                     vm.updateMessage(msg.entity)
 
-                    val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
                     val transport = PrivateMessageTransportDto(
                         messageId = msg.messageId,
                         msg = msg.decryptedMsg,
@@ -835,7 +855,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         type = msg.type,
                         uri = msg.decryptedUri,
                         ampsJson = msg.ampsJson,
-                        reaction = emoji
+                        reaction = formattedReaction // Send the formatted reaction
                     )
                     sendPrivateMessage(transport)
                 }
@@ -904,12 +924,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun setListMessageAdapter() {
         recyclerview = binding.rvMsg
 
-        // 1. Fetch the last seen local message ID for this specific contact
+        // Fetch the last seen local message ID for this specific contact
         val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
         val lastSeenIdKey = "last_seen_id_${contactOnion}"
         val lastSeenId = sharedPrefs.getLong(lastSeenIdKey, 0L)
+
+        // 1. Fetch the actual current user's Onion ID
+        val myRealOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+
+        // 2. Pass the real ID to the adapter instead of "me123"
         adapterMsg = MessageAdapter(
-            myId = "me123",
+            myId = myRealOnion, // <--- CRITICAL FIX: Replaced "me123"
             lastSeenMessageId = lastSeenId,
             onClick = { msg ->
                 if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
@@ -917,18 +942,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
                     if (actualUri.isNotBlank()) {
 
-                        // 1. Strip legacy network prefixes just in case
+                        // Strip legacy network prefixes just in case
                         if (actualUri.startsWith("[IMAGE] ")) actualUri = actualUri.removePrefix("[IMAGE] ")
                         else if (actualUri.startsWith("[VIDEO] ")) actualUri = actualUri.removePrefix("[VIDEO] ")
 
-                        // 2. CRITICAL FIX: The payload in the UI model is raw Base64.
-                        // We must decode it to a valid physical file path before opening the viewer!
-                        // (Uses ChatFragment's existing helper function)
+                        // Ensure it's a valid local file
                         actualUri = decodeBase64ToFile(actualUri, msg.type) ?: actualUri
 
-                        // 3. Fix Android MediaServer permissions for Videos
-                        // MediaPlayer cannot legally read internal cache file:// URIs.
-                        // We securely convert it to a content:// URI using FileProvider.
+                        // Convert to secure content:// URI for MediaServer
                         var finalUri = actualUri
                         if (actualUri.startsWith("file://")) {
                             try {
@@ -936,33 +957,26 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 if (file.exists()) {
                                     val authority = "${requireContext().packageName}.provider"
                                     finalUri = androidx.core.content.FileProvider.getUriForFile(
-                                        requireContext(),
-                                        authority,
-                                        file
+                                        requireContext(), authority, file
                                     ).toString()
                                 }
                             } catch (e: Exception) {
-                                // Fallback if FileProvider is named differently in Manifest
                                 try {
                                     val authorityAlt = "${requireContext().packageName}.fileprovider"
                                     val file = java.io.File(java.net.URI(actualUri))
                                     finalUri = androidx.core.content.FileProvider.getUriForFile(
-                                        requireContext(),
-                                        authorityAlt,
-                                        file
+                                        requireContext(), authorityAlt, file
                                     ).toString()
                                 } catch (e2: Exception) {
-                                    finalUri = actualUri // Absolute fallback
+                                    finalUri = actualUri
                                 }
                             }
                         }
 
-                        // 4. Pass the secure, resolved URI to the viewer
                         startActivity(
                             Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
                                 putExtra("uri", finalUri)
                                 putExtra("type", msg.type)
-                                // Grant temporary read permission to the target activity
                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             })
                     }

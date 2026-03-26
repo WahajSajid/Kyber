@@ -20,7 +20,8 @@ data class MessageEntity(
     val type: String = "TEXT",
     val uri: String? = null, // Encrypted URI/path
     val ampsJson: String = "",
-    var reaction: String = ""
+    var reaction: String = "",
+    var updatedAt: String = ""
 )
 
 /**
@@ -47,6 +48,9 @@ data class MessageUiModel(
 
     var reaction: String get() = entity.reaction
         set(value) { entity.reaction = value }
+    var updatedAt: String get() = entity.updatedAt // <--- ADD THIS
+        set(value) { entity.updatedAt = value }
+
     val apiMessageId: String? get() = entity.apiMessageId
 }
 
