@@ -17,6 +17,7 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun saveMessage(
+        messageId: String,
         msg: String,
         senderOnion: String,
         timestamp: String,
@@ -24,10 +25,11 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
         type: String = "TEXT",
         uri: String? = null,
         ampsJson: String? = null,
-        apiMessageId: String? = null
+        apiMessageId: String? = null,
+        reaction: String = ""
     ) {
         viewModelScope.launch {
-            repo.saveMsg(msg, senderOnion, timestamp, isSent, type, uri, ampsJson, apiMessageId)
+            repo.saveMsg(messageId, msg, senderOnion, timestamp, isSent, type, uri, ampsJson, apiMessageId, reaction)
         }
     }
 
@@ -42,4 +44,6 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
             repo.deleteMsg(message)
         }
     }
+
+    suspend fun getMessageByMessageId(messageId: String) = repo.getMessageByMessageId(messageId)
 }

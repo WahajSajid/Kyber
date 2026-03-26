@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 class MessageRepository(private val dao: MessageDao) {
 
     suspend fun saveMsg(
+        messageId: String,
         msg: String,
         senderOnion: String,
         timestamp: String,
@@ -14,11 +15,13 @@ class MessageRepository(private val dao: MessageDao) {
         type: String = "TEXT",
         uri: String? = null,
         ampsJson: String? = null,
-        apiMessageId: String? = null
+        apiMessageId: String? = null,
+        reaction: String = ""
     ) {
 
         dao.insert(
             MessageEntity(
+                messageId = messageId,
                 msg = msg,
                 senderOnion = senderOnion,
                 time = timestamp,
@@ -26,7 +29,8 @@ class MessageRepository(private val dao: MessageDao) {
                 type = type,
                 uri = uri,
                 ampsJson = ampsJson ?: "",
-                apiMessageId = apiMessageId
+                apiMessageId = apiMessageId,
+                reaction = reaction
             )
         )
     }
@@ -46,6 +50,9 @@ class MessageRepository(private val dao: MessageDao) {
 
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
+
+    suspend fun getMessageByMessageId(messageId: String): MessageEntity? =
+        dao.getMessageByMessageId(messageId)
 }
 
 

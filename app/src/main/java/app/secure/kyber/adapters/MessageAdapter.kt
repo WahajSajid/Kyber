@@ -22,6 +22,7 @@ import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
 import app.secure.kyber.roomdb.MessageEntity
+import app.secure.kyber.roomdb.MessageUiModel
 import com.bumptech.glide.Glide
 import com.bumptech.glide.request.RequestOptions
 import kotlinx.coroutines.CoroutineScope
@@ -39,17 +40,17 @@ import kotlin.random.Random
 @Suppress("DEPRECATION")
 class MessageAdapter(
     private val myId: String,
-    private val onClick: (MessageEntity) -> Unit = {},
-    private val onLongClick: (View, MessageEntity) -> Unit = { _, _ -> },
-    private val onEmojiSelected: (MessageEntity, String) -> Unit = { _, _ -> },
-    private val onMoreEmojisClicked: (MessageEntity) -> Unit = {},
+    private val onClick: (MessageUiModel) -> Unit = {},
+    private val onLongClick: (View, MessageUiModel) -> Unit = { _, _ -> },
+    private val onEmojiSelected: (MessageUiModel, String) -> Unit = { _, _ -> },
+    private val onMoreEmojisClicked: (MessageUiModel) -> Unit = {},
     private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮")
-) : ListAdapter<MessageEntity, MessageAdapter.VH>(DIFF) {
+) : ListAdapter<MessageUiModel, MessageAdapter.VH>(DIFF) {
 
     companion object {
-        val DIFF = object : DiffUtil.ItemCallback<MessageEntity>() {
-            override fun areItemsTheSame(a: MessageEntity, b: MessageEntity) = a.id == b.id
-            override fun areContentsTheSame(a: MessageEntity, b: MessageEntity) = a == b
+        val DIFF = object : DiffUtil.ItemCallback<MessageUiModel>() {
+            override fun areItemsTheSame(a: MessageUiModel, b: MessageUiModel) = a.id == b.id
+            override fun areContentsTheSame(a: MessageUiModel, b: MessageUiModel) = a == b
         }
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
         private val SCRAMBLE_CHARS =
@@ -82,24 +83,19 @@ class MessageAdapter(
     var messageDecryptor: suspend (String) -> String = { it }
 
     // True once the very first submitList with >1 item has been processed.
-    // If the first submitList has exactly 1 item it is treated as a new incoming
-    // message (empty chat) and should animate — not be pre-cached.
     private var firstLoadDone = false
 
-    override fun submitList(list: List<MessageEntity>?) {
+    override fun submitList(list: List<MessageUiModel>?) {
         val prevSize = currentList.size
         handlePreCache(list)
         super.submitList(list) {
-            // After DiffUtil commits: if list grew, a new message arrived — scroll to bottom.
-            // On the initial history load (prevSize == 0, list.size > 1) we do NOT scroll,
-            // so the user sees the top of the conversation first.
             if (list != null && list.size > prevSize && prevSize > 0) {
                 recyclerView?.scrollToPosition(list.size - 1)
             }
         }
     }
 
-    override fun submitList(list: List<MessageEntity>?, commitCallback: Runnable?) {
+    override fun submitList(list: List<MessageUiModel>?, commitCallback: Runnable?) {
         val prevSize = currentList.size
         handlePreCache(list)
         super.submitList(list) {
@@ -110,21 +106,11 @@ class MessageAdapter(
         }
     }
 
-    /**
-     * Pre-caches messages that should skip animation (already-read history).
-     * Only caches on the very first load when the incoming list has more than one
-     * message — that means it's history being loaded. A single new message arriving
-     * into an empty chat should NOT be pre-cached; it should animate.
-     */
-    private fun handlePreCache(list: List<MessageEntity>?) {
+    private fun handlePreCache(list: List<MessageUiModel>?) {
         if (!firstLoadDone && currentList.isEmpty() && list != null) {
             if (list.size > 1) {
-                // This is an initial history load — pre-cache everything so existing
-                // messages render immediately without animation.
-                list.forEach { persistentCache[it.id] = it.msg }
+                list.forEach { persistentCache[it.id] = it.decryptedMsg }
             }
-            // If list.size == 1 and currentList was empty: a single new message into
-            // an empty chat — do NOT pre-cache, let it animate.
             firstLoadDone = true
         }
     }
@@ -132,9 +118,6 @@ class MessageAdapter(
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         recyclerView = rv
-        // stackFromEnd is intentionally NOT set. Messages start from the top in
-        // new/short conversations. Auto-scroll happens in submitList only when a
-        // new message is appended to an existing list.
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {
@@ -153,12 +136,8 @@ class MessageAdapter(
         recentEmojis = newList
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // ViewHolder — tvRcv is DecryptRevealTextView (same id, subclass of TextView)
-    // ─────────────────────────────────────────────────────────────────────────
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val tvSent: TextView = view.findViewById(R.id.tvSentMsg)
-        // DecryptRevealTextView shares the same id as the old tvMsgRcv
         val tvRcv: DecryptRevealTextView = view.findViewById(R.id.tvMsgRcv)
         val tvSentTime: TextView = view.findViewById(R.id.tvSentTime)
         val tvRcvTime: TextView = view.findViewById(R.id.tvRcvTime)
@@ -232,7 +211,6 @@ class MessageAdapter(
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
         VH(LayoutInflater.from(parent.context).inflate(R.layout.msg_list_item, parent, false))
 
-    // Cancel overlay immediately when ViewHolder is recycled — prevents stale animation on reuse
     override fun onViewRecycled(holder: VH) {
         super.onViewRecycled(holder)
         holder.tvRcv.cancelAndShowFinal()
@@ -314,7 +292,7 @@ class MessageAdapter(
         if (pos == RecyclerView.NO_POSITION) return
         if (payloads.contains("START_PLAYBACK")) {
             val item = getItem(pos)
-            startPlayback(holder, item.isSent, item.uri ?: return)
+            startPlayback(holder, item.isSent, item.decryptedUri ?: return)
         } else onBindViewHolder(holder, position)
     }
 
@@ -341,13 +319,7 @@ class MessageAdapter(
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // bindText — strict 2-phase sequential animation, no overlap
-    //
-    // Phase 1: empty bubble → cream+encrypted builds in L→R (completes fully)
-    // Phase 2: encrypted overlay leaves L→R, white text reveals L→R (starts only after phase 1)
-    // ─────────────────────────────────────────────────────────────────────────
-    private fun bindText(h: VH, item: MessageEntity, sent: Boolean) {
+    private fun bindText(h: VH, item: MessageUiModel, sent: Boolean) {
         h.sentAudio.isVisible = false
         h.rcvAudio.isVisible = false
         h.sentMedia.isVisible = false
@@ -360,7 +332,7 @@ class MessageAdapter(
             h.tvSent.isVisible = true
             h.tvRcv.isVisible = false
             h.tvRcv.cancelAndShowFinal()
-            h.tvSent.text = item.msg
+            h.tvSent.text = item.decryptedMsg
             h.tvDecryptingRcv?.visibility = View.GONE
             return
         }
@@ -373,7 +345,6 @@ class MessageAdapter(
         val cached = decryptedTextCache[msgId]
 
         if (cached != null) {
-            // Already fully decrypted — show final white text immediately
             h.tvRcv.cancelAndShowFinal()
             h.tvRcv.text = cached
             h.tvDecryptingRcv?.visibility = View.GONE
@@ -381,32 +352,28 @@ class MessageAdapter(
         }
 
         if (animatingIds.contains(msgId)) {
-            // Animation already running — do not restart
             h.tvDecryptingRcv?.visibility = View.VISIBLE
             return
         }
 
-        // ── Brand new message — start strict 2-phase animation ───────────────
-        val encryptedPlaceholder = generateEncryptedPlaceholder(item.msg.length)
+        val encryptedPlaceholder = generateEncryptedPlaceholder(item.decryptedMsg.length)
 
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
 
-        // prepareForAnimation() sets phase = SIZING BEFORE setText().
-        // This ensures any onDraw() triggered by the setText layout pass draws
-        // nothing — preventing the encrypted text from flashing without its background.
         h.tvRcv.prepareForAnimation(encryptedPlaceholder)
-        h.tvRcv.text = encryptedPlaceholder   // size the view (onDraw suppressed via SIZING phase)
+        h.tvRcv.text = encryptedPlaceholder
 
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
         decryptJobs[msgId] = adapterScope.launch {
             try {
-                // Decrypt in background while phase 1 animation plays on screen.
-                // The decrypted text is passed into startPhase1 and stored inside the view —
-                // it is NEVER set via setText() until the animation fully ends.
-                val decrypted = withContext(Dispatchers.IO) { messageDecryptor(item.msg) }
+                // messageDecryptor is still used for the visual animation effect if needed,
+                // but we already have the decrypted text in item.decryptedMsg.
+                // To keep the animation feel, we could delay slightly.
+                delay(500) 
+                val decrypted = item.decryptedMsg
                 decryptedTextCache[msgId] = decrypted
 
                 withContext(Dispatchers.Main) {
@@ -417,8 +384,6 @@ class MessageAdapter(
                     liveVH.tvRcv.startPhase1(
                         decrypted = decrypted,
                         onPhase1Done = {
-                            // Phase 1 fully done — overlay fully visible and static.
-                            // Start phase 2 immediately. No setText needed.
                             val vh2 = findVHForMessage(msgId)
                             if (vh2 != null) {
                                 vh2.tvRcv.beginPhase2(
@@ -437,7 +402,7 @@ class MessageAdapter(
                 }
 
             } catch (_: Exception) {
-                decryptedTextCache[msgId] = item.msg
+                decryptedTextCache[msgId] = item.decryptedMsg
                 withContext(Dispatchers.Main) {
                     findVHForMessage(msgId)?.let { vh ->
                         vh.tvRcv.cancelAndShowFinal()
@@ -460,29 +425,29 @@ class MessageAdapter(
         return vh
     }
 
-    private fun bindMedia(h: VH, item: MessageEntity, sent: Boolean, type: String) {
+    private fun bindMedia(h: VH, item: MessageUiModel, sent: Boolean, type: String) {
         h.sentAudio.isVisible = false; h.rcvAudio.isVisible = false
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
         h.tvRcv.cancelAndShowFinal()
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
-        val uriStr = item.uri ?: item.msg
+        val uriStr = item.decryptedUri ?: item.decryptedMsg
         val uri = try { uriStr.toUri() } catch (_: Exception) { null }
         if (sent) {
             h.sentMedia.isVisible = true; h.rcvdMedia.isVisible = false
             h.ivSentMedia.isVisible = true; h.ivSentPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri).apply(RequestOptions.centerCropTransform()).into(h.ivSentMedia)
-            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") { h.tvSent.text = item.msg; h.tvSent.isVisible = true }
+            if (item.decryptedMsg.isNotBlank() && item.decryptedMsg != "photo" && item.decryptedMsg != "video") { h.tvSent.text = item.decryptedMsg; h.tvSent.isVisible = true }
             h.ivSentMedia.setOnClickListener { onClick(item) }; h.ivSentPlay.setOnClickListener { onClick(item) }
         } else {
             h.rcvdMedia.isVisible = true; h.sentMedia.isVisible = false
             h.ivRcvMedia.isVisible = true; h.ivRcvPlay.isVisible = type == "VIDEO"
             if (uri != null) Glide.with(h.itemView.context).load(uri).apply(RequestOptions.centerCropTransform()).into(h.ivRcvMedia)
-            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") { h.tvRcv.text = item.msg; h.tvRcv.isVisible = true }
+            if (item.decryptedMsg.isNotBlank() && item.decryptedMsg != "photo" && item.decryptedMsg != "video") { h.tvRcv.text = item.decryptedMsg; h.tvRcv.isVisible = true }
             h.ivRcvMedia.setOnClickListener { onClick(item) }; h.ivRcvPlay.setOnClickListener { onClick(item) }
         }
     }
 
-    private fun bindAudio(h: VH, item: MessageEntity, sent: Boolean) {
+    private fun bindAudio(h: VH, item: MessageUiModel, sent: Boolean) {
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
         h.sentMedia.isVisible = false; h.rcvdMedia.isVisible = false
         h.tvRcv.cancelAndShowFinal()
@@ -491,7 +456,7 @@ class MessageAdapter(
         h.receivedMessageTimeLayout?.visibility = View.GONE
         h.sentAudio.isVisible = sent; h.rcvAudio.isVisible = !sent
 
-        val uriStr = item.uri ?: return
+        val uriStr = item.decryptedUri ?: return
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
         h.durationLabel(sent).text = formatDuration(getTotalDuration(h.itemView.context, uriStr))
         if (activeUri == uriStr) syncPlayingUi(h, sent)

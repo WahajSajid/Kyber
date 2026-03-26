@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GroupMessageEntity::class,
         GroupsEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -37,7 +37,7 @@ abstract class AppDb : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10
+                        MIGRATION_9_10, MIGRATION_10_11
                     )
                     .build()
                     .also { INSTANCE = it }
@@ -173,6 +173,41 @@ abstract class AppDb : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE messages ADD COLUMN apiMessageId TEXT")
                 database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_messages_apiMessageId ON messages (apiMessageId)")
+            }
+        }
+
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Recreate messages table to add messageId with NOT NULL and UNIQUE constraints
+                // Removed DEFAULT values as they are not present in Room's expected schema for MessageEntity
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `messages_new` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+                        `messageId` TEXT NOT NULL, 
+                        `apiMessageId` TEXT, 
+                        `msg` TEXT NOT NULL, 
+                        `senderOnion` TEXT NOT NULL, 
+                        `time` TEXT NOT NULL, 
+                        `isSent` INTEGER NOT NULL, 
+                        `type` TEXT NOT NULL, 
+                        `uri` TEXT, 
+                        `ampsJson` TEXT NOT NULL, 
+                        `reaction` TEXT NOT NULL
+                    )
+                """.trimIndent())
+
+                // Copy data, using 'id' as a fallback for 'messageId' to ensure uniqueness and NOT NULL for existing rows
+                database.execSQL("""
+                    INSERT INTO `messages_new` (`id`, `messageId`, `apiMessageId`, `msg`, `senderOnion`, `time`, `isSent`, `type`, `uri`, `ampsJson`, `reaction`)
+                    SELECT `id`, CAST(`id` AS TEXT), `apiMessageId`, `msg`, `senderOnion`, `time`, `isSent`, `type`, `uri`, `ampsJson`, `reaction` FROM `messages`
+                """.trimIndent())
+
+                database.execSQL("DROP TABLE `messages`")
+                database.execSQL("ALTER TABLE `messages_new` RENAME TO `messages`")
+                
+                // Re-create indices as defined in MessageEntity
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_apiMessageId` ON `messages` (`apiMessageId`)")
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_messageId` ON `messages` (`messageId`)")
             }
         }
     }

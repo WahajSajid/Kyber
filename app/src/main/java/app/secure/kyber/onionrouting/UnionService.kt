@@ -103,6 +103,7 @@ class UnionService : Service() {
 
                 // Save to Room DB globally (Chat UI will auto-update if open)
                 val entity = MessageEntity(
+                    messageId = message.id,
                     msg = actualText,
                     senderOnion = actualSender,
                     time = System.currentTimeMillis().toString(),

@@ -22,6 +22,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     suspend fun getBySender(senderOnion: String): List<MessageEntity>
 
+    @Query("SELECT * FROM messages WHERE messageId = :messageId LIMIT 1")
+    suspend fun getMessageByMessageId(messageId: String): MessageEntity?
+
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 

@@ -24,12 +24,16 @@ import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
 import app.secure.kyber.adapters.ChatListAdapter
 import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatListBinding
 import app.secure.kyber.onionrouting.UnionClient
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
+import app.secure.kyber.Utils.EncryptionUtils
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -38,6 +42,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 
 @Suppress("DEPRECATION")
@@ -59,6 +64,9 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private lateinit var myApp: MyApp
 
     private var pollingJob: Job? = null
+
+    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
     private val vm: MessagesViewModel by viewModels {
         val db = AppDb.get(requireContext())
@@ -174,48 +182,79 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
     private fun processApiMessages(messages: List<app.secure.kyber.backend.beans.ApiMessage>) {
         messages.forEach { apiMsg ->
-            val senderOnion = apiMsg.senderOnion ?: return@forEach
-            if (senderOnion.isEmpty()) return@forEach
-
             val decodedPayload = try {
                 String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
             } catch (e: Exception) {
-                apiMsg.payload
+                Log.e("ChatListFragment", "Base64 decode failed", e)
+                return@forEach
             }
 
-            var msgText = decodedPayload
-            var msgType = "TEXT"
-            var msgUri: String? = null
-
-            when {
-                decodedPayload.startsWith("[IMAGE] ") -> {
-                    msgType = "IMAGE"
-                    msgUri = decodedPayload.removePrefix("[IMAGE] ")
-                    msgText = "photo"
+            try {
+                val transport = transportAdapter.fromJson(decodedPayload)
+                if (transport != null) {
+                    lifecycleScope.launch {
+                        val existing = vm.getMessageByMessageId(transport.messageId)
+                        if (existing == null) {
+                            vm.saveMessage(
+                                messageId = transport.messageId,
+                                msg = EncryptionUtils.encrypt(transport.msg),
+                                senderOnion = transport.senderOnion,
+                                timestamp = transport.timestamp,
+                                isSent = false,
+                                type = transport.type,
+                                uri = EncryptionUtils.encrypt(transport.uri),
+                                ampsJson = transport.ampsJson,
+                                apiMessageId = apiMsg.id,
+                                reaction = transport.reaction
+                            )
+                        }
+                    }
+                } else {
+                    // Fallback for legacy format if necessary, though new flow requires full object
+                    handleLegacyMessage(apiMsg, decodedPayload)
                 }
-                decodedPayload.startsWith("[VIDEO] ") -> {
-                    msgType = "VIDEO"
-                    msgUri = decodedPayload.removePrefix("[VIDEO] ")
-                    msgText = "video"
-                }
-                decodedPayload.startsWith("[AUDIO] ") -> {
-                    msgType = "AUDIO"
-                    msgUri = decodedPayload.removePrefix("[AUDIO] ")
-                    msgText = "Voice Message"
-                }
+            } catch (e: Exception) {
+                handleLegacyMessage(apiMsg, decodedPayload)
             }
-
-            // apiMessageId unique constraint in Room prevents duplicate saves
-            vm.saveMessage(
-                msg = msgText,
-                senderOnion = senderOnion,
-                timestamp = parseApiTimestamp(apiMsg.timestamp),
-                isSent = false,
-                type = msgType,
-                uri = msgUri,
-                apiMessageId = apiMsg.id
-            )
         }
+    }
+
+    private fun handleLegacyMessage(apiMsg: app.secure.kyber.backend.beans.ApiMessage, decodedPayload: String) {
+        val senderOnion = apiMsg.senderOnion ?: return
+        if (senderOnion.isEmpty()) return
+
+        var msgText = decodedPayload
+        var msgType = "TEXT"
+        var msgUri: String? = null
+
+        when {
+            decodedPayload.startsWith("[IMAGE] ") -> {
+                msgType = "IMAGE"
+                msgUri = decodedPayload.removePrefix("[IMAGE] ")
+                msgText = "photo"
+            }
+            decodedPayload.startsWith("[VIDEO] ") -> {
+                msgType = "VIDEO"
+                msgUri = decodedPayload.removePrefix("[VIDEO] ")
+                msgText = "video"
+            }
+            decodedPayload.startsWith("[AUDIO] ") -> {
+                msgType = "AUDIO"
+                msgUri = decodedPayload.removePrefix("[AUDIO] ")
+                msgText = "Voice Message"
+            }
+        }
+
+        vm.saveMessage(
+            messageId = UUID.randomUUID().toString(), // Generate for legacy
+            msg = EncryptionUtils.encrypt(msgText),
+            senderOnion = senderOnion,
+            timestamp = parseApiTimestamp(apiMsg.timestamp),
+            isSent = false,
+            type = msgType,
+            uri = EncryptionUtils.encrypt(msgUri),
+            apiMessageId = apiMsg.id
+        )
     }
 
     private fun parseApiTimestamp(timestamp: String): String {
@@ -271,13 +310,48 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private fun recieveMessage() {
         unionClient.setMessageCallback { message ->
             Log.d("ChatListFragment", "Global message received from ${message.from}")
-            vm.saveMessage(
-                message.content,
-                senderOnion = message.from,
-                timestamp = message.timestamp.toString(),
-                isSent = false,
-            )
+            val decodedPayload = try {
+                String(Base64.decode(message.content, Base64.NO_WRAP), Charsets.UTF_8)
+            } catch (e: Exception) {
+                message.content
+            }
+
+            try {
+                val transport = transportAdapter.fromJson(decodedPayload)
+                if (transport != null) {
+                    lifecycleScope.launch {
+                        val existing = vm.getMessageByMessageId(transport.messageId)
+                        if (existing == null) {
+                            vm.saveMessage(
+                                messageId = transport.messageId,
+                                msg = EncryptionUtils.encrypt(transport.msg),
+                                senderOnion = transport.senderOnion,
+                                timestamp = transport.timestamp,
+                                isSent = false,
+                                type = transport.type,
+                                uri = EncryptionUtils.encrypt(transport.uri),
+                                ampsJson = transport.ampsJson,
+                                reaction = transport.reaction
+                            )
+                        }
+                    }
+                } else {
+                    saveLegacySocketMessage(message, decodedPayload)
+                }
+            } catch (e: Exception) {
+                saveLegacySocketMessage(message, decodedPayload)
+            }
         }
+    }
+
+    private fun saveLegacySocketMessage(message: UnionClient.UnionMessage, decodedPayload: String) {
+        vm.saveMessage(
+            messageId = UUID.randomUUID().toString(),
+            msg = EncryptionUtils.encrypt(decodedPayload),
+            senderOnion = message.from,
+            timestamp = message.timestamp.toString(),
+            isSent = false,
+        )
     }
 
     // ── Adapter ───────────────────────────────────────────────────────────────
