@@ -105,8 +105,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
     private fun startGlobalPolling() {
         pollingJob?.cancel()
         pollingJob = viewLifecycleOwner.lifecycleScope.launch {
-            // Eagerly refresh the circuit on app start so a stale/expired circuit
-            // from a previous session is replaced before the first poll fires.
             refreshCircuitOnStart()
             while (isActive) {
                 fetchGlobalMessages()
@@ -115,11 +113,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
-    /**
-     * Creates a new circuit on app start only if one doesn't already exist in Prefs.
-     * This avoids hitting the "Circuit expired or inactive" error on the very first poll
-     * after the app is reopened.
-     */
     private suspend fun refreshCircuitOnStart() {
         try {
             val existing = Prefs.getCircuitId(requireContext())
@@ -135,11 +128,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
-    /**
-     * Ensures a valid circuit exists.
-     * Pass forceNew = true to discard the cached circuitId and create a fresh one.
-     * Returns the circuitId, or null on failure.
-     */
     private suspend fun refreshCircuitIfNeeded(forceNew: Boolean = false): String? {
         var circuitId = if (forceNew) null else Prefs.getCircuitId(requireContext())
         if (circuitId.isNullOrEmpty()) {
@@ -164,7 +152,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
             var response = repository.getMessages(myOnion, circuitId)
 
-            // If circuit expired, create a new one and retry the fetch once
             if (!response.isSuccessful && response.code() == 400) {
                 Log.w("ChatListFragment", "Circuit expired during poll, refreshing...")
                 circuitId = refreshCircuitIfNeeded(forceNew = true)
@@ -195,6 +182,15 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                     lifecycleScope.launch {
                         val existing = vm.getMessageByMessageId(transport.messageId)
                         if (existing == null) {
+                            // FIX: Only encrypt uri if it is non-null and non-blank.
+                            // Previously, encrypt(null) returned "" which was stored as a
+                            // non-null blank string, causing toUiModel() to produce decryptedUri=""
+                            // instead of null — breaking Glide image loading and audio playback.
+                            val encryptedUri = if (!transport.uri.isNullOrBlank())
+                                EncryptionUtils.encrypt(transport.uri)
+                            else
+                                null
+
                             vm.saveMessage(
                                 messageId = transport.messageId,
                                 msg = EncryptionUtils.encrypt(transport.msg),
@@ -202,7 +198,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 timestamp = transport.timestamp,
                                 isSent = false,
                                 type = transport.type,
-                                uri = EncryptionUtils.encrypt(transport.uri),
+                                uri = encryptedUri,
                                 ampsJson = transport.ampsJson,
                                 apiMessageId = apiMsg.id,
                                 reaction = transport.reaction
@@ -210,7 +206,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                         }
                     }
                 } else {
-                    // Fallback for legacy format if necessary, though new flow requires full object
                     handleLegacyMessage(apiMsg, decodedPayload)
                 }
             } catch (e: Exception) {
@@ -245,14 +240,17 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             }
         }
 
+        // FIX: Only encrypt uri if non-null and non-blank
+        val encryptedUri = if (!msgUri.isNullOrBlank()) EncryptionUtils.encrypt(msgUri) else null
+
         vm.saveMessage(
-            messageId = UUID.randomUUID().toString(), // Generate for legacy
+            messageId = UUID.randomUUID().toString(),
             msg = EncryptionUtils.encrypt(msgText),
             senderOnion = senderOnion,
             timestamp = parseApiTimestamp(apiMsg.timestamp),
             isSent = false,
             type = msgType,
-            uri = EncryptionUtils.encrypt(msgUri),
+            uri = encryptedUri,
             apiMessageId = apiMsg.id
         )
     }
@@ -322,6 +320,12 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                     lifecycleScope.launch {
                         val existing = vm.getMessageByMessageId(transport.messageId)
                         if (existing == null) {
+                            // FIX: Same null-safe URI encryption as processApiMessages
+                            val encryptedUri = if (!transport.uri.isNullOrBlank())
+                                EncryptionUtils.encrypt(transport.uri)
+                            else
+                                null
+
                             vm.saveMessage(
                                 messageId = transport.messageId,
                                 msg = EncryptionUtils.encrypt(transport.msg),
@@ -329,7 +333,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 timestamp = transport.timestamp,
                                 isSent = false,
                                 type = transport.type,
-                                uri = EncryptionUtils.encrypt(transport.uri),
+                                uri = encryptedUri,
                                 ampsJson = transport.ampsJson,
                                 reaction = transport.reaction
                             )

@@ -40,6 +40,7 @@ import kotlin.random.Random
 @Suppress("DEPRECATION")
 class MessageAdapter(
     private val myId: String,
+    private val lastSeenMessageId: Long = 0L,
     private val onClick: (MessageUiModel) -> Unit = {},
     private val onLongClick: (View, MessageUiModel) -> Unit = { _, _ -> },
     private val onEmojiSelected: (MessageUiModel, String) -> Unit = { _, _ -> },
@@ -107,9 +108,12 @@ class MessageAdapter(
     }
 
     private fun handlePreCache(list: List<MessageUiModel>?) {
-        if (!firstLoadDone && currentList.isEmpty() && list != null) {
-            if (list.size > 1) {
-                list.forEach { persistentCache[it.id] = it.decryptedMsg }
+        if (!firstLoadDone && currentList.isEmpty() && list != null && list.isNotEmpty()) {
+            list.forEach {
+                // Cache ONLY if you sent it OR if its local DB ID is older than what you've seen
+                if (it.isSent || it.id <= lastSeenMessageId) {
+                    persistentCache[it.id] = it.decryptedMsg
+                }
             }
             firstLoadDone = true
         }
@@ -372,7 +376,7 @@ class MessageAdapter(
                 // messageDecryptor is still used for the visual animation effect if needed,
                 // but we already have the decrypted text in item.decryptedMsg.
                 // To keep the animation feel, we could delay slightly.
-                delay(500) 
+                delay(500)
                 val decrypted = item.decryptedMsg
                 decryptedTextCache[msgId] = decrypted
 
@@ -430,8 +434,12 @@ class MessageAdapter(
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
         h.tvRcv.cancelAndShowFinal()
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
-        val uriStr = item.decryptedUri ?: item.decryptedMsg
+
+        // FIX: Route the raw decrypted source through the Base64 file resolver
+        val rawSource = item.decryptedUri ?: item.decryptedMsg
+        val uriStr = resolveMediaSource(h.itemView.context, rawSource, type)
         val uri = try { uriStr.toUri() } catch (_: Exception) { null }
+
         if (sent) {
             h.sentMedia.isVisible = true; h.rcvdMedia.isVisible = false
             h.ivSentMedia.isVisible = true; h.ivSentPlay.isVisible = type == "VIDEO"
@@ -456,7 +464,11 @@ class MessageAdapter(
         h.receivedMessageTimeLayout?.visibility = View.GONE
         h.sentAudio.isVisible = sent; h.rcvAudio.isVisible = !sent
 
-        val uriStr = item.decryptedUri ?: return
+        // FIX: Route the raw decrypted source through the Base64 file resolver
+        val rawSource = item.decryptedUri ?: item.decryptedMsg
+        val uriStr = resolveMediaSource(h.itemView.context, rawSource, "AUDIO")
+        if (uriStr.isBlank()) return
+
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
         h.durationLabel(sent).text = formatDuration(getTotalDuration(h.itemView.context, uriStr))
         if (activeUri == uriStr) syncPlayingUi(h, sent)
@@ -554,4 +566,38 @@ class MessageAdapter(
     private fun convertDatetime(time: String): String {
         return try { java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(time.toLong())) } catch (_: Exception) { "" }
     }
+
+    private fun resolveMediaSource(context: Context, payload: String?, type: String): String {
+        if (payload.isNullOrBlank()) return ""
+        var cleanPayload = payload.trim()
+
+        // Strip any legacy/network prefix tags
+        if (cleanPayload.startsWith("[IMAGE] ")) cleanPayload = cleanPayload.removePrefix("[IMAGE] ")
+        else if (cleanPayload.startsWith("[VIDEO] ")) cleanPayload = cleanPayload.removePrefix("[VIDEO] ")
+        else if (cleanPayload.startsWith("[AUDIO] ")) cleanPayload = cleanPayload.removePrefix("[AUDIO] ")
+
+        // If it's already a playable/loadable local or remote path, return it directly
+        if (cleanPayload.startsWith("http") || cleanPayload.startsWith("file://") || cleanPayload.startsWith("content://")) {
+            return cleanPayload
+        }
+
+        // It is raw decrypted Base64 data. Decode to a local cache file so Glide/MediaPlayer can use it.
+        return try {
+            val bytes = android.util.Base64.decode(cleanPayload, android.util.Base64.DEFAULT)
+            val ext = when(type.uppercase(java.util.Locale.US)) {
+                "AUDIO" -> "mp3"
+                "VIDEO" -> "mp4"
+                else -> "jpg"
+            }
+            // Use a hash of the payload to avoid rewriting the same file
+            val file = java.io.File(context.cacheDir, "kyber_media_${cleanPayload.hashCode()}.$ext")
+            if (!file.exists()) {
+                file.writeBytes(bytes)
+            }
+            "file://${file.absolutePath}"
+        } catch (e: Exception) {
+            cleanPayload // Fallback if decoding fails
+        }
+    }
+
 }

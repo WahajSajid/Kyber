@@ -146,6 +146,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
 
+    private val decryptedMediaCache = mutableMapOf<Long, MessageEntity>()
+
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
@@ -240,6 +242,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             )
                         }
                     } else {
+                        val base64Uri = encodeFileToBase64(item.uriString.toString())
                         val messageId = UUID.randomUUID().toString()
                         val timestamp = System.currentTimeMillis().toString()
                         val transport = PrivateMessageTransportDto(
@@ -248,9 +251,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             senderOnion = onionAddr,
                             timestamp = timestamp,
                             type = item.type,
-                            uri = item.uriString
+                            uri = base64Uri
                         )
-                        
+
                         vm.saveMessage(
                             messageId = messageId,
                             msg = EncryptionUtils.encrypt(caption),
@@ -670,9 +673,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
                     try {
                         val transport = transportAdapter.fromJson(decodedPayload)
-                        if (transport != null && transport.senderOnion.equals(contactOnion, ignoreCase = true)) {
+                        if (transport != null && transport.senderOnion.equals(
+                                contactOnion,
+                                ignoreCase = true
+                            )
+                        ) {
                             // Check if already exists
                             val existing = vm.getMessageByMessageId(transport.messageId)
+                            val encryptedUri =
+                                if (!transport.uri.isNullOrBlank()) EncryptionUtils.encrypt(
+                                    transport.uri
+                                ) else null
                             if (existing == null) {
                                 vm.saveMessage(
                                     messageId = transport.messageId,
@@ -681,7 +692,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                     timestamp = transport.timestamp,
                                     isSent = false,
                                     type = transport.type,
-                                    uri = EncryptionUtils.encrypt(transport.uri),
+                                    uri = encryptedUri,
                                     ampsJson = transport.ampsJson,
                                     apiMessageId = apiMsg.id,
                                     reaction = transport.reaction
@@ -703,9 +714,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun recieveMessage() {
         unionClient.setMessageCallback(contactOnion) { socketMsg ->
             try {
-                val decodedPayload = String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
+                val decodedPayload =
+                    String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
                 val transport = transportAdapter.fromJson(decodedPayload)
-                if (transport != null && transport.senderOnion.equals(contactOnion, ignoreCase = true)) {
+                if (transport != null && transport.senderOnion.equals(
+                        contactOnion,
+                        ignoreCase = true
+                    )
+                ) {
+
+                    val encryptedUri =
+                        if (!transport.uri.isNullOrBlank()) EncryptionUtils.encrypt(transport.uri) else null
+
                     lifecycleScope.launch {
                         val existing = vm.getMessageByMessageId(transport.messageId)
                         if (existing == null) {
@@ -716,7 +736,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 timestamp = transport.timestamp,
                                 isSent = false,
                                 type = transport.type,
-                                uri = EncryptionUtils.encrypt(transport.uri),
+                                uri = encryptedUri,
                                 ampsJson = transport.ampsJson,
                                 reaction = transport.reaction
                             )
@@ -751,7 +771,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         lifecycleScope.launch {
             try {
                 val jsonPayload = transportAdapter.toJson(transport)
-                val base64Payload = Base64.encodeToString(jsonPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                val base64Payload =
+                    Base64.encodeToString(jsonPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
 
                 var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
                 var apiSuccess = false
@@ -766,13 +787,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     }
 
                     if (circuitId.isNotEmpty()) {
-                        var response = repository.sendMessage(contactOnion, base64Payload, circuitId)
+                        var response =
+                            repository.sendMessage(contactOnion, base64Payload, circuitId)
                         if (!response.isSuccessful && (response.code() == 404 || response.code() == 400)) {
                             val retryCircuitResp = repository.createCircuit()
                             if (retryCircuitResp.isSuccessful) {
                                 circuitId = retryCircuitResp.body()?.circuitId ?: ""
                                 Prefs.setCircuitId(requireContext(), circuitId)
-                                response = repository.sendMessage(contactOnion, base64Payload, circuitId)
+                                response =
+                                    repository.sendMessage(contactOnion, base64Payload, circuitId)
                             }
                         }
                         if (response.isSuccessful) apiSuccess = true
@@ -780,7 +803,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 } catch (e: Exception) {
                     Log.e("ChatFragment", "API call failed: ${e.message}")
                 }
-                
+
                 unionClient.sendMessage(contactOnion, base64Payload)
             } catch (e: Exception) {
                 Log.e("ChatFragment", "Final delivery failure: ${e.message}")
@@ -802,7 +825,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 selectedMsg?.let { msg ->
                     msg.reaction = emoji
                     vm.updateMessage(msg.entity)
-                    
+
                     val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
                     val transport = PrivateMessageTransportDto(
                         messageId = msg.messageId,
@@ -880,15 +903,67 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun setListMessageAdapter() {
         recyclerview = binding.rvMsg
+
+        // 1. Fetch the last seen local message ID for this specific contact
+        val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+        val lastSeenIdKey = "last_seen_id_${contactOnion}"
+        val lastSeenId = sharedPrefs.getLong(lastSeenIdKey, 0L)
         adapterMsg = MessageAdapter(
             myId = "me123",
+            lastSeenMessageId = lastSeenId,
             onClick = { msg ->
                 if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
-                    val actualUri = msg.decryptedUri ?: msg.decryptedMsg
+                    var actualUri = msg.decryptedUri ?: msg.decryptedMsg
+
                     if (actualUri.isNotBlank()) {
+
+                        // 1. Strip legacy network prefixes just in case
+                        if (actualUri.startsWith("[IMAGE] ")) actualUri = actualUri.removePrefix("[IMAGE] ")
+                        else if (actualUri.startsWith("[VIDEO] ")) actualUri = actualUri.removePrefix("[VIDEO] ")
+
+                        // 2. CRITICAL FIX: The payload in the UI model is raw Base64.
+                        // We must decode it to a valid physical file path before opening the viewer!
+                        // (Uses ChatFragment's existing helper function)
+                        actualUri = decodeBase64ToFile(actualUri, msg.type) ?: actualUri
+
+                        // 3. Fix Android MediaServer permissions for Videos
+                        // MediaPlayer cannot legally read internal cache file:// URIs.
+                        // We securely convert it to a content:// URI using FileProvider.
+                        var finalUri = actualUri
+                        if (actualUri.startsWith("file://")) {
+                            try {
+                                val file = java.io.File(java.net.URI(actualUri))
+                                if (file.exists()) {
+                                    val authority = "${requireContext().packageName}.provider"
+                                    finalUri = androidx.core.content.FileProvider.getUriForFile(
+                                        requireContext(),
+                                        authority,
+                                        file
+                                    ).toString()
+                                }
+                            } catch (e: Exception) {
+                                // Fallback if FileProvider is named differently in Manifest
+                                try {
+                                    val authorityAlt = "${requireContext().packageName}.fileprovider"
+                                    val file = java.io.File(java.net.URI(actualUri))
+                                    finalUri = androidx.core.content.FileProvider.getUriForFile(
+                                        requireContext(),
+                                        authorityAlt,
+                                        file
+                                    ).toString()
+                                } catch (e2: Exception) {
+                                    finalUri = actualUri // Absolute fallback
+                                }
+                            }
+                        }
+
+                        // 4. Pass the secure, resolved URI to the viewer
                         startActivity(
                             Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                                putExtra("uri", actualUri); putExtra("type", msg.type)
+                                putExtra("uri", finalUri)
+                                putExtra("type", msg.type)
+                                // Grant temporary read permission to the target activity
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             })
                     }
                 }
@@ -902,8 +977,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", textToUse))
+
                     R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", textToUse))
+
                     R.id.btnForwardSent -> handleForward()
                     R.id.btnForwardRcv -> handleForward()
                     R.id.btnInfoSent -> handleInfo(msg)
@@ -935,7 +1012,16 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             viewLifecycleOwner.lifecycleScope.launch {
                 vm.messagesFlow.collect { list ->
                     val uiModels = list.map { it.toUiModel() }
-                    adapterMsg.submitList(uiModels) { scrollToPosition(adapterMsg.itemCount - 1) }
+                    adapterMsg.submitList(uiModels) {
+                        scrollToPosition(adapterMsg.itemCount - 1)
+                        // 3. Immediately update the shared prefs to the highest ID in this list.
+                        // This guarantees that the NEXT time you open the chat, these messages
+                        // will be safely treated as historical and won't animate again.
+                        val maxId = uiModels.maxOfOrNull { it.id } ?: 0L
+                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
+                            sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
+                        }
+                    }
                 }
             }
             layoutManager = object : LinearLayoutManager(requireContext()) {
@@ -969,8 +1055,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+
                     R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+
                     R.id.btnForwardSent -> handleForward()
                     R.id.btnForwardRcv -> handleForward()
                     R.id.btnInfoSent -> handleInfo(msg)
@@ -1106,6 +1194,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val durationStr = formatDuration(duration)
         val messageText = "Voice Message ($durationStr)"
 
+        // FIX: Encode the actual file to Base64 for the network payload
+        val base64Uri = encodeFileToBase64(fileUri)
+
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
                 groupManager.sendMessage(
@@ -1117,15 +1208,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         } else {
             val messageId = UUID.randomUUID().toString()
             val timestamp = System.currentTimeMillis().toString()
+
+            // Network payload gets the Base64 encoded file
             val transport = PrivateMessageTransportDto(
                 messageId = messageId,
                 msg = messageText,
                 senderOnion = onionAddr,
                 timestamp = timestamp,
                 type = "AUDIO",
-                uri = fileUri,
+                uri = base64Uri, // <--- CHANGED FROM fileUri
                 ampsJson = ampsJson
             )
+
+            // Local Room DB keeps the local file path (encrypted)
             vm.saveMessage(
                 messageId = messageId,
                 msg = EncryptionUtils.encrypt(messageText),
@@ -1133,7 +1228,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 timestamp = timestamp,
                 isSent = true,
                 type = "AUDIO",
-                uri = EncryptionUtils.encrypt(fileUri),
+                uri = EncryptionUtils.encrypt(fileUri), // Keeps local file path!
                 ampsJson = ampsJson
             )
             sendPrivateMessage(transport)
@@ -1309,7 +1404,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         Prefs.setRecentEmojis(requireContext(), recentEmojisList)
         if (::adapterMsg.isInitialized) adapterMsg.updateRecentEmojis(recentEmojisList, msgId)
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(recentEmojisList)
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.updateRecentEmojis(
+            recentEmojisList
+        )
     }
 
     // ── Media Picker ──────────────────────────────────────────────────────────
@@ -1338,10 +1435,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (uri in uris) {
             try {
                 requireContext().contentResolver.takePersistableUriPermission(uri, takeFlags)
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            }
             val mime = try {
                 requireContext().contentResolver.getType(uri)
-            } catch (_: Exception) { null }
+            } catch (_: Exception) {
+                null
+            }
             val type = if (mime?.startsWith("video") == true ||
                 uri.toString().endsWith(".mp4", true)
             ) "VIDEO" else "IMAGE"
@@ -1364,6 +1464,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (m in selectedMedias) {
             val caption = if (m.caption.isNullOrBlank())
                 (if (m.type == "VIDEO") "video" else "photo") else m.caption
+
+            // FIX: Encode the actual image/video to Base64 for the network
+            val base64Uri = encodeFileToBase64(m.uri.toString())
             if (comingFrom == "group_chat_list") {
                 lifecycleScope.launch {
                     groupManager.sendMessage(
@@ -1373,14 +1476,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             } else {
                 val messageId = UUID.randomUUID().toString()
                 val timestamp = System.currentTimeMillis().toString()
+
+                // Network payload gets the Base64 encoded file
                 val transport = PrivateMessageTransportDto(
                     messageId = messageId,
                     msg = caption!!,
                     senderOnion = onionAddr,
                     timestamp = timestamp,
                     type = m.type,
-                    uri = m.uri.toString()
+                    uri = base64Uri // <--- CHANGED FROM m.uri.toString()
                 )
+
+                // Local Room DB keeps the local file path (encrypted)
                 vm.saveMessage(
                     messageId = messageId,
                     msg = EncryptionUtils.encrypt(caption),
@@ -1388,7 +1495,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     timestamp = timestamp,
                     isSent = true,
                     type = m.type,
-                    uri = EncryptionUtils.encrypt(m.uri.toString())
+                    uri = EncryptionUtils.encrypt(m.uri.toString()) // Keeps local file path!
                 )
                 sendPrivateMessage(transport)
             }
@@ -1448,14 +1555,23 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun getTotalDuration(context: Context, uriStr: String): Int {
         if (uriStr.isBlank()) return 0
-        val uri = try { uriStr.toUri() } catch (_: Exception) { return 0 }
+        val uri = try {
+            uriStr.toUri()
+        } catch (_: Exception) {
+            return 0
+        }
         val retriever = MediaMetadataRetriever()
         return try {
             if (uri.scheme == "file") retriever.setDataSource(uri.path)
             else retriever.setDataSource(context, uri)
             retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
-        } catch (_: Exception) { 0 } finally {
-            try { retriever.release() } catch (_: Exception) { }
+        } catch (_: Exception) {
+            0
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -1463,13 +1579,64 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         return try {
             val formatter = SimpleDateFormat("hh:mm a", Locale.getDefault())
             formatter.format(java.util.Date(time.toLong()))
-        } catch (_: Exception) { "" }
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     private fun formatTimestamp(timeInMillis: Long): String {
         val formatter = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
         return formatter.format(java.util.Date(timeInMillis))
     }
+
+    // ── ADD THIS HELPER FUNCTION ──────────────────────────────────────────────
+    private fun encodeFileToBase64(uriStr: String): String {
+        return try {
+            val uri = Uri.parse(uriStr)
+            val inputStream = if (uri.scheme == "content" || uri.scheme == "file") {
+                requireContext().contentResolver.openInputStream(uri)
+            } else {
+                java.io.File(uriStr).inputStream()
+            }
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
+            } else {
+                uriStr
+            }
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Failed to encode file to base64", e)
+            uriStr // fallback to original string if it fails
+        }
+    }
+
+    private fun decodeBase64ToFile(base64Data: String?, type: String): String? {
+        if (base64Data.isNullOrBlank()) return null
+
+        // If it's already a valid path (e.g. from local testing or HTTP), leave it alone
+        if (base64Data.startsWith("content://") || base64Data.startsWith("file://") || base64Data.startsWith("http")) {
+            return base64Data
+        }
+
+        return try {
+            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+            val ext = when(type.uppercase(java.util.Locale.US)) {
+                "AUDIO" -> "mp3"
+                "VIDEO" -> "mp4"
+                else -> "jpg"
+            }
+            // Create a local file on the receiver's device so external viewers can read it
+            val file = java.io.File(requireContext().cacheDir, "kyber_media_${System.currentTimeMillis()}.$ext")
+            file.writeBytes(bytes)
+
+            // Return the receiver's local valid file path
+            "file://${file.absolutePath}"
+        } catch (e: Exception) {
+            base64Data // Fallback
+        }
+    }
+
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
 }
