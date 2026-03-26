@@ -637,7 +637,7 @@
         android:paddingVertical="@dimen/_1sdp"
         android:text="👌"
         android:textSize="@dimen/reaction_size"
-        android:visibility="visible"
+        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
         app:layout_constraintTop_toBottomOf="@id/rlMsgSent" />
 

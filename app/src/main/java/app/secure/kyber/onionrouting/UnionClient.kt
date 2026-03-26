@@ -313,24 +313,23 @@ class UnionClient {
     @OptIn(ExperimentalEncodingApi::class)
     private fun parseJsonMessage(json: String): UnionMessage? {
         return try {
-            // Basic parsing - replace with proper JSON library like Gson or Moshi
             val fromMatch = Regex("\"from\":\"([^\"]+)\"").find(json)
             val contentMatch = Regex("\"payload\":\"([^\"]+)\"").find(json)
             val idMatch = Regex("\"id\":\"([^\"]+)\"").find(json)
 
-            val decodedString = Base64.decode(
-                contentMatch!!.groupValues[1],
-                startIndex = 0,
-                endIndex = contentMatch!!.groupValues[1].length
-            ).decodeToString()
-
-
             if (fromMatch != null && contentMatch != null) {
+                // Decode safely inside the null check
+                val decodedString = Base64.decode(
+                    contentMatch.groupValues[1],
+                    startIndex = 0,
+                    endIndex = contentMatch.groupValues[1].length
+                ).decodeToString()
+
                 UnionMessage(
                     id = idMatch?.groupValues?.get(1) ?: "unknown",
                     from = fromMatch.groupValues[1],
                     to = onionAddress,
-                    content = decodedString,//contentMatch.groupValues[1],
+                    content = decodedString,
                     timestamp = System.currentTimeMillis(),
                     messageType = MessageType.DIRECT
                 )

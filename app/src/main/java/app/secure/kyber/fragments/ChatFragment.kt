@@ -706,25 +706,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     // Fix the Socket Receiver as well:
     private fun recieveMessage() {
         unionClient.setMessageCallback(contactOnion) { socketMsg ->
-            try {
-                // Decode Base64
-                val decodedPayload = String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
-
-                // Extract Sender
-                val parts = decodedPayload.split("::", limit = 2)
-
-                if (parts.size == 2) {
-                    val embeddedSender = parts[0]
-                    val actualMessage = parts[1]
-
-                    // Verify Sender
-                    if (embeddedSender.equals(contactOnion, ignoreCase = true)) {
-                        vm.saveMessage(actualMessage, contactOnion, socketMsg.timestamp.toString(), false)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("ChatFragment", "Socket receive error: ${e.message}")
-            }
+//            try {
+//                // Decode Base64
+//                val decodedPayload = String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
+//
+//                // Extract Sender
+//                val parts = decodedPayload.split("::", limit = 2)
+//
+//                if (parts.size == 2) {
+//                    val embeddedSender = parts[0]
+//                    val actualMessage = parts[1]
+//
+//                    // Verify Sender
+//                    if (embeddedSender.equals(contactOnion, ignoreCase = true)) {
+//                        vm.saveMessage(actualMessage, contactOnion, socketMsg.timestamp.toString(), false)
+//                    }
+//                }
+//            } catch (e: Exception) {
+//                Log.e("ChatFragment", "Socket receive error: ${e.message}")
+//            }
         }
     }
 
