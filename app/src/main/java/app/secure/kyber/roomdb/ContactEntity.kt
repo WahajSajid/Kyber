@@ -6,5 +6,5 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "contacts")
 data class ContactEntity(
     @PrimaryKey val onionAddress: String,
-    val name: String
+    val name: String,
 )

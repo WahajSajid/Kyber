@@ -9,11 +9,25 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class MessagesViewModel(private val repo: MessageRepository, private val onionAddress: String) : ViewModel() {
-    // live, auto-updating list
+
+    /** Messages for a specific private chat (used in ChatFragment). */
     val messagesFlow = repo.observeAll(onionAddress)
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /** Last message per conversation — for the normal accepted chat list. */
     val lastMessagesFlow = repo.observeAllLastMsgs()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Incoming pending message requests.
+     * Conversations where:
+     *   - all messages are inbound (isSent = 0),
+     *   - sender is not in the contacts table, AND
+     *   - at least one message carries isRequest = 1.
+     *
+     * Used by MessageRequestsFragment.
+     */
+    val incomingRequestsFlow = repo.observeIncomingRequests()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     fun saveMessage(
@@ -26,10 +40,11 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
         uri: String? = null,
         ampsJson: String? = null,
         apiMessageId: String? = null,
-        reaction: String = ""
+        reaction: String = "",
+        isRequest: Boolean = false
     ) {
         viewModelScope.launch {
-            repo.saveMsg(messageId, msg, senderOnion, timestamp, isSent, type, uri, ampsJson, apiMessageId, reaction)
+            repo.saveMsg(messageId, msg, senderOnion, timestamp, isSent, type, uri, ampsJson, apiMessageId, reaction, isRequest)
         }
     }
 
@@ -42,6 +57,16 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
     fun deleteMessage(message: MessageEntity) {
         viewModelScope.launch {
             repo.deleteMsg(message)
+        }
+    }
+
+    /**
+     * Bulk-delete all messages from/to a given onion address.
+     * Used by rejectRequest() to remove an entire pending conversation in one query.
+     */
+    fun deleteAllBySender(senderOnion: String) {
+        viewModelScope.launch {
+            repo.deleteAllBySender(senderOnion)
         }
     }
 

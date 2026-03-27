@@ -30,6 +30,7 @@ import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatListBinding
 import app.secure.kyber.onionrouting.UnionClient
 import app.secure.kyber.roomdb.AppDb
+import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import app.secure.kyber.Utils.EncryptionUtils
@@ -98,6 +99,11 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         binding.btnGroupChat.setOnClickListener {
             myApp.tabBtnState = "group_chat"
             navController.navigate(R.id.action_chatListFragment_to_groupChatListFragment)
+        }
+
+        binding.btnRequest.setOnClickListener {
+            myApp.tabBtnState = "request_chat"
+            navController.navigate(R.id.action_chatListFragment_to_messageRequestsFragment)
         }
     }
 
@@ -181,40 +187,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 val transport = transportAdapter.fromJson(decodedPayload)
                 if (transport != null) {
                     lifecycleScope.launch {
-                        val existing = vm.getMessageByMessageId(transport.messageId)
-                        if (existing == null) {
-                            // FIX: Only encrypt uri if it is non-null and non-blank.
-                            // Previously, encrypt(null) returned "" which was stored as a
-                            // non-null blank string, causing toUiModel() to produce decryptedUri=""
-                            // instead of null — breaking Glide image loading and audio playback.
-                            val encryptedUri = if (!transport.uri.isNullOrBlank())
-                                EncryptionUtils.encrypt(transport.uri)
-                            else
-                                null
-
-                            vm.saveMessage(
-                                messageId = transport.messageId,
-                                msg = EncryptionUtils.encrypt(transport.msg),
-                                senderOnion = transport.senderOnion,
-                                timestamp = transport.timestamp,
-                                isSent = false,
-                                type = transport.type,
-                                uri = encryptedUri,
-                                ampsJson = transport.ampsJson,
-                                apiMessageId = apiMsg.id,
-                                reaction = transport.reaction
-                            )
-                        }
-                        else {
-                            // FIX: Catch reaction updates globally while user is away from chat
-                            if (existing.reaction != transport.reaction) {
-                                existing.reaction = transport.reaction
-                                // Track activity time, or clear it if reaction is removed
-                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
-                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
-                                vm.updateMessage(existing)
-                            }
-                        }
+                        handleTransport(transport, apiMsg)
                     }
                 } else {
                     handleLegacyMessage(apiMsg, decodedPayload)
@@ -225,7 +198,107 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
-    private fun handleLegacyMessage(apiMsg: app.secure.kyber.backend.beans.ApiMessage, decodedPayload: String) {
+    /**
+     * Central handler for every decoded transport message.
+     *
+     * Acceptance flow (two-sided contact creation):
+     * ─────────────────────────────────────────────
+     * When the receiver accepts a request they send back a special message
+     * with isAcceptance = true and their own name in senderName.
+     * When the SENDER receives that message here, we:
+     *   1. Save the receiver as a contact using senderName from the transport.
+     *   2. Do NOT persist the acceptance message itself into the messages table
+     *      so it never appears in the conversation thread.
+     *
+     * Request flow (sender name caching):
+     * ────────────────────────────────────
+     * When a message with isRequest = true arrives and senderName is provided,
+     * we cache the name in SharedPreferences so MessageRequestsFragment can
+     * pass it to ChatFragment, and acceptRequest() can save the real name.
+     */
+    private suspend fun handleTransport(
+        transport: PrivateMessageTransportDto,
+        apiMsg: app.secure.kyber.backend.beans.ApiMessage
+    ) {
+        // ── Acceptance acknowledgement received (sender's side) ───────────────
+        if (transport.isAcceptance) {
+            handleAcceptanceAck(transport)
+            return  // Do not persist this message in the thread.
+        }
+
+        // ── Cache sender name for incoming requests ───────────────────────────
+        if (transport.isRequest && transport.senderName.isNotBlank()) {
+            cachePendingContactName(transport.senderOnion, transport.senderName)
+        }
+
+        // ── Normal / request message persistence ─────────────────────────────
+        val existing = vm.getMessageByMessageId(transport.messageId)
+        if (existing == null) {
+            val encryptedUri = if (!transport.uri.isNullOrBlank())
+                EncryptionUtils.encrypt(transport.uri)
+            else null
+
+            vm.saveMessage(
+                messageId = transport.messageId,
+                msg = EncryptionUtils.encrypt(transport.msg),
+                senderOnion = transport.senderOnion,
+                timestamp = transport.timestamp,
+                isSent = false,
+                type = transport.type,
+                uri = encryptedUri,
+                ampsJson = transport.ampsJson,
+                apiMessageId = apiMsg.id,
+                reaction = transport.reaction,
+                isRequest = transport.isRequest
+            )
+        } else {
+            if (existing.reaction != transport.reaction) {
+                existing.reaction = transport.reaction
+                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                vm.updateMessage(existing)
+            }
+        }
+    }
+
+    /**
+     * Called when we receive an acceptance acknowledgement from the other side.
+     * Saves the acceptor as a contact on THIS device, completing the two-sided
+     * contact relationship without any manual action from this user.
+     */
+    private suspend fun handleAcceptanceAck(transport: PrivateMessageTransportDto) {
+        val db = AppDb.get(requireContext())
+        val contactRepo = ContactRepository(db.contactDao())
+
+        // Only save if we don't already have this contact.
+        val existing = contactRepo.getContact(transport.senderOnion)
+        if (existing == null) {
+            val name = transport.senderName.ifBlank { transport.senderOnion }
+            contactRepo.saveContact(onionAddress = transport.senderOnion, name = name)
+            Log.d(
+                "ChatListFragment",
+                "Auto-saved contact after acceptance: $name (${transport.senderOnion})"
+            )
+        }
+    }
+
+    /**
+     * Stores the pending sender name in SharedPreferences so it survives until
+     * the user opens the request and either accepts or rejects it.
+     * Key format: "pending_name_<onionAddress>"
+     */
+    private fun cachePendingContactName(senderOnion: String, senderName: String) {
+        requireContext()
+            .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+            .edit()
+            .putString("pending_name_$senderOnion", senderName)
+            .apply()
+    }
+
+    private fun handleLegacyMessage(
+        apiMsg: app.secure.kyber.backend.beans.ApiMessage,
+        decodedPayload: String
+    ) {
         val senderOnion = apiMsg.senderOnion ?: return
         if (senderOnion.isEmpty()) return
 
@@ -239,11 +312,13 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 msgUri = decodedPayload.removePrefix("[IMAGE] ")
                 msgText = "photo"
             }
+
             decodedPayload.startsWith("[VIDEO] ") -> {
                 msgType = "VIDEO"
                 msgUri = decodedPayload.removePrefix("[VIDEO] ")
                 msgText = "video"
             }
+
             decodedPayload.startsWith("[AUDIO] ") -> {
                 msgType = "AUDIO"
                 msgUri = decodedPayload.removePrefix("[AUDIO] ")
@@ -251,7 +326,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             }
         }
 
-        // FIX: Only encrypt uri if non-null and non-blank
         val encryptedUri = if (!msgUri.isNullOrBlank()) EncryptionUtils.encrypt(msgUri) else null
 
         vm.saveMessage(
@@ -329,36 +403,18 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 val transport = transportAdapter.fromJson(decodedPayload)
                 if (transport != null) {
                     lifecycleScope.launch {
-                        val existing = vm.getMessageByMessageId(transport.messageId)
-                        if (existing == null) {
-                            // FIX: Same null-safe URI encryption as processApiMessages
-                            val encryptedUri = if (!transport.uri.isNullOrBlank())
-                                EncryptionUtils.encrypt(transport.uri)
-                            else
-                                null
-
-                            vm.saveMessage(
-                                messageId = transport.messageId,
-                                msg = EncryptionUtils.encrypt(transport.msg),
-                                senderOnion = transport.senderOnion,
-                                timestamp = transport.timestamp,
-                                isSent = false,
-                                type = transport.type,
-                                uri = encryptedUri,
-                                ampsJson = transport.ampsJson,
-                                reaction = transport.reaction
+                        // Reuse the same handleTransport logic for socket messages.
+                        // Socket messages don't have an apiMsg wrapper, so we create
+                        // a minimal stub — apiMessageId will be null, which is fine.
+                        handleTransport(
+                            transport,
+                            app.secure.kyber.backend.beans.ApiMessage(
+                                id = "",
+                                payload = message.content,
+                                senderOnion = message.from,
+                                timestamp = message.timestamp.toString()
                             )
-                        }
-                        else {
-                            // FIX: Catch reaction updates globally while user is away from chat
-                            if (existing.reaction != transport.reaction) {
-                                existing.reaction = transport.reaction
-                                // Track activity time, or clear it if reaction is removed
-                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
-                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
-                                vm.updateMessage(existing)
-                            }
-                        }
+                        )
                     }
                 } else {
                     saveLegacySocketMessage(message, decodedPayload)
@@ -381,12 +437,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
 
     // ── Adapter ───────────────────────────────────────────────────────────────
 
-    // ── Adapter ───────────────────────────────────────────────────────────────
-
-    // ── Adapter ───────────────────────────────────────────────────────────────
-
-    // ── Adapter ───────────────────────────────────────────────────────────────
-
     private fun setListAdapter() {
         val recyclerview = binding.rv
         recyclerview.setHasFixedSize(false)
@@ -404,15 +454,17 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                 viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     vm.lastMessagesFlow.collectLatest { list ->
 
-                        val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+                        val sharedPrefs = requireContext().getSharedPreferences(
+                            "chat_prefs",
+                            Context.MODE_PRIVATE
+                        )
                         val dao = AppDb.get(requireContext()).messageDao()
 
                         val displayList = list.map { chat ->
                             val rawMsg = chat.lastMessage ?: ""
-                            val rawReaction = chat.reaction ?: "" // <--- Pull newly selected reaction
-                            val msgType = chat.type ?: "TEXT"     // <--- Pull newly selected media type
+                            val rawReaction = chat.reaction ?: ""
+                            val msgType = chat.type ?: "TEXT"
 
-                            // Safely decrypt text/media payload
                             val decrypted = try {
                                 val d = app.secure.kyber.Utils.EncryptionUtils.decrypt(rawMsg)
                                 if (d.isNotBlank()) d else rawMsg
@@ -420,21 +472,22 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 rawMsg
                             }
 
-                            // EXTRACT REACTION INFO
                             var actualEmoji = ""
                             var isMyReaction = false
                             if (rawReaction.isNotEmpty()) {
                                 val parts = rawReaction.split("|", limit = 2)
                                 if (parts.size == 2) {
-                                    val myRealOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                                    val myRealOnion =
+                                        app.secure.kyber.backend.common.Prefs.getOnionAddress(
+                                            requireContext()
+                                        ) ?: ""
                                     isMyReaction = (parts[0] == myRealOnion)
                                     actualEmoji = parts[1]
                                 } else {
-                                    actualEmoji = rawReaction // Fallback
+                                    actualEmoji = rawReaction
                                 }
                             }
 
-                            // Format media for human-readability
                             var formattedMessage = when {
                                 decrypted == "photo" -> "📷 Photo"
                                 decrypted == "video" -> "🎥 Video"
@@ -442,9 +495,9 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 else -> decrypted
                             }
 
-                            // OVERLAY REACTION PREVIEW (If reaction exists)
                             if (actualEmoji.isNotEmpty()) {
-                                val prefix = if (isMyReaction) "You reacted $actualEmoji to" else "Reacted $actualEmoji to"
+                                val prefix =
+                                    if (isMyReaction) "You reacted $actualEmoji to" else "Reacted $actualEmoji to"
                                 val suffix = when (msgType.uppercase(java.util.Locale.US)) {
                                     "IMAGE" -> "a photo"
                                     "VIDEO" -> "a video"
@@ -454,16 +507,26 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 formattedMessage = "$prefix $suffix"
                             }
 
-                            // Calculate the accurate Unread Count
                             val onion = chat.onionAddress ?: ""
                             val lastSeenId = sharedPrefs.getLong("last_seen_id_$onion", 0L)
                             val unread = dao.getUnreadCount(onion, lastSeenId)
 
-                            // Inject the preview and unread count into the model
-                            chat.copy(lastMessage = formattedMessage, unreadCount = unread)
+                            /// REPLACE only the chat.copy line at the bottom of the displayList map in setListAdapter():
+                            val maskedName = chat.name?.let {
+                                if (it.endsWith(".onion")) "Unknown User" else it
+                            } ?: "Unknown User"
+
+                            chat.copy(
+                                lastMessage = formattedMessage,
+                                unreadCount = unread,
+                                name = maskedName
+                            )
                         }
 
-                        android.util.Log.d("ChatListFragment", "Updating chat list with ${displayList.size} items")
+                        Log.d(
+                            "ChatListFragment",
+                            "Updating chat list with ${displayList.size} items"
+                        )
                         chatListAdapter.submitList(displayList)
                     }
                 }
@@ -472,8 +535,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             adapter = chatListAdapter
         }
     }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onDestroyView() {
         pollingJob?.cancel()

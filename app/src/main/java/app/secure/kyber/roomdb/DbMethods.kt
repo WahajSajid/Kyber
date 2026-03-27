@@ -16,9 +16,9 @@ class MessageRepository(private val dao: MessageDao) {
         uri: String? = null,
         ampsJson: String? = null,
         apiMessageId: String? = null,
-        reaction: String = ""
+        reaction: String = "",
+        isRequest: Boolean = false
     ) {
-
         dao.insert(
             MessageEntity(
                 messageId = messageId,
@@ -30,7 +30,8 @@ class MessageRepository(private val dao: MessageDao) {
                 uri = uri,
                 ampsJson = ampsJson ?: "",
                 apiMessageId = apiMessageId,
-                reaction = reaction
+                reaction = reaction,
+                isRequest = isRequest
             )
         )
     }
@@ -43,13 +44,23 @@ class MessageRepository(private val dao: MessageDao) {
         dao.delete(message)
     }
 
+    /** Delete every message exchanged with a given onion in one query (used by rejectRequest). */
+    suspend fun deleteAllBySender(senderOnion: String) {
+        dao.deleteAllBySender(senderOnion)
+    }
+
     suspend fun getAllOnce(): List<MessageEntity> = dao.getAll()
 
     fun observeAll(senderOnion: String): Flow<List<MessageEntity>> =
         dao.observeAll(senderOnion)
 
+    /** Normal accepted chat list */
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
+
+    /** Incoming pending message requests (unknown senders, never replied to) */
+    fun observeIncomingRequests(): Flow<List<ChatModel>> =
+        dao.observeIncomingRequests()
 
     suspend fun getMessageByMessageId(messageId: String): MessageEntity? =
         dao.getMessageByMessageId(messageId)
@@ -58,13 +69,8 @@ class MessageRepository(private val dao: MessageDao) {
 
 class GroupMessageRepository(private val dao: GroupMessageDao) {
 
-    suspend fun saveMsg(
-        message: GroupMessageEntity
-    ) {
-
-        dao.insertGroupMessage(
-            message
-        )
+    suspend fun saveMsg(message: GroupMessageEntity) {
+        dao.insertGroupMessage(message)
     }
 
     suspend fun updateMsg(message: GroupMessageEntity) {
@@ -79,7 +85,7 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
         return dao.getLatestMessage(groupId)
     }
 
-    suspend fun getAllGroupMessages(groupId: String): LiveData<List<GroupMessageEntity>> =
+    suspend fun getAllGroupMessages(groupId: String): androidx.lifecycle.LiveData<List<GroupMessageEntity>> =
         dao.getGroupMessages(groupId = groupId)
 
     fun observeAll(groupId: String): Flow<MutableList<GroupMessageEntity>> =
@@ -93,13 +99,11 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
 class ContactRepository(private val dao: ContactDao) {
 
     suspend fun saveContact(onionAddress: String, name: String) {
+        dao.insert(ContactEntity(onionAddress = onionAddress, name = name))
+    }
 
-        dao.insert(
-            ContactEntity(
-                onionAddress = onionAddress,
-                name = name
-            )
-        )
+    suspend fun getContact(onionAddress: String): ContactEntity? {
+        return dao.get(onionAddress)
     }
 
     suspend fun getAllOnce(): List<ContactEntity> = dao.getAll()
@@ -110,10 +114,7 @@ class ContactRepository(private val dao: ContactDao) {
 class GroupRepository(private val dao: GroupDao) {
 
     suspend fun saveGroup(group: GroupsEntity) {
-
-        dao.insert(
-            group
-        )
+        dao.insert(group)
     }
 
     suspend fun updateGroup(group: GroupsEntity) {
@@ -124,14 +125,11 @@ class GroupRepository(private val dao: GroupDao) {
         return dao.getGroupById(groupId)
     }
 
-    fun getAllOnce(): LiveData<List<GroupsEntity>> = dao.getAll()
+    fun getAllOnce(): androidx.lifecycle.LiveData<List<GroupsEntity>> = dao.getAll()
 
-    fun observeAll(): Flow<List<GroupsEntity>> =
-        dao.observeAll()
+    fun observeAll(): Flow<List<GroupsEntity>> = dao.observeAll()
 
-    suspend fun getNoOfMembers(groupId:String): Int = dao.getNoOfMembers(groupId)
+    suspend fun getNoOfMembers(groupId: String): Int = dao.getNoOfMembers(groupId)
 
-    suspend fun getCreationDate(groupId:String): Long = dao.getCreationDate(groupId)
-
-
+    suspend fun getCreationDate(groupId: String): Long = dao.getCreationDate(groupId)
 }

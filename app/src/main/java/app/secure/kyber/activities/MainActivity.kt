@@ -270,6 +270,7 @@ class MainActivity : AppCompatActivity() {
                 setAppBar(getString(R.string.contacts))
             }
 
+
             else -> {
                 setAppBar(getString(R.string.app_name))
             }
@@ -319,7 +320,11 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    public fun onGroupChatDetailsClick(groupName: String, creationDate: String, noOfMembers:String) {
+    public fun onGroupChatDetailsClick(
+        groupName: String,
+        creationDate: String,
+        noOfMembers: String
+    ) {
         args = bundleOf(
             "group_name" to groupName,
             "creation_date" to creationDate,

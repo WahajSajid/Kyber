@@ -23,4 +23,7 @@ interface ContactDao {
 
     @Query("DELETE FROM contacts")
     suspend fun clear()
+
+
+
 }

@@ -67,6 +67,11 @@ class GroupChatListFragment : Fragment() {
             myApp.tabBtnState = "individual_chat"
             controller.navigate(R.id.action_groupChatListFragment_to_chatListFragment)
         }
+
+        binding.btnRequest.setOnClickListener {
+            controller.navigate(R.id.action_groupChatListFragment_to_messageRequestsFragment)
+        }
+
         val unionId = Prefs.getOnionAddress(requireContext()).toString()
 
         //Retrieve the groups from the database

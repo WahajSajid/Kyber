@@ -21,7 +21,8 @@ data class MessageEntity(
     val uri: String? = null, // Encrypted URI/path
     val ampsJson: String = "",
     var reaction: String = "",
-    var updatedAt: String = ""
+    var updatedAt: String = "",
+    val isRequest: Boolean = false
 )
 
 /**
@@ -42,13 +43,14 @@ data class MessageUiModel(
     val time: String get() = entity.time
     val isSent: Boolean get() = entity.isSent
     val type: String get() = entity.type
+    val isRequest: Boolean get() = entity.isRequest
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson
 
     var reaction: String get() = entity.reaction
         set(value) { entity.reaction = value }
-    var updatedAt: String get() = entity.updatedAt // <--- ADD THIS
+    var updatedAt: String get() = entity.updatedAt
         set(value) { entity.updatedAt = value }
 
     val apiMessageId: String? get() = entity.apiMessageId
@@ -63,8 +65,6 @@ fun MessageEntity.toUiModel(): MessageUiModel {
         this.msg
     }
 
-    // FIX: Properly and securely decrypt the URI for media messages on the receiver side
-    // Includes a fallback to handle unencrypted paths cleanly (e.g. from background services).
     val decryptedUri: String? = if (!this.uri.isNullOrBlank()) {
         try {
             val rawUri = EncryptionUtils.decrypt(this.uri)
@@ -76,8 +76,6 @@ fun MessageEntity.toUiModel(): MessageUiModel {
         null
     }
 
-    // FIX: Decrypt the waveform amps JSON mapping!
-    // Resolves audio duration and playback failures directly.
     val decryptedAmps: String = if (!this.ampsJson.isNullOrBlank()) {
         try {
             val rawAmps = EncryptionUtils.decrypt(this.ampsJson)

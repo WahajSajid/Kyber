@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    DIFF from original:
+    1. Added <include id="requestActionBar"> at bottom, visibility=gone by default.
+       ChatFragment shows it and hides bottom_items_layout when coming_from="message_request".
+    2. Changed rvMsg bottom constraint to reference a new barrier that picks
+       either requestActionBar or bottom_items_layout depending on which is visible.
+       (Handled in code via constraint changes, not needed in XML since we just
+        anchor both to bottom of parent and let code toggle visibility.)
+-->
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -10,8 +19,6 @@
     android:clipToPadding="false"
     tools:context=".fragments.ChatListFragment">
 
-    <!-- RecyclerView — constrained top-to-top and bottom-to-top-of-input.
-         No vertical bias or stackFromEnd so short conversations start from the top. -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvMsg"
         android:layout_width="0dp"
@@ -39,7 +46,6 @@
         android:clickable="true"
         android:focusable="true" />
 
-
     <!-- ACTION MENU OVERLAY -->
     <include
         layout="@layout/msg_action_menu"
@@ -51,8 +57,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-
-    <!-- BOTTOM ITEMS LAYOUT wrapping everything except rvMsg and emojiPickerContainer -->
+    <!-- NORMAL COMPOSE BOTTOM BAR — hidden in request mode -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/bottom_items_layout"
         android:layout_width="0dp"
@@ -244,7 +249,7 @@
 
         </LinearLayout>
 
-        <!-- Expandable bottom sheet -->
+        <!-- Expandable bottom sheet (compose UI) -->
         <LinearLayout
             android:id="@+id/bottom_sheet"
             android:layout_width="0dp"
@@ -552,6 +557,96 @@
             </androidx.constraintlayout.widget.ConstraintLayout>
 
         </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- ============================================================
+         REQUEST MODE ACTION BAR
+         Shown INSTEAD of bottom_items_layout when coming_from="message_request".
+         Hidden by default; ChatFragment makes it visible and hides bottom_items_layout.
+         ============================================================ -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/requestActionBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="@dimen/_24sdp"
+        android:paddingVertical="@dimen/_12sdp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/emojiPickerContainer"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+
+        <TextView
+            android:id="@+id/block_txt"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Block"
+            android:textSize="@dimen/_18sdp"
+            android:textColor="#FF4141"
+            android:textStyle="bold"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            />
+
+        <TextView
+            android:id="@+id/instruction_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Allow them to send you a message and \n share your name and photo with them? \n They won't be notified that you've seen \n their message until you accept."
+            android:textSize="@dimen/_18sdp"
+            android:textColor="#969A9F"
+            android:layout_marginTop="@dimen/_5sdp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/block_txt"
+            />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRejectRequest"
+            android:layout_width="@dimen/_130sdp"
+            android:layout_height="@dimen/_50sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:layout_weight="1"
+            android:text="Reject"
+            android:textAllCaps="false"
+            android:textColor="#FF4444"
+            android:textSize="@dimen/_16sdp"
+            android:textStyle="bold"
+            app:backgroundTint="#1AFF4444"
+            android:layout_marginTop="@dimen/_20sdp"
+            app:cornerRadius="@dimen/_12sdp"
+            app:layout_constraintTop_toBottomOf="@id/instruction_text"
+            app:layout_constraintEnd_toStartOf="@+id/btnAcceptRequest"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toStartOf="parent"
+            app:strokeColor="#FF4444"
+            app:strokeWidth="@dimen/_1sdp"
+            tools:layout_editor_absoluteY="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAcceptRequest"
+            android:layout_width="@dimen/_130sdp"
+            android:layout_height="@dimen/_50sdp"
+            android:layout_marginStart="@dimen/_8sdp"
+            android:layout_weight="1"
+            android:text="Accept"
+            android:textAllCaps="false"
+            android:textColor="@android:color/white"
+            android:textSize="@dimen/_16sdp"
+            android:textStyle="bold"
+
+            android:layout_marginTop="@dimen/_20sdp"
+            app:backgroundTint="#5F99F6"
+            app:cornerRadius="@dimen/_12sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/instruction_text"
+            app:layout_constraintHorizontal_bias="0.5"
+            app:layout_constraintStart_toEndOf="@+id/btnRejectRequest"
+            tools:layout_editor_absoluteY="12dp" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 

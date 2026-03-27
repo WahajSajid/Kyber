@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/_360sdp"
+    android:layout_height="wrap_content"
     android:background="@drawable/dialog_bg"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
@@ -11,11 +11,10 @@
         android:id="@+id/appname"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_below="@id/ivLogo"
-        android:layout_centerHorizontal="true"
+        android:layout_gravity="center_horizontal"
         android:layout_marginTop="@dimen/_10sdp"
         android:fontFamily="@font/roboto_medium"
-        android:text="New Contact"
+        android:text="New Message"
         android:textColor="@color/primary_text_color"
         android:textSize="@dimen/_20sdp" />
 
@@ -23,23 +22,21 @@
         android:id="@+id/desc"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_below="@id/appname"
-        android:layout_centerHorizontal="true"
+        android:layout_gravity="center_horizontal"
         android:layout_marginTop="@dimen/_3sdp"
         android:fontFamily="@font/roboto_medium"
-        android:text="Enter or Scan the the Kyber Chat ID of the person you'd like to connect with."
+        android:text="Enter or Scan the Kyber Chat ID of the person you'd like to connect with."
         android:textColor="#DADADA"
+        android:gravity="center"
         android:textSize="@dimen/_14sdp" />
 
     <TextView
         android:id="@+id/tvId"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_below="@id/desc"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="@dimen/_10sdp"
+        android:layout_marginTop="@dimen/_15sdp"
         android:fontFamily="@font/roboto_medium"
-        android:text="Enter ID"
+        android:text="Kyber ID"
         android:textColor="@color/opacity_70_white_color"
         android:textSize="@dimen/_14sdp" />
 
@@ -47,9 +44,7 @@
         android:id="@+id/tilId"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_below="@id/tvId"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="@dimen/_3sdp"
+        android:layout_marginTop="@dimen/_5sdp"
         android:focusable="true"
         android:focusableInTouchMode="true"
         app:boxBackgroundColor="@color/opacity_10_black_color"
@@ -65,11 +60,9 @@
         app:errorTextColor="#31429CCC"
         app:cursorColor="@color/primary_color"
         app:hintEnabled="false"
-
         app:endIconMode="custom"
         app:endIconDrawable="@drawable/qr"
         app:endIconTint="@color/white"
-
         >
 
         <com.google.android.material.textfield.TextInputEditText
@@ -84,61 +77,7 @@
             android:textColor="@color/white"
             android:textColorHint="@color/opacity_70_white_color"
             android:textSize="@dimen/_14sdp">
-
             <requestFocus />
-        </com.google.android.material.textfield.TextInputEditText>
-
-    </com.google.android.material.textfield.TextInputLayout>
-
-    <TextView
-        android:id="@+id/tvName"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/tilId"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="@dimen/_10sdp"
-        android:fontFamily="@font/roboto_medium"
-        android:text="Enter Name"
-        android:textColor="@color/opacity_70_white_color"
-        android:textSize="@dimen/_14sdp" />
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilName"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_below="@id/tvName"
-        android:layout_centerHorizontal="true"
-        android:layout_marginTop="@dimen/_3sdp"
-        android:focusable="true"
-        android:focusableInTouchMode="true"
-        app:boxBackgroundColor="@color/opacity_10_black_color"
-        app:boxBackgroundMode="outline"
-        app:boxCornerRadiusBottomEnd="@dimen/_12sdp"
-        app:boxCornerRadiusBottomStart="@dimen/_12sdp"
-        app:boxCornerRadiusTopEnd="@dimen/_12sdp"
-        app:boxCornerRadiusTopStart="@dimen/_12sdp"
-        app:boxStrokeColor="@color/inputfield_outline_color"
-        app:boxStrokeWidth="@dimen/_1sdp"
-        app:errorIconDrawable="@null"
-        app:boxStrokeErrorColor="#31429CCC"
-        app:errorTextColor="#31429CCC"
-        app:cursorColor="@color/primary_color"
-        app:hintEnabled="false"
-        >
-
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/roboto_regular"
-            android:hint="Enter Name"
-            android:imeOptions="actionDone"
-            android:inputType="text"
-            android:maxLines="1"
-            android:textColor="@color/white"
-            android:textColorHint="@color/opacity_70_white_color"
-            android:textSize="@dimen/_14sdp">
-
-
         </com.google.android.material.textfield.TextInputEditText>
 
     </com.google.android.material.textfield.TextInputLayout>
@@ -148,13 +87,14 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
-        android:layout_marginTop="@dimen/_16sdp">
+        android:layout_marginTop="@dimen/_25sdp"
+        android:layout_marginBottom="@dimen/_10sdp">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnCancel"
-            android:layout_width="@dimen/_100sdp"
+            android:layout_width="0dp"
+            android:layout_weight="1"
             android:layout_height="@dimen/_46sdp"
-            android:layout_centerHorizontal="true"
             android:background="@android:color/transparent"
             android:fontFamily="@font/roboto_semibold"
             android:textColor="#969A9F"
@@ -166,14 +106,14 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
             android:layout_marginStart="@dimen/_8sdp"
-            android:layout_width="@dimen/_140sdp"
+            android:layout_width="0dp"
+            android:layout_weight="1.5"
             android:layout_height="@dimen/_46sdp"
-            android:layout_centerHorizontal="true"
             app:backgroundTint="#5F99F6"
             android:fontFamily="@font/roboto_semibold"
             android:textColor="@color/white"
             android:textSize="@dimen/_16sdp"
             app:cornerRadius="@dimen/_6sdp"
-            android:text="Add Contact"/>
+            android:text="Message"/>
     </LinearLayout>
 </LinearLayout>

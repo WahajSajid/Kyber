@@ -17,6 +17,9 @@
         <action
             android:id="@+id/action_chatListFragment_to_groupChatListFragment"
             app:destination="@id/groupChatListFragment" />
+        <action
+            android:id="@+id/action_chatListFragment_to_messageRequestsFragment"
+            app:destination="@id/messageRequestsFragment" />
     </fragment>
     <fragment
         android:id="@+id/chatFragment"
@@ -29,6 +32,9 @@
         <action
             android:id="@+id/action_chatFragment_to_groupDetailsFragment"
             app:destination="@id/groupDetailsFragment" />
+        <action
+            android:id="@+id/action_chatFragment_to_messageRequestsFragment"
+            app:destination="@id/messageRequestsFragment" />
     </fragment>
     <fragment
         android:id="@+id/netwokFragment"
@@ -79,6 +85,9 @@
         <action
             android:id="@+id/action_groupChatListFragment_to_createGroupFragment"
             app:destination="@id/createGroupFragment" />
+        <action
+            android:id="@+id/action_groupChatListFragment_to_messageRequestsFragment"
+            app:destination="@id/messageRequestsFragment" />
     </fragment>
 
 
@@ -100,6 +109,21 @@
         <action
             android:id="@+id/action_groupDetailsFragment_to_sharedMediaFragment"
             app:destination="@id/sharedMediaFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/messageRequestsFragment"
+        android:name="app.secure.kyber.fragments.MessageRequestsFragment"
+        android:label="fragment_message_request"
+        tools:layout="@layout/fragment_message_request" >
+        <action
+            android:id="@+id/action_messageRequestsFragment_to_chatFragment"
+            app:destination="@id/chatFragment" />
+        <action
+            android:id="@+id/action_messageRequestsFragment_to_chatListFragment"
+            app:destination="@id/chatListFragment" />
+        <action
+            android:id="@+id/action_messageRequestsFragment_to_groupChatListFragment"
+            app:destination="@id/groupChatListFragment" />
     </fragment>
 
 

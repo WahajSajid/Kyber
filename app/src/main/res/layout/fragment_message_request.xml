@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent"
+    tools:context=".fragments.MessageRequestsFragment">
+
+
+    <HorizontalScrollView
+        android:id="@+id/scroll_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fillViewport="true"
+        android:scrollbars="none"
+        tools:ignore="MissingConstraints">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnIndividualChat"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_40sdp"
+                android:layout_marginHorizontal="@dimen/_14sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:backgroundTint="@color/btn_unselected_color"
+                android:gravity="center"
+                android:paddingStart="@dimen/_16sdp"
+                android:paddingEnd="@dimen/_16sdp"
+                android:text="Individual chat"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:cornerRadius="@dimen/_24sdp"
+                app:icon="@drawable/person_blue"
+                app:iconGravity="textStart"
+                app:iconTint="#1A8BCE"
+                app:strokeColor="#803362AB"
+                app:strokeWidth="@dimen/_1sdp" />
+
+            <com.google.android.material.button.MaterialButton
+
+                android:id="@+id/btnGroupChat"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_40sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:layout_toEndOf="@id/btnIndividualChat"
+                android:backgroundTint="@color/btn_unselected_color"
+                android:gravity="center"
+                android:paddingStart="@dimen/_16sdp"
+                android:paddingEnd="@dimen/_16sdp"
+                android:text="Group chat"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:cornerRadius="@dimen/_24sdp"
+                app:icon="@drawable/group_person"
+                app:iconGravity="textStart"
+                app:iconTint="#1A8BCE"
+                app:strokeColor="#803362AB"
+                app:strokeWidth="@dimen/_1sdp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRequest"
+                android:layout_width="@dimen/_130sdp"
+                android:layout_height="@dimen/_40sdp"
+                android:layout_marginHorizontal="@dimen/_14sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:layout_toEndOf="@id/btnGroupChat"
+                android:backgroundTint="@color/btn_selected_color"
+                android:gravity="center"
+                android:paddingStart="@dimen/_16sdp"
+                android:paddingEnd="@dimen/_16sdp"
+                android:text="Requests"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:cornerRadius="@dimen/_24sdp"
+                app:icon="@drawable/person_blue"
+                app:iconGravity="textStart"
+                app:iconTint="#1A8BCE"
+                app:strokeColor="#803362AB"
+                app:strokeWidth="@dimen/_1sdp" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvRequests"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:padding="@dimen/_14sdp"
+        android:clipToPadding="false"
+        app:layout_constraintTop_toBottomOf="@id/scroll_view"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:listitem="@layout/item_chat_card" />
+
+    <TextView
+        android:id="@+id/tvEmpty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="No message requests"
+        android:textColor="#A8ADBD"
+        android:textSize="@dimen/_16sdp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

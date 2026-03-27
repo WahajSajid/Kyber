@@ -2,6 +2,7 @@ package app.secure.kyber.roomdb.roomViewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.secure.kyber.roomdb.ContactEntity
 import app.secure.kyber.roomdb.ContactRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -19,5 +20,10 @@ class ContactsViewModel(private val repo: ContactRepository) : ViewModel() {
         viewModelScope.launch {
             repo.saveContact(id,name)
         }
+    }
+
+
+    suspend fun getContact(id: String): ContactEntity? {
+        return repo.getContact(id)
     }
 }
