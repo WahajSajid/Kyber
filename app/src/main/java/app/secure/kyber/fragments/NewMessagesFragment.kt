@@ -73,9 +73,11 @@ class NewMessagesFragment : Fragment() {
         recyclerview.setHasFixedSize(false)
         contactListAdapter = ContactListAdapter(requireContext(), onItemClick = { contactEntity ->
 
+            // FIXED: Using "contact_onion" consistently with ChatFragment and ChatListFragment
             val args = bundleOf(
-                "contact_id" to contactEntity.onionAddress,
-                "contact_name" to contactEntity.name
+                "contact_onion" to contactEntity.onionAddress,
+                "contact_name" to contactEntity.name,
+                "coming_from" to "chat_list" // Ensure polling starts
             )
             findNavController().navigate(R.id.chatFragment, args)
 

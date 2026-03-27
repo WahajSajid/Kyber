@@ -30,6 +30,7 @@ data class RegisterResponse(
 @JsonClass(generateAdapter = true)
 data class CircuitResponse(
     @Json(name = "circuitId") val circuitId: String,
+    @Json(name = "nodeIds") val nodeIds: List<String>? = null,
     @Json(name = "entryNode") val entryNode: String,
     @Json(name = "middleNode") val middleNode: String,
     @Json(name = "exitNode") val exitNode: String,
@@ -40,8 +41,17 @@ data class CircuitResponse(
 // Hidden Services
 @JsonClass(generateAdapter = true)
 data class HiddenServiceMessageResponse(
-    @Json(name = "messages") val messages: List<String> = emptyList(),
+    @Json(name = "messages") val messages: List<ApiMessage> = emptyList(),
     @Json(name = "count") val count: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class ApiMessage(
+    @Json(name = "id") val id: String,
+    @Json(name = "senderOnion") val senderOnion: String?,
+    @Json(name = "payload") val payload: String,
+    @Json(name = "timestamp") val timestamp: String,
+    @Json(name = "ttl") val ttl: Long? = null
 )
 
 // Messaging

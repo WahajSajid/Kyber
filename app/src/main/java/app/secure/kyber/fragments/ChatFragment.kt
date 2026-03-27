@@ -58,6 +58,7 @@ import app.secure.kyber.adapters.SelectedMediaAdapter
 import app.secure.kyber.adapters.emoji_adapter.CustomRecentEmojiProvider
 import app.secure.kyber.audio.AudioRecordingManager
 import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.dataClasses.SelectedMediaParcelable
 import app.secure.kyber.databinding.FragmentChatBinding
@@ -71,13 +72,21 @@ import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.GroupMessagesViewModel
 import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
+import app.secure.kyber.roomdb.MessageUiModel
+import app.secure.kyber.roomdb.toUiModel
+import app.secure.kyber.Utils.EncryptionUtils
 import com.google.android.material.textfield.TextInputEditText
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 
 @Suppress("UNCHECKED_CAST")
@@ -88,8 +97,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     lateinit var repository: KyberRepository
 
     private lateinit var unionClient: UnionClient
-    
-    // --- UPDATED: Using the verified working IP from your API logs ---
+
     private var serverHost by mutableStateOf("82.221.100.220")
     private var serverPort by mutableStateOf("8080")
 
@@ -133,10 +141,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private var isRecordingStarted = false
     private val longPressHandler = Handler(Looper.getMainLooper())
 
-    private var selectedMsg: MessageEntity? = null
+    private var selectedMsg: MessageUiModel? = null
     private var selectedGroupMsg: GroupMessageEntity? = null
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
+
+    private val decryptedMediaCache = mutableMapOf<Long, MessageEntity>()
+
+    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
     private val longPressRunnable = Runnable {
         if (hasAudioPermission()) {
@@ -229,21 +242,35 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             )
                         }
                     } else {
+                        val base64Uri = encodeFileToBase64(item.uriString.toString())
+                        val messageId = UUID.randomUUID().toString()
                         val timestamp = System.currentTimeMillis().toString()
-                        vm.saveMessage(
+                        val transport = PrivateMessageTransportDto(
+                            messageId = messageId,
                             msg = caption,
+                            senderOnion = onionAddr,
+                            timestamp = timestamp,
+                            type = item.type,
+                            uri = base64Uri
+                        )
+
+                        vm.saveMessage(
+                            messageId = messageId,
+                            msg = EncryptionUtils.encrypt(caption),
                             senderOnion = contactOnion,
                             timestamp = timestamp,
                             isSent = true,
                             type = item.type,
-                            uri = item.uriString
+                            uri = EncryptionUtils.encrypt(item.uriString)
                         )
-                        sendMessage(caption, item.type, item.uriString)
+                        sendPrivateMessage(transport)
                     }
                 }
             }
         }
     }
+
+    private var apiMessageJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -517,13 +544,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 binding.etMsg.setText("")
                             }
                         } else {
-                            vm.saveMessage(
-                                text,
-                                contactOnion,
-                                System.currentTimeMillis().toString(),
-                                true
+                            val messageId = UUID.randomUUID().toString()
+                            val timestamp = System.currentTimeMillis().toString()
+                            val transport = PrivateMessageTransportDto(
+                                messageId = messageId,
+                                msg = text,
+                                senderOnion = onionAddr,
+                                timestamp = timestamp
                             )
-                            sendMessage(text)
+                            vm.saveMessage(
+                                messageId = messageId,
+                                msg = EncryptionUtils.encrypt(text),
+                                senderOnion = contactOnion,
+                                timestamp = timestamp,
+                                isSent = true
+                            )
+                            sendPrivateMessage(transport)
                             binding.etMsg.setText("")
                         }
                     }
@@ -547,16 +583,28 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val text = binding.etMsg.text.toString().trim()
                     if (text.isNotEmpty()) {
                         Log.d("SENDER ONION ADDRESS", contactOnion)
-                        vm.saveMessage(
-                            text, contactOnion,
-                            System.currentTimeMillis().toString(), true
+                        val messageId = UUID.randomUUID().toString()
+                        val timestamp = System.currentTimeMillis().toString()
+                        val transport = PrivateMessageTransportDto(
+                            messageId = messageId,
+                            msg = text,
+                            senderOnion = onionAddr,
+                            timestamp = timestamp
                         )
-                        sendMessage(text)
+                        vm.saveMessage(
+                            messageId = messageId,
+                            msg = EncryptionUtils.encrypt(text),
+                            senderOnion = contactOnion,
+                            timestamp = timestamp,
+                            isSent = true
+                        )
+                        sendPrivateMessage(transport)
                         binding.etMsg.setText("")
                     }
                 }
                 (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
                 setListMessageAdapter()
+                startApiMessagePolling()
             }
 
             "group_chat_list" -> {
@@ -584,6 +632,203 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         updatePreviewVisibility()
     }
 
+    // ── API Polling ───────────────────────────────────────────────────────────
+
+    private fun startApiMessagePolling() {
+        apiMessageJob?.cancel()
+        apiMessageJob = lifecycleScope.launch {
+            while (isActive) {
+                fetchMessagesFromApi()
+                delay(5000)
+            }
+        }
+    }
+
+    private suspend fun fetchMessagesFromApi() {
+        try {
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
+            var circuitId = Prefs.getCircuitId(requireContext())
+
+            if (circuitId.isNullOrEmpty()) {
+                val circuitResp = repository.createCircuit()
+                if (circuitResp.isSuccessful) {
+                    circuitId = circuitResp.body()?.circuitId ?: ""
+                    Prefs.setCircuitId(requireContext(), circuitId)
+                }
+            }
+
+            if (circuitId.isNullOrEmpty()) return
+
+            val response = repository.getMessages(myOnion, circuitId)
+
+            if (response.isSuccessful) {
+                val apiResponse = response.body()
+                apiResponse?.messages?.forEach { apiMsg ->
+                    val decodedPayload = try {
+                        String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
+                    } catch (e: Exception) {
+                        Log.e("ChatFragment", "Base64 decode failed", e)
+                        return@forEach
+                    }
+
+                    try {
+                        val transport = transportAdapter.fromJson(decodedPayload)
+                        if (transport != null && transport.senderOnion.equals(
+                                contactOnion,
+                                ignoreCase = true
+                            )
+                        ) {
+                            // Check if already exists
+                            val existing = vm.getMessageByMessageId(transport.messageId)
+                            val encryptedUri =
+                                if (!transport.uri.isNullOrBlank()) EncryptionUtils.encrypt(
+                                    transport.uri
+                                ) else null
+                            if (existing == null) {
+                                vm.saveMessage(
+                                    messageId = transport.messageId,
+                                    msg = EncryptionUtils.encrypt(transport.msg),
+                                    senderOnion = contactOnion,
+                                    timestamp = transport.timestamp,
+                                    isSent = false,
+                                    type = transport.type,
+                                    uri = encryptedUri,
+                                    ampsJson = transport.ampsJson,
+                                    apiMessageId = apiMsg.id,
+                                    reaction = transport.reaction
+                                )
+                            }
+                            else {
+                                if (existing.reaction != transport.reaction) {
+                                    existing.reaction = transport.reaction
+                                    val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                    existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                    vm.updateMessage(existing)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("ChatFragment", "JSON parse failed: $decodedPayload", e)
+                    }
+                }
+            } else if (response.code() == 404 || response.code() == 400) {
+                Prefs.setCircuitId(requireContext(), "")
+            }
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Error fetching messages from API", e)
+        }
+    }
+
+    private fun recieveMessage() {
+        unionClient.setMessageCallback(contactOnion) { socketMsg ->
+            try {
+                val decodedPayload =
+                    String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
+                val transport = transportAdapter.fromJson(decodedPayload)
+                if (transport != null && transport.senderOnion.equals(
+                        contactOnion,
+                        ignoreCase = true
+                    )
+                ) {
+
+                    val encryptedUri =
+                        if (!transport.uri.isNullOrBlank()) EncryptionUtils.encrypt(transport.uri) else null
+
+                    lifecycleScope.launch {
+                        val existing = vm.getMessageByMessageId(transport.messageId)
+                        if (existing == null) {
+                            vm.saveMessage(
+                                messageId = transport.messageId,
+                                msg = EncryptionUtils.encrypt(transport.msg),
+                                senderOnion = contactOnion,
+                                timestamp = transport.timestamp,
+                                isSent = false,
+                                type = transport.type,
+                                uri = encryptedUri,
+                                ampsJson = transport.ampsJson,
+                                reaction = transport.reaction
+                            )
+                        }
+                        else {
+                            if (existing.reaction != transport.reaction) {
+                                existing.reaction = transport.reaction
+                                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
+                                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
+                                vm.updateMessage(existing)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Socket receive error: ${e.message}")
+            }
+        }
+    }
+
+    private fun parseApiTimestamp(timestamp: String): String {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                java.time.Instant.parse(timestamp).toEpochMilli().toString()
+            } else {
+                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault())
+                val formattedTimestamp = timestamp.replace("Z", "+0000")
+                val date = sdf.parse(formattedTimestamp)
+                date?.time?.toString() ?: System.currentTimeMillis().toString()
+            }
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Failed to parse timestamp: $timestamp", e)
+            System.currentTimeMillis().toString()
+        }
+    }
+
+    // ── Message sending ───────────────────────────────────────────────────────
+
+    private fun sendPrivateMessage(transport: PrivateMessageTransportDto) {
+        lifecycleScope.launch {
+            try {
+                val jsonPayload = transportAdapter.toJson(transport)
+                val base64Payload =
+                    Base64.encodeToString(jsonPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+                var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
+                var apiSuccess = false
+
+                try {
+                    if (circuitId.isEmpty()) {
+                        val circuitResp = repository.createCircuit()
+                        if (circuitResp.isSuccessful) {
+                            circuitId = circuitResp.body()?.circuitId ?: ""
+                            Prefs.setCircuitId(requireContext(), circuitId)
+                        }
+                    }
+
+                    if (circuitId.isNotEmpty()) {
+                        var response =
+                            repository.sendMessage(contactOnion, base64Payload, circuitId)
+                        if (!response.isSuccessful && (response.code() == 404 || response.code() == 400)) {
+                            val retryCircuitResp = repository.createCircuit()
+                            if (retryCircuitResp.isSuccessful) {
+                                circuitId = retryCircuitResp.body()?.circuitId ?: ""
+                                Prefs.setCircuitId(requireContext(), circuitId)
+                                response =
+                                    repository.sendMessage(contactOnion, base64Payload, circuitId)
+                            }
+                        }
+                        if (response.isSuccessful) apiSuccess = true
+                    }
+                } catch (e: Exception) {
+                    Log.e("ChatFragment", "API call failed: ${e.message}")
+                }
+
+                unionClient.sendMessage(contactOnion, base64Payload)
+            } catch (e: Exception) {
+                Log.e("ChatFragment", "Final delivery failure: ${e.message}")
+            }
+        }
+    }
+
+    // ── Reactions / Reply / Forward / Info / Delete ───────────────────────────
+
     private fun handleReaction(emoji: String) {
         lifecycleScope.launch {
             if (comingFrom == "group_chat_list") {
@@ -594,8 +839,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
             } else {
                 selectedMsg?.let { msg ->
-                    msg.reaction = emoji
-                    vm.updateMessage(msg)
+                    val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+                    val formattedReaction = if (emoji.isEmpty()) "" else "$myOnion|$emoji"
+
+                    msg.reaction = formattedReaction
+                    // FIX: Set activity timestamp (or clear if removed) to bubble up chat
+                    msg.updatedAt = if (emoji.isEmpty()) "" else System.currentTimeMillis().toString()
+                    vm.updateMessage(msg.entity)
+
+                    val transport = PrivateMessageTransportDto(
+                        messageId = msg.messageId,
+                        msg = msg.decryptedMsg,
+                        senderOnion = myOnion,
+                        timestamp = msg.time,
+                        type = msg.type,
+                        uri = msg.decryptedUri,
+                        ampsJson = msg.ampsJson,
+                        reaction = formattedReaction // Send the formatted reaction
+                    )
+                    sendPrivateMessage(transport)
                 }
             }
             selectedMsg = null
@@ -617,7 +879,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun handleInfo(msg: Any) {
-        val time = if (msg is MessageEntity) convertDatetime(msg.time)
+        val time = if (msg is MessageUiModel) convertDatetime(msg.time)
         else convertDatetime((msg as GroupMessageEntity).time)
         val senderInfo = if (msg is GroupMessageEntity)
             String.format("Sender: %s\nOnion: %s\n", msg.senderName, msg.senderOnion)
@@ -632,8 +894,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 vm1.deleteMessage(msg)
                 groupManager.deleteMessage(groupId, msg.messageId)
                 updateLastMessageForGroup(groupId)
-            } else if (msg is MessageEntity) {
-                vm.deleteMessage(msg)
+            } else if (msg is MessageUiModel) {
+                vm.deleteMessage(msg.entity)
             }
             Toast.makeText(requireContext(), "Message deleted", Toast.LENGTH_SHORT).show()
         }
@@ -661,30 +923,77 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun setListMessageAdapter() {
         recyclerview = binding.rvMsg
+
+        // Fetch the last seen local message ID for this specific contact
+        val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+        val lastSeenIdKey = "last_seen_id_${contactOnion}"
+        val lastSeenId = sharedPrefs.getLong(lastSeenIdKey, 0L)
+
+        // 1. Fetch the actual current user's Onion ID
+        val myRealOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+
+        // 2. Pass the real ID to the adapter instead of "me123"
         adapterMsg = MessageAdapter(
-            myId = "me123",
+            myId = myRealOnion, // <--- CRITICAL FIX: Replaced "me123"
+            lastSeenMessageId = lastSeenId,
             onClick = { msg ->
                 if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
-                    val uriStr = msg.uri ?: msg.msg
-                    if (uriStr.isNotBlank()) {
+                    var actualUri = msg.decryptedUri ?: msg.decryptedMsg
+
+                    if (actualUri.isNotBlank()) {
+
+                        // Strip legacy network prefixes just in case
+                        if (actualUri.startsWith("[IMAGE] ")) actualUri = actualUri.removePrefix("[IMAGE] ")
+                        else if (actualUri.startsWith("[VIDEO] ")) actualUri = actualUri.removePrefix("[VIDEO] ")
+
+                        // Ensure it's a valid local file
+                        actualUri = decodeBase64ToFile(actualUri, msg.type) ?: actualUri
+
+                        // Convert to secure content:// URI for MediaServer
+                        var finalUri = actualUri
+                        if (actualUri.startsWith("file://")) {
+                            try {
+                                val file = java.io.File(java.net.URI(actualUri))
+                                if (file.exists()) {
+                                    val authority = "${requireContext().packageName}.provider"
+                                    finalUri = androidx.core.content.FileProvider.getUriForFile(
+                                        requireContext(), authority, file
+                                    ).toString()
+                                }
+                            } catch (e: Exception) {
+                                try {
+                                    val authorityAlt = "${requireContext().packageName}.fileprovider"
+                                    val file = java.io.File(java.net.URI(actualUri))
+                                    finalUri = androidx.core.content.FileProvider.getUriForFile(
+                                        requireContext(), authorityAlt, file
+                                    ).toString()
+                                } catch (e2: Exception) {
+                                    finalUri = actualUri
+                                }
+                            }
+                        }
+
                         startActivity(
                             Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
-                                putExtra("uri", uriStr); putExtra("type", msg.type)
+                                putExtra("uri", finalUri)
+                                putExtra("type", msg.type)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             })
                     }
                 }
             },
             onLongClick = { view, msg ->
+                val textToUse = msg.decryptedMsg
                 when (view.id) {
-                    R.id.btnReplySent -> handleReply(msg.msg)
-                    R.id.btnReplyRcv -> handleReply(msg.msg)
+                    R.id.btnReplySent -> handleReply(textToUse)
+                    R.id.btnReplyRcv -> handleReply(textToUse)
                     R.id.btnDeleteSent -> handleDelete(msg)
                     R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                        .setPrimaryClip(android.content.ClipData.newPlainText("msg", textToUse))
 
                     R.id.btnCopyRcv -> (requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("msg", msg.msg))
+                        .setPrimaryClip(android.content.ClipData.newPlainText("msg", textToUse))
 
                     R.id.btnForwardSent -> handleForward()
                     R.id.btnForwardRcv -> handleForward()
@@ -710,14 +1019,23 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         )
 
         adapterMsg.messageDecryptor = { encryptedText ->
-            delay((300L..700L).random())
-            encryptedText
+            EncryptionUtils.decrypt(encryptedText)
         }
 
         recyclerview.apply {
             viewLifecycleOwner.lifecycleScope.launch {
                 vm.messagesFlow.collect { list ->
-                    adapterMsg.submitList(list) { scrollToPosition(adapterMsg.itemCount - 1) }
+                    val uiModels = list.map { it.toUiModel() }
+                    adapterMsg.submitList(uiModels) {
+                        scrollToPosition(adapterMsg.itemCount - 1)
+                        // 3. Immediately update the shared prefs to the highest ID in this list.
+                        // This guarantees that the NEXT time you open the chat, these messages
+                        // will be safely treated as historical and won't animate again.
+                        val maxId = uiModels.maxOfOrNull { it.id } ?: 0L
+                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
+                            sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
+                        }
+                    }
                 }
             }
             layoutManager = object : LinearLayoutManager(requireContext()) {
@@ -888,22 +1206,46 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val ampsJson = encodeAmplitudes(amplitudes)
         val duration = getTotalDuration(requireContext(), fileUri)
         val durationStr = formatDuration(duration)
+        val messageText = "Voice Message ($durationStr)"
+
+        // FIX: Encode the actual file to Base64 for the network payload
+        val base64Uri = encodeFileToBase64(fileUri)
 
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
                 groupManager.sendMessage(
                     groupId, onionAddr, senderName,
-                    "Voice Message ($durationStr)", vm1,
+                    messageText, vm1,
                     "AUDIO", fileUri, ampsJson
                 )
             }
         } else {
-            vm.saveMessage(
-                "Voice Message ($durationStr)", contactOnion,
-                System.currentTimeMillis().toString(), true,
-                "AUDIO", fileUri, ampsJson
+            val messageId = UUID.randomUUID().toString()
+            val timestamp = System.currentTimeMillis().toString()
+
+            // Network payload gets the Base64 encoded file
+            val transport = PrivateMessageTransportDto(
+                messageId = messageId,
+                msg = messageText,
+                senderOnion = onionAddr,
+                timestamp = timestamp,
+                type = "AUDIO",
+                uri = base64Uri, // <--- CHANGED FROM fileUri
+                ampsJson = ampsJson
             )
-            sendMessage("Voice Message ($durationStr)", "AUDIO", fileUri)
+
+            // Local Room DB keeps the local file path (encrypted)
+            vm.saveMessage(
+                messageId = messageId,
+                msg = EncryptionUtils.encrypt(messageText),
+                senderOnion = contactOnion,
+                timestamp = timestamp,
+                isSent = true,
+                type = "AUDIO",
+                uri = EncryptionUtils.encrypt(fileUri), // Keeps local file path!
+                ampsJson = ampsJson
+            )
+            sendPrivateMessage(transport)
         }
     }
 
@@ -1012,7 +1354,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         return array.toString()
     }
 
-    // ── Standard Chat Helpers ─────────────────────────────────────────────────
+    // ── Emoji Picker ──────────────────────────────────────────────────────────
 
     private fun showEmojiPicker() {
         isEmojiPickerVisible = true
@@ -1029,6 +1371,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.ivCamera.isVisible = true
         binding.ivMic.isVisible = true
     }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onPause() {
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer()
@@ -1047,6 +1391,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         waveformHandler.removeCallbacks(waveformUpdateRunnable)
         longPressHandler.removeCallbacks(longPressRunnable)
         audioRecordingManager.cancelRecording()
+        apiMessageJob?.cancel()
         disconnectFromServer()
         super.onDestroy()
     }
@@ -1054,6 +1399,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun disconnectFromServer() {
         lifecycleScope.launch { unionClient.disconnect() }
     }
+
+    // ── Recent Emojis ─────────────────────────────────────────────────────────
 
     private fun loadRecentEmojis() {
         val saved = Prefs.getRecentEmojis(requireContext())
@@ -1075,6 +1422,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             recentEmojisList
         )
     }
+
+    // ── Media Picker ──────────────────────────────────────────────────────────
 
     private fun openPicker() {
         pickMediaLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1129,6 +1478,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (m in selectedMedias) {
             val caption = if (m.caption.isNullOrBlank())
                 (if (m.type == "VIDEO") "video" else "photo") else m.caption
+
+            // FIX: Encode the actual image/video to Base64 for the network
+            val base64Uri = encodeFileToBase64(m.uri.toString())
             if (comingFrom == "group_chat_list") {
                 lifecycleScope.launch {
                     groupManager.sendMessage(
@@ -1136,11 +1488,30 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     )
                 }
             } else {
-                vm.saveMessage(
-                    caption!!, contactOnion,
-                    System.currentTimeMillis().toString(), true, m.type, m.uri.toString()
+                val messageId = UUID.randomUUID().toString()
+                val timestamp = System.currentTimeMillis().toString()
+
+                // Network payload gets the Base64 encoded file
+                val transport = PrivateMessageTransportDto(
+                    messageId = messageId,
+                    msg = caption!!,
+                    senderOnion = onionAddr,
+                    timestamp = timestamp,
+                    type = m.type,
+                    uri = base64Uri // <--- CHANGED FROM m.uri.toString()
                 )
-                sendMessage(caption, m.type, m.uri.toString())
+
+                // Local Room DB keeps the local file path (encrypted)
+                vm.saveMessage(
+                    messageId = messageId,
+                    msg = EncryptionUtils.encrypt(caption),
+                    senderOnion = contactOnion,
+                    timestamp = timestamp,
+                    isSent = true,
+                    type = m.type,
+                    uri = EncryptionUtils.encrypt(m.uri.toString()) // Keeps local file path!
+                )
+                sendPrivateMessage(transport)
             }
         }
         val count = selectedMedias.size
@@ -1150,59 +1521,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.etMsg.setText("")
     }
 
-    /**
-     * Sends a message through the backend API.
-     * Implements encryption (Base64 for now as placeholder for Kyber) and circuit management.
-     */
-    private fun sendMessage(text: String, type: String = "TEXT", uri: String? = null) {
-        if (contactOnion.isEmpty()) return
-
-        lifecycleScope.launch {
-            try {
-                val rawPayload = if (type == "TEXT") text else "[$type] $uri"
-                
-                // Base64 encode the payload as required by API contract
-                val payload = Base64.encodeToString(rawPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                
-                var circuitId = Prefs.getCircuitId(requireContext()) ?: ""
-
-                // Attempt API delivery
-                var apiSuccess = false
-                try {
-                    if (circuitId.isEmpty()) {
-                        val circuitResp = repository.createCircuit()
-                        if (circuitResp.isSuccessful) {
-                            circuitId = circuitResp.body()?.circuitId ?: ""
-                            Prefs.setCircuitId(requireContext(), circuitId)
-                        }
-                    }
-
-                    if (circuitId.isNotEmpty()) {
-                        val response = repository.sendMessage(contactOnion, payload, circuitId)
-                        if (response.isSuccessful) {
-                            Log.d("ChatFragment", "Message sent via Tor Gateway")
-                            apiSuccess = true
-                        } else {
-                            Log.e("ChatFragment", "API Send Error: ${response.errorBody()?.string()}")
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e("ChatFragment", "API call failed: ${e.message}")
-                }
-
-                // --- INTEGRATION FIX: Proceed to Socket even if API/Circuit fails ---
-                if (!apiSuccess) {
-                    Log.w("ChatFragment", "Falling back to socket backup delivery")
-                }
-                
-                // Backup Socket delivery
-                unionClient.sendMessage(contactOnion, payload)
-
-            } catch (e: Exception) {
-                Log.e("ChatFragment", "Final delivery failure: ${e.message}")
-            }
-        }
-    }
+    // ── Union / Socket Connection ─────────────────────────────────────────────
 
     fun onionAppConnection() {
         if (Prefs.getPublicKey(requireContext()).isNullOrEmpty()) {
@@ -1222,18 +1541,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun connectToServer() {
         lifecycleScope.launch {
-            // Updated to the correct server IP
             unionClient.connect(serverHost, serverPort.toIntOrNull() ?: 8080) {
                 if (it == UnionClient.ConnectionState.CONNECTED) recieveMessage()
             }
         }
     }
 
-    private fun recieveMessage() {
-        unionClient.setMessageCallback(contactOnion) {
-            vm.saveMessage(it.content, contactOnion, it.timestamp.toString(), false)
-        }
-    }
+    // ── Keyboard Helpers ──────────────────────────────────────────────────────
 
     private fun hideKeyboard(view: View) {
         (requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
@@ -1245,6 +1559,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         (requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
             .showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
+
+    // ── Utility ───────────────────────────────────────────────────────────────
 
     private fun formatDuration(ms: Int): String {
         val totalSec = (ms / 1000).coerceAtLeast(0)
@@ -1286,6 +1602,55 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val formatter = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
         return formatter.format(java.util.Date(timeInMillis))
     }
+
+    // ── ADD THIS HELPER FUNCTION ──────────────────────────────────────────────
+    private fun encodeFileToBase64(uriStr: String): String {
+        return try {
+            val uri = Uri.parse(uriStr)
+            val inputStream = if (uri.scheme == "content" || uri.scheme == "file") {
+                requireContext().contentResolver.openInputStream(uri)
+            } else {
+                java.io.File(uriStr).inputStream()
+            }
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT)
+            } else {
+                uriStr
+            }
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Failed to encode file to base64", e)
+            uriStr // fallback to original string if it fails
+        }
+    }
+
+    private fun decodeBase64ToFile(base64Data: String?, type: String): String? {
+        if (base64Data.isNullOrBlank()) return null
+
+        // If it's already a valid path (e.g. from local testing or HTTP), leave it alone
+        if (base64Data.startsWith("content://") || base64Data.startsWith("file://") || base64Data.startsWith("http")) {
+            return base64Data
+        }
+
+        return try {
+            val bytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+            val ext = when(type.uppercase(java.util.Locale.US)) {
+                "AUDIO" -> "mp3"
+                "VIDEO" -> "mp4"
+                else -> "jpg"
+            }
+            // Create a local file on the receiver's device so external viewers can read it
+            val file = java.io.File(requireContext().cacheDir, "kyber_media_${System.currentTimeMillis()}.$ext")
+            file.writeBytes(bytes)
+
+            // Return the receiver's local valid file path
+            "file://${file.absolutePath}"
+        } catch (e: Exception) {
+            base64Data // Fallback
+        }
+    }
+
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
 }

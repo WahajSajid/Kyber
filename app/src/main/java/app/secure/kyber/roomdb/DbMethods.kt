@@ -6,17 +6,31 @@ import kotlinx.coroutines.flow.Flow
 
 class MessageRepository(private val dao: MessageDao) {
 
-    suspend fun saveMsg(msg: String, senderOnion: String, timestamp: String, isSent: Boolean, type: String = "TEXT", uri: String? = null, ampsJson: String? = null) {
+    suspend fun saveMsg(
+        messageId: String,
+        msg: String,
+        senderOnion: String,
+        timestamp: String,
+        isSent: Boolean,
+        type: String = "TEXT",
+        uri: String? = null,
+        ampsJson: String? = null,
+        apiMessageId: String? = null,
+        reaction: String = ""
+    ) {
 
         dao.insert(
             MessageEntity(
+                messageId = messageId,
                 msg = msg,
                 senderOnion = senderOnion,
                 time = timestamp,
                 isSent = isSent,
                 type = type,
                 uri = uri,
-                ampsJson = ampsJson ?: ""
+                ampsJson = ampsJson ?: "",
+                apiMessageId = apiMessageId,
+                reaction = reaction
             )
         )
     }
@@ -30,11 +44,15 @@ class MessageRepository(private val dao: MessageDao) {
     }
 
     suspend fun getAllOnce(): List<MessageEntity> = dao.getAll()
+
     fun observeAll(senderOnion: String): Flow<List<MessageEntity>> =
         dao.observeAll(senderOnion)
 
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
+
+    suspend fun getMessageByMessageId(messageId: String): MessageEntity? =
+        dao.getMessageByMessageId(messageId)
 }
 
 
