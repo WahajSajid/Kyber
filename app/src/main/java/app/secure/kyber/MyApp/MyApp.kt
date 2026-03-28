@@ -12,6 +12,7 @@ class MyApp : ApplicationClass() {
     var tabBtnState = "individual_chat"
     var addedMembersList: MutableLiveData<MutableList<AddedMembers>> = MutableLiveData(mutableListOf())
     var finalMembersList: MutableLiveData<MutableList<AddedMembers>> = MutableLiveData(mutableListOf())
+    var activeChatOnion: String? = null
 
     override fun onCreate() {
         super.onCreate()

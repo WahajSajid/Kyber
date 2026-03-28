@@ -98,10 +98,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     @Inject
     lateinit var unionClient: UnionClient
-    private var chatPollingJob: Job? = null
-
-    private var serverHost by mutableStateOf("82.221.100.220")
-    private var serverPort by mutableStateOf("8080")
 
     private lateinit var binding: FragmentChatBinding
     private lateinit var navController: NavController
@@ -535,12 +531,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
         navController = view.findNavController()
-        onionAppConnection()
-
-        // Add immediately after:
-        if (comingFrom != "group_chat_list") {
-            startChatPolling()
-        }
 
         // ── Request mode: show Accept/Reject bar ──────────────────────────────
         if (isRequestMode) {
@@ -627,68 +617,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             )
             sendPrivateMessage(transport)
             binding.etMsg.setText("")
-        }
-    }
-
-    // ── Socket receive ────────────────────────────────────────────────────────
-
-    private fun recieveMessage() {
-        unionClient.setMessageCallback(contactOnion) { socketMsg ->
-            try {
-                val decodedPayload =
-                    String(Base64.decode(socketMsg.content, Base64.NO_WRAP), Charsets.UTF_8)
-                val transport = transportAdapter.fromJson(decodedPayload)
-                if (transport != null && transport.senderOnion.equals(
-                        contactOnion,
-                        ignoreCase = true
-                    )
-                ) {
-                    // Acceptance acks are handled in ChatListFragment; skip here.
-                    if (transport.isAcceptance) {
-                        lifecycleScope.launch {
-                            handleAcceptanceAckInChat(transport)
-                        }
-                        return@setMessageCallback
-                    }
-                    val encryptedUri =
-                        if (!transport.uri.isNullOrBlank()) EncryptionUtils.encrypt(transport.uri) else null
-                    lifecycleScope.launch {
-                        val existing = vm.getMessageByMessageId(transport.messageId)
-                        if (existing == null) {
-                            vm.saveMessage(
-                                messageId = transport.messageId,
-                                msg = EncryptionUtils.encrypt(transport.msg),
-                                senderOnion = contactOnion, timestamp = transport.timestamp,
-                                isSent = false, type = transport.type, uri = encryptedUri,
-                                ampsJson = transport.ampsJson, reaction = transport.reaction
-                            )
-                        } else if (existing.reaction != transport.reaction) {
-                            existing.reaction = transport.reaction
-                            val isRemoval =
-                                transport.reaction.isEmpty() || transport.reaction.endsWith("|")
-                            existing.updatedAt =
-                                if (isRemoval) "" else System.currentTimeMillis().toString()
-                            vm.updateMessage(existing)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("ChatFragment", "Socket receive error: ${e.message}")
-            }
-        }
-    }
-
-    private fun parseApiTimestamp(timestamp: String): String {
-        return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) java.time.Instant.parse(timestamp)
-                .toEpochMilli().toString()
-            else {
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault())
-                sdf.parse(timestamp.replace("Z", "+0000"))?.time?.toString()
-                    ?: System.currentTimeMillis().toString()
-            }
-        } catch (e: Exception) {
-            System.currentTimeMillis().toString()
         }
     }
 
@@ -1199,7 +1127,29 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    override fun onResume() {
+        super.onResume()
+        try {
+            val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
+            val targetOnion = if (comingFrom == "group_chat_list") groupId else contactOnion
+            myApp.activeChatOnion = targetOnion
+            
+            val clearIntent = android.content.Intent(requireContext(), app.secure.kyber.onionrouting.UnionService::class.java).apply {
+                action = "CLEAR_NOTIFICATIONS"
+                putExtra("sender_onion", targetOnion)
+            }
+            requireContext().startService(clearIntent)
+            
+            val notificationManager = requireContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            notificationManager.cancel(targetOnion.hashCode())
+        } catch(e: Exception) {}
+    }
+
     override fun onPause() {
+        try {
+            val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
+            myApp.activeChatOnion = null
+        } catch(e: Exception) {}
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer(); if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer(); super.onPause()
     }
 
@@ -1207,10 +1157,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
         if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
 
-        chatPollingJob?.cancel()
         super.onDestroyView()
-
-
     }
 
     override fun onDestroy() {
@@ -1218,12 +1165,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             waveformUpdateRunnable
         )
         longPressHandler.removeCallbacks(longPressRunnable); audioRecordingManager.cancelRecording()
-        disconnectFromServer(); super.onDestroy()
+        super.onDestroy()
     }
 
-    private fun disconnectFromServer() {
-        lifecycleScope.launch { unionClient.disconnect() }
-    }
 
     // ── Recent Emojis ─────────────────────────────────────────────────────────
 
@@ -1340,35 +1284,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             0,
             count
         ); updatePreviewVisibility(); binding.etMsg.setText("")
-    }
-
-    // ── Union / Socket Connection ─────────────────────────────────────────────
-
-    fun onionAppConnection() {
-        if (Prefs.getPublicKey(requireContext()).isNullOrEmpty()) {
-            val exported = unionClient.exportIdentity()
-            Prefs.setOnionAddress(requireContext(), exported["onionAddress"]); Prefs.setPublicKey(
-                requireContext(),
-                exported["publicKey"]
-            )
-        } else {
-            unionClient.importIdentity(
-                mapOf(
-                    "onionAddress" to (Prefs.getOnionAddress(requireContext()) ?: ""),
-                    "publicKey" to (Prefs.getPublicKey(requireContext()) ?: "")
-                )
-            )
-        }
-        connectToServer()
-    }
-
-    private fun connectToServer() {
-        lifecycleScope.launch {
-            unionClient.connect(
-                serverHost,
-                serverPort.toIntOrNull() ?: 8080
-            ) { if (it == UnionClient.ConnectionState.CONNECTED) recieveMessage() }
-        }
     }
 
     // ── Keyboard ──────────────────────────────────────────────────────────────
@@ -1554,120 +1469,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-
-    private fun startChatPolling() {
-        chatPollingJob?.cancel()
-        chatPollingJob = viewLifecycleOwner.lifecycleScope.launch {
-            while (isActive) {
-                fetchMessagesForContact()
-                delay(1000)
-            }
-        }
-    }
-
-    private suspend fun fetchMessagesForContact() {
-        try {
-            val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
-            var circuitId = Prefs.getCircuitId(requireContext())
-            if (circuitId.isNullOrEmpty()) {
-                val resp = repository.createCircuit()
-                if (resp.isSuccessful) {
-                    circuitId = resp.body()?.circuitId
-                    Prefs.setCircuitId(requireContext(), circuitId)
-                } else return
-            }
-            val response = repository.getMessages(myOnion, circuitId)
-            if (!response.isSuccessful && response.code() == 400) {
-                val retry = repository.createCircuit()
-                if (retry.isSuccessful) {
-                    circuitId = retry.body()?.circuitId
-                    Prefs.setCircuitId(requireContext(), circuitId)
-                    val retryResponse = repository.getMessages(myOnion, circuitId)
-                    if (retryResponse.isSuccessful) processIncomingMessages(
-                        retryResponse.body()?.messages ?: emptyList()
-                    )
-                }
-                return
-            }
-            if (response.isSuccessful) {
-                processIncomingMessages(response.body()?.messages ?: emptyList())
-            }
-        } catch (e: Exception) {
-            Log.e("ChatFragment", "Chat polling error: ${e.message}")
-        }
-    }
-
-    private suspend fun processIncomingMessages(messages: List<app.secure.kyber.backend.beans.ApiMessage>) {
-        for (apiMsg in messages) {
-            val decoded = try {
-                String(
-                    android.util.Base64.decode(apiMsg.payload, android.util.Base64.NO_WRAP),
-                    Charsets.UTF_8
-                )
-            } catch (e: Exception) {
-                continue
-            }
-
-            val transport = try {
-                transportAdapter.fromJson(decoded)
-            } catch (e: Exception) {
-                null
-            } ?: continue
-
-            // Only process messages from the contact we're currently chatting with
-            if (!transport.senderOnion.equals(contactOnion, ignoreCase = true)) continue
-
-// Handle acceptance ack live — save contact and update toolbar immediately
-            if (transport.isAcceptance) {
-                handleAcceptanceAckInChat(transport)
-                continue
-            }
-
-            val existing = vm.getMessageByMessageId(transport.messageId)
-            if (existing == null) {
-                val encryptedUri = if (!transport.uri.isNullOrBlank())
-                    EncryptionUtils.encrypt(transport.uri) else null
-                vm.saveMessage(
-                    messageId = transport.messageId,
-                    msg = EncryptionUtils.encrypt(transport.msg),
-                    senderOnion = contactOnion,
-                    timestamp = transport.timestamp,
-                    isSent = false,
-                    type = transport.type,
-                    uri = encryptedUri,
-                    ampsJson = transport.ampsJson,
-                    reaction = transport.reaction
-                )
-            } else if (existing.reaction != transport.reaction) {
-                existing.reaction = transport.reaction
-                val isRemoval = transport.reaction.isEmpty() || transport.reaction.endsWith("|")
-                existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
-                vm.updateMessage(existing)
-            }
-        }
-    }
-
-    private suspend fun handleAcceptanceAckInChat(transport: PrivateMessageTransportDto) {
-        // 1. Save receiver as contact on the sender's device
-        val db = AppDb.get(requireContext())
-        val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-        val existing = contactRepo.getContact(transport.senderOnion)
-        if (existing == null) {
-            val name = transport.senderName.ifBlank { transport.senderOnion }
-            contactRepo.saveContact(onionAddress = transport.senderOnion, name = name)
-            Log.d("ChatFragment", "Contact saved after acceptance: $name")
-        }
-
-        // 2. Update toolbar name live on the main thread
-        val resolvedName = transport.senderName.ifBlank { contactOnion }
-        val displayName = if (resolvedName.length > 15) resolvedName.substring(0, 14) else resolvedName
-        activity?.runOnUiThread {
-            (requireActivity() as? MainActivity)?.setAppChatUser(displayName)
-            (requireActivity() as? MainActivity)?.onChatDetailsClick(contactOnion, resolvedName)
-        }
-
-        Log.d("ChatFragment", "Toolbar updated to: $displayName after acceptance")
-    }
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
 }
