@@ -1,12 +1,8 @@
 package app.secure.kyber.activities
 
 import android.content.Intent
-import android.content.res.Resources
-import android.graphics.fonts.Font
-import android.graphics.fonts.FontStyle
 import android.os.Bundle
 import android.view.ViewGroup
-import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
@@ -15,7 +11,6 @@ import app.secure.kyber.R.anim
 import com.github.appintro.AppIntro
 import dagger.hilt.android.AndroidEntryPoint
 import com.github.appintro.AppIntroCustomLayoutFragment.Companion.newInstance
-import com.google.android.material.button.MaterialButton
 
 @AndroidEntryPoint
 class AppIntroSliderActivity : AppIntro() {

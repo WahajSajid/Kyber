@@ -16,7 +16,7 @@
     <dimen name="mediumPadding">@dimen/_24sdp</dimen>
     <dimen name="largePadding">@dimen/_32sdp</dimen>
     <dimen name="xLargePadding">@dimen/_50sdp</dimen>
-    <dimen name="bottom_navigation_icon_size">32dp</dimen>
+    <dimen name="bottom_navigation_icon_size">@dimen/_28sdp</dimen>
 
 
     <dimen name="_1sdp">1.00dp</dimen>

@@ -115,7 +115,7 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
             refreshCircuitOnStart()
             while (isActive) {
                 fetchGlobalMessages()
-                delay(5000)
+                delay(1000)
             }
         }
     }

@@ -27,6 +27,23 @@ import app.secure.kyber.Utils.EncryptionUtils
 import app.secure.kyber.databinding.FragmentMessageRequestBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.onionrouting.UnionClient
+import app.secure.kyber.backend.beans.PrivateMessageTransportDto
+import android.util.Base64
+import android.util.Log
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import java.util.UUID
+import javax.inject.Inject
 
 /**
  * Shows all incoming pending message requests — conversations from unknown senders
@@ -36,12 +53,22 @@ import kotlinx.coroutines.launch
  * SharedPreferences cache that ChatListFragment populates whenever a transport
  * with isRequest=true and a non-blank senderName arrives.
  */
+@AndroidEntryPoint
 class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
+    @Inject lateinit var unionClient: UnionClient
+    @Inject lateinit var repository: KyberRepository
 
     private lateinit var binding: FragmentMessageRequestBinding
     private lateinit var chatListAdapter: ChatListAdapter
     private lateinit var navController: NavController
     private lateinit var myApp: MyApp
+
+    private var pollingJob: Job? = null
+    private var serverHost by mutableStateOf("82.221.100.220")
+    private var serverPort by mutableStateOf("8080")
+
+    private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
     private val vm: MessagesViewModel by viewModels {
         val db = AppDb.get(requireContext())
@@ -66,8 +93,6 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
         navController = findNavController()
         myApp = requireActivity().application as MyApp
 
-        (activity as? MainActivity)?.setAppBar("Message Requests")
-
 
         binding.btnGroupChat.setOnClickListener {
             myApp.tabBtnState = "group_chat"
@@ -80,6 +105,7 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
 
 
         setupAdapter()
+        startPolling()
     }
 
     private fun setupAdapter() {
@@ -188,5 +214,69 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                 }
             }
         }
+    }
+
+
+    private fun startPolling() {
+        pollingJob?.cancel()
+        pollingJob = viewLifecycleOwner.lifecycleScope.launch {
+            while (isActive) {
+                fetchMessages()
+                delay(1000)
+            }
+        }
+    }
+
+    private suspend fun fetchMessages() {
+        try {
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: return
+            val circuitId = Prefs.getCircuitId(requireContext())
+            if (circuitId.isNullOrEmpty()) return
+            val response = repository.getMessages(myOnion, circuitId)
+            if (response.isSuccessful) {
+                val messages = response.body()?.messages ?: return
+                messages.forEach { apiMsg ->
+                    val decoded = try {
+                        String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
+                    } catch (e: Exception) { return@forEach }
+                    try {
+                        val transport = transportAdapter.fromJson(decoded) ?: return@forEach
+                        if (transport.isAcceptance) return@forEach
+                        val existing = vm.getMessageByMessageId(transport.messageId)
+                        if (existing == null) {
+                            if (transport.isRequest && transport.senderName.isNotBlank()) {
+                                requireContext()
+                                    .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                    .edit().putString("pending_name_${transport.senderOnion}", transport.senderName).apply()
+                            }
+                            val encryptedUri = if (!transport.uri.isNullOrBlank())
+                                app.secure.kyber.Utils.EncryptionUtils.encrypt(transport.uri) else null
+                            vm.saveMessage(
+                                messageId = transport.messageId,
+                                msg = app.secure.kyber.Utils.EncryptionUtils.encrypt(transport.msg),
+                                senderOnion = transport.senderOnion,
+                                timestamp = transport.timestamp,
+                                isSent = false,
+                                type = transport.type,
+                                uri = encryptedUri,
+                                ampsJson = transport.ampsJson,
+                                apiMessageId = apiMsg.id,
+                                reaction = transport.reaction,
+                                isRequest = transport.isRequest
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MessageRequestsFragment", "Parse error: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MessageRequestsFragment", "Polling error: ${e.message}")
+        }
+    }
+
+    override fun onDestroyView() {
+        pollingJob?.cancel()
+        super.onDestroyView()
     }
 }
