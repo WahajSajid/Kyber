@@ -17,8 +17,11 @@ import androidx.core.app.NotificationCompat
 import app.secure.kyber.R
 import app.secure.kyber.Utils.EncryptionUtils
 import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.media.MediaChunkManager
+import app.secure.kyber.media.MediaTransferNotifier
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.MessageDao
@@ -54,16 +57,20 @@ class UnionService : Service() {
     private lateinit var contactRepo: ContactRepository
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    private lateinit var transferNotifier: MediaTransferNotifier
+
     @Inject
     lateinit var repository: KyberRepository
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
+    private val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
+
     private var wakeLock: PowerManager.WakeLock? = null
     private var isServiceRunning = false
     private var pollingJob: Job? = null
-    
+
     // In-memory cache for per-sender grouped notifications
     private val unreadNotifications = mutableMapOf<String, MutableList<String>>()
 
@@ -87,6 +94,7 @@ class UnionService : Service() {
 
         unionClient = UnionClient()
         createNotificationChannels()
+        transferNotifier = MediaTransferNotifier(this)
 
         // 1. GLOBAL SOCKET RECEIVER
         unionClient.setMessageCallback { message ->
@@ -95,15 +103,22 @@ class UnionService : Service() {
 
         // 2. START GLOBAL API POLLING
         startGlobalPolling()
+        serviceScope.launch { performColdStartBackfill() }
     }
 
     private fun startGlobalPolling() {
         pollingJob?.cancel()
         pollingJob = serviceScope.launch {
             refreshCircuitOnStart()
+            // Fast initial polls to catch up quickly after restart
+            var pollCount = 0
             while (isActive && isServiceRunning) {
                 fetchGlobalMessages()
-                delay(1000)
+                // First 10 polls: every 1s (fast catch-up)
+                // After that: every 3s (steady state, saves battery)
+                val delayMs = if (pollCount < 10) 1000L else 3000L
+                pollCount++
+                delay(delayMs)
             }
         }
     }
@@ -143,17 +158,27 @@ class UnionService : Service() {
             val myOnion = Prefs.getOnionAddress(applicationContext) ?: return
             var circuitId = refreshCircuitIfNeeded()
 
-            var response = repository.getMessages(myOnion, circuitId)
+            // Pass the last known message timestamp so the server
+            // can return messages we missed while the app was closed.
+            // If the server ignores this param, we fall back to
+            // deduplication via apiMessageId unique index in the DB.
+            val since = Prefs.getLastSyncTime(applicationContext)
+                .takeIf { it > 0L }
+
+            var response = repository.getMessages(myOnion, circuitId, since)
 
             if (!response.isSuccessful && response.code() == 400) {
                 Log.w(TAG, "Circuit expired during poll, refreshing...")
                 circuitId = refreshCircuitIfNeeded(forceNew = true)
                 if (circuitId.isNullOrEmpty()) return
-                response = repository.getMessages(myOnion, circuitId)
+                response = repository.getMessages(myOnion, circuitId, since)
             }
 
             if (response.isSuccessful) {
-                processApiMessages(response.body()?.messages ?: emptyList())
+                val messages = response.body()?.messages ?: emptyList()
+                processApiMessages(messages)
+                // Always update sync time even if no messages — proves we reached server
+                Prefs.setLastSyncTime(applicationContext, System.currentTimeMillis())
             }
         } catch (e: Exception) {
             Log.e(TAG, "Global polling error", e)
@@ -161,11 +186,12 @@ class UnionService : Service() {
     }
 
     private fun processApiMessages(messages: List<app.secure.kyber.backend.beans.ApiMessage>) {
+        if (messages.isEmpty()) return
         messages.forEach { apiMsg ->
             val decodedPayload = try {
                 String(Base64.decode(apiMsg.payload, Base64.NO_WRAP), Charsets.UTF_8)
             } catch (e: Exception) {
-                Log.e(TAG, "Base64 decode failed", e)
+                Log.e(TAG, "Base64 decode failed for msg ${apiMsg.id}", e)
                 return@forEach
             }
 
@@ -173,13 +199,29 @@ class UnionService : Service() {
                 val transport = transportAdapter.fromJson(decodedPayload)
                 if (transport != null) {
                     serviceScope.launch {
-                        handleTransport(transport, apiMsg)
+                        try {
+                            handleTransport(transport, apiMsg)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "handleTransport failed for ${apiMsg.id}", e)
+                        }
                     }
                 } else {
-                    serviceScope.launch { handleLegacyMessage(apiMsg, decodedPayload) }
+                    serviceScope.launch {
+                        try {
+                            handleLegacyMessage(apiMsg, decodedPayload)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "handleLegacyMessage failed for ${apiMsg.id}", e)
+                        }
+                    }
                 }
             } catch (e: Exception) {
-                serviceScope.launch { handleLegacyMessage(apiMsg, decodedPayload) }
+                serviceScope.launch {
+                    try {
+                        handleLegacyMessage(apiMsg, decodedPayload)
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Legacy fallback failed for ${apiMsg.id}", ex)
+                    }
+                }
             }
         }
     }
@@ -190,6 +232,12 @@ class UnionService : Service() {
     ) {
         if (transport.isAcceptance) {
             handleAcceptanceAck(transport)
+            return
+        }
+
+        // Handle chunked media transfer
+        if (transport.type == "CHUNK" && !transport.uri.isNullOrBlank()) {
+            handleChunk(transport, apiMsg)
             return
         }
 
@@ -234,10 +282,11 @@ class UnionService : Service() {
         } else {
             if (existing.reaction != transport.reaction) {
                 existing.reaction = transport.reaction ?: ""
-                val isRemoval = transport.reaction.isNullOrEmpty() || transport.reaction.endsWith("|")
+                val isRemoval =
+                    transport.reaction.isNullOrEmpty() || transport.reaction.endsWith("|")
                 existing.updatedAt = if (isRemoval) "" else System.currentTimeMillis().toString()
                 messageDao.update(existing)
-                
+
                 if (!isRemoval && existing.reaction.isNotBlank()) {
                     val contact = contactRepo.getContact(transport.senderOnion)
                     val senderName = contact?.name ?: "Unknown User"
@@ -248,7 +297,8 @@ class UnionService : Service() {
                         "AUDIO" -> "Reacted $actualEmoji to a voice message"
                         else -> {
                             val decryptedOriginalMsg = EncryptionUtils.decrypt(existing.msg)
-                            val preview = if (decryptedOriginalMsg.length > 30) decryptedOriginalMsg.take(27) + "..." else decryptedOriginalMsg
+                            val preview =
+                                if (decryptedOriginalMsg.length > 30) decryptedOriginalMsg.take(27) + "..." else decryptedOriginalMsg
                             "Reacted $actualEmoji to: \"$preview\""
                         }
                     }
@@ -290,11 +340,13 @@ class UnionService : Service() {
                 msgUri = decodedPayload.removePrefix("[IMAGE] ")
                 msgText = "photo"
             }
+
             decodedPayload.startsWith("[VIDEO] ") -> {
                 msgType = "VIDEO"
                 msgUri = decodedPayload.removePrefix("[VIDEO] ")
                 msgText = "video"
             }
+
             decodedPayload.startsWith("[AUDIO] ") -> {
                 msgType = "AUDIO"
                 msgUri = decodedPayload.removePrefix("[AUDIO] ")
@@ -361,7 +413,10 @@ class UnionService : Service() {
         }
     }
 
-    private suspend fun handleLegacySocketMessage(message: UnionClient.UnionMessage, decodedPayload: String) {
+    private suspend fun handleLegacySocketMessage(
+        message: UnionClient.UnionMessage,
+        decodedPayload: String
+    ) {
         val entity = MessageEntity(
             messageId = UUID.randomUUID().toString(),
             msg = EncryptionUtils.encrypt(decodedPayload),
@@ -393,7 +448,8 @@ class UnionService : Service() {
                 unreadNotifications.remove(sender)
                 return // Suppress notification if currently in this exact chat
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+        }
 
         val unreadList = unreadNotifications.getOrPut(sender) { mutableListOf() }
         unreadList.add(messageText)
@@ -406,7 +462,7 @@ class UnionService : Service() {
 
         val inboxStyle = NotificationCompat.InboxStyle()
             .setBigContentTitle(title)
-        
+
         unreadList.takeLast(6).forEach { msg ->
             inboxStyle.addLine(msg)
         }
@@ -483,10 +539,26 @@ class UnionService : Service() {
     private fun createNotificationChannels() {
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val serviceChannel = NotificationChannel(CHANNEL_ID, "Background Service", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }
-            val messageChannel = NotificationChannel(MSG_CHANNEL_ID, "Messages", NotificationManager.IMPORTANCE_HIGH)
+            val serviceChannel = NotificationChannel(
+                CHANNEL_ID,
+                "Background Service",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { setShowBadge(false) }
+            val downloadChannel = NotificationChannel(
+                MediaTransferNotifier.DOWNLOAD_CHANNEL_ID,
+                "Media Downloads",
+                NotificationManager.IMPORTANCE_LOW  // low = no sound, but shows in bar
+            ).apply { setShowBadge(false) }
+
+            val uploadChannel = NotificationChannel(
+                MediaTransferNotifier.UPLOAD_CHANNEL_ID,
+                "Media Uploads",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply { setShowBadge(false) }
+
+            notificationManager.createNotificationChannel(downloadChannel)
+            notificationManager.createNotificationChannel(uploadChannel)
             notificationManager.createNotificationChannel(serviceChannel)
-            notificationManager.createNotificationChannel(messageChannel)
         }
     }
 
@@ -500,5 +572,163 @@ class UnionService : Service() {
             unionClient.cleanup()
         }
         serviceScope.cancel()
+    }
+
+
+    /**
+     * On cold start, fetch messages with no cursor restriction to catch
+     * everything the server still has queued for us.
+     * Uses the apiMessageId unique index in the DB to silently discard
+     * messages we already stored, so this is always safe to call.
+     */
+    private suspend fun performColdStartBackfill() {
+        try {
+            val myOnion = Prefs.getOnionAddress(applicationContext) ?: return
+            Log.d(TAG, "Cold-start backfill starting...")
+
+            // Force a fresh circuit so we get a clean server session
+            val circuitId = refreshCircuitIfNeeded(forceNew = true) ?: return
+
+            // Fetch with NO since filter — get everything server still has
+            val response = repository.getMessages(myOnion, circuitId, since = null)
+            if (response.isSuccessful) {
+                val messages = response.body()?.messages ?: emptyList()
+                Log.d(TAG, "Cold-start backfill: ${messages.size} messages from server")
+                processApiMessages(messages)
+                Prefs.setLastSyncTime(applicationContext, System.currentTimeMillis())
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Cold-start backfill error", e)
+        }
+    }
+
+
+    private suspend fun handleChunk(
+        transport: PrivateMessageTransportDto,
+        apiMsg: app.secure.kyber.backend.beans.ApiMessage?
+    ) {
+        try {
+            val chunk = chunkAdapter.fromJson(transport.uri ?: return) ?: return
+            val mediaId = chunk.mediaId
+            val originalMessageId = chunk.messageId
+
+            // Save chunk to disk
+            MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
+
+            val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
+            val progress = (savedCount * 100) / chunk.total
+
+            // First chunk: create the placeholder message row immediately
+            if (chunk.index == 0) {
+                val existing = messageDao.getByRemoteMediaId(mediaId)
+                if (existing == null) {
+                    val entity = MessageEntity(
+                        messageId = originalMessageId,
+                        apiMessageId = apiMsg?.id,
+                        msg = EncryptionUtils.encrypt(chunk.caption.ifBlank {
+                            when (chunk.mimeType) {
+                                "AUDIO" -> "Voice Message"
+                                "VIDEO" -> "video"
+                                else -> "photo"
+                            }
+                        }),
+                        senderOnion = transport.senderOnion,
+                        time = System.currentTimeMillis().toString(),
+                        isSent = false,
+                        type = chunk.mimeType,
+                        uri = null,
+                        ampsJson = if (chunk.ampsJson.isNotBlank())
+                            EncryptionUtils.encrypt(chunk.ampsJson) else "",
+                        downloadState = "downloading",
+                        downloadProgress = progress,
+                        remoteMediaId = mediaId,
+                        mediaDurationMs = chunk.durationMs,
+                        mediaSizeBytes = chunk.totalBytes,
+                        isRequest = transport.isRequest
+                    )
+                    messageDao.insert(entity)
+
+                    // Show immediate notification for first chunk
+                    val isAccepted = contactRepo.getContact(transport.senderOnion) != null
+                    if (!transport.isRequest && isAccepted) {
+                        val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
+                        val displayMsg = when (chunk.mimeType) {
+                            "AUDIO" -> "🎵 Voice Message"
+                            "VIDEO" -> "🎥 Video"
+                            else -> "📷 Photo"
+                        }
+                        showPushNotification(transport.senderOnion, name, displayMsg)
+                    }
+                }
+            } else {
+                // Update download progress for subsequent chunks
+                val existing = messageDao.getByRemoteMediaId(mediaId)
+                if (existing != null) {
+                    messageDao.updateDownloadProgress(existing.messageId, "downloading", progress)
+                }
+            }
+
+            // All chunks received — assemble
+            if (savedCount >= chunk.total) {
+                val entity = messageDao.getByRemoteMediaId(mediaId)
+                if (entity != null) {
+                    messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
+// Only post notification every ~10% to avoid Android notification rate-limiting
+                    val myApp = try {
+                        applicationContext as app.secure.kyber.MyApp.MyApp
+                    } catch (e: Exception) {
+                        null
+                    }
+                    val isInChat = myApp?.activeChatOnion == entity.senderOnion
+                    if (!isInChat && progress % 10 == 0) {
+                        transferNotifier.showDownloadProgress(
+                            entity.messageId,
+                            chunk.mimeType,
+                            progress
+                        )
+                    }
+                    val assembledPath = MediaChunkManager.assembleChunks(
+                        applicationContext, mediaId, chunk.mimeType
+                    ) { p ->
+                        serviceScope.launch {
+                            messageDao.updateDownloadProgress(
+                                entity.messageId,
+                                "downloading",
+                                progress
+                            )
+                            transferNotifier.showDownloadProgress(
+                                entity.messageId,
+                                chunk.mimeType,
+                                progress
+                            )
+                        }
+                    }
+                    if (assembledPath != null) {
+                        val updated = entity.copy(
+                            uri = EncryptionUtils.encrypt(assembledPath),
+                            downloadState = "done",
+                            downloadProgress = 100,
+                            localFilePath = assembledPath.removePrefix("file://")
+                        )
+                        messageDao.update(updated)
+                        val myApp2 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                        if (myApp2?.activeChatOnion != entity.senderOnion) {
+                            // Only show "received" notification if user is NOT already in that chat
+                            transferNotifier.showDownloadComplete(entity.messageId, chunk.mimeType)
+                        } else {
+                            transferNotifier.cancel(entity.messageId)
+                        }
+                    } else {
+                        messageDao.updateDownloadProgress(entity.messageId, "failed", 0)
+                        val myApp3 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                        if (myApp3?.activeChatOnion != entity.senderOnion) {
+                            transferNotifier.showDownloadFailed(entity.messageId, chunk.mimeType)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "handleChunk error", e)
+        }
     }
 }

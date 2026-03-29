@@ -43,7 +43,8 @@ interface KyberApiService {
     @GET("api/v1/hidden-service/{onionAddress}/messages")
     suspend fun getMessages(
         @Path("onionAddress") onionAddress: String,
-        @Query("circuitId") circuitId: String? = null
+        @Query("circuitId") circuitId: String? = null,
+        @Query("since") since: Long? = null
     ): Response<HiddenServiceMessageResponse>
 
     // --- Messaging ---

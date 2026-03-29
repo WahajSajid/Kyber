@@ -14,7 +14,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GroupMessageEntity::class,
         GroupsEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -37,7 +37,7 @@ abstract class AppDb : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14
                     )
                     .build()
                     .also { INSTANCE = it }
@@ -222,5 +222,19 @@ abstract class AppDb : RoomDatabase() {
                 database.execSQL("ALTER TABLE `messages` ADD COLUMN `isRequest` INTEGER NOT NULL DEFAULT 0")
             }
         }
+
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `uploadState` TEXT NOT NULL DEFAULT 'done'")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `downloadState` TEXT NOT NULL DEFAULT 'done'")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `uploadProgress` INTEGER NOT NULL DEFAULT 100")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `downloadProgress` INTEGER NOT NULL DEFAULT 100")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `localFilePath` TEXT")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `remoteMediaId` TEXT")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `mediaDurationMs` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `mediaSizeBytes` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     }
 }

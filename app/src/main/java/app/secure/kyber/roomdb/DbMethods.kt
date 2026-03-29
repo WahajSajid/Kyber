@@ -64,6 +64,33 @@ class MessageRepository(private val dao: MessageDao) {
 
     suspend fun getMessageByMessageId(messageId: String): MessageEntity? =
         dao.getMessageByMessageId(messageId)
+
+
+
+    suspend fun updateUploadProgress(messageId: String, state: String, progress: Int) =
+        dao.updateUploadProgress(messageId, state, progress)
+
+    suspend fun setUploadDone(messageId: String, path: String?) =
+        dao.setUploadDone(messageId, "done", path)
+
+    suspend fun setUploadFailed(messageId: String) =
+        dao.updateUploadProgress(messageId, "failed", 0)
+
+    suspend fun updateDownloadProgress(messageId: String, state: String, progress: Int) =
+        dao.updateDownloadProgress(messageId, state, progress)
+
+    suspend fun setDownloadDone(messageId: String, path: String?) =
+        dao.setDownloadDone(messageId, "done", path)
+
+    suspend fun setRemoteMediaId(messageId: String, mediaId: String) =
+        dao.setRemoteMediaId(messageId, mediaId)
+
+    suspend fun getByRemoteMediaId(mediaId: String): MessageEntity? =
+        dao.getByRemoteMediaId(mediaId)
+
+    suspend fun getByMessageId(messageId: String): MessageEntity? =
+        dao.getByMessageId(messageId)
+
 }
 
 

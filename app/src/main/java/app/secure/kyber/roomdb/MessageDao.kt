@@ -41,6 +41,31 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     fun observeAll(senderOnion: String): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
 
+
+
+
+    @Query("UPDATE messages SET uploadState = :state, uploadProgress = :progress WHERE messageId = :messageId")
+    suspend fun updateUploadProgress(messageId: String, state: String, progress: Int)
+
+    @Query("UPDATE messages SET downloadState = :state, downloadProgress = :progress WHERE messageId = :messageId")
+    suspend fun updateDownloadProgress(messageId: String, state: String, progress: Int)
+
+    @Query("UPDATE messages SET uploadState = :state, localFilePath = :path, uploadProgress = 100 WHERE messageId = :messageId")
+    suspend fun setUploadDone(messageId: String, state: String, path: String?)
+
+    @Query("UPDATE messages SET downloadState = :state, localFilePath = :path, downloadProgress = 100 WHERE messageId = :messageId")
+    suspend fun setDownloadDone(messageId: String, state: String, path: String?)
+
+    @Query("UPDATE messages SET remoteMediaId = :mediaId WHERE messageId = :messageId")
+    suspend fun setRemoteMediaId(messageId: String, mediaId: String)
+
+    @Query("SELECT * FROM messages WHERE remoteMediaId = :mediaId AND isSent = 0 LIMIT 1")
+    suspend fun getByRemoteMediaId(mediaId: String): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE messageId = :messageId LIMIT 1")
+    suspend fun getByMessageId(messageId: String): MessageEntity?
+
+
     /**
      * Normal accepted chat list.
      *

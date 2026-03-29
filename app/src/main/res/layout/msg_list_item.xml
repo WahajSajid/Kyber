@@ -50,6 +50,50 @@
                 android:src="@drawable/pause_icon_1"
                 android:visibility="gone"
                 app:tint="#FFFFFF" />
+
+            <!-- Download progress overlay for received media -->
+            <FrameLayout
+                android:id="@+id/rcvMediaProgressOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#80000000"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:id="@+id/rcvMediaProgressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_4sdp"
+                    android:layout_gravity="bottom"
+                    android:layout_marginBottom="@dimen/_4sdp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressTint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvRcvMediaProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="0%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+
+                <Button
+                    android:id="@+id/btnRetryRcvMedia"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="@dimen/_8sdp"
+                    android:text="Retry"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+            </FrameLayout>
+
+
         </FrameLayout>
 
         <LinearLayout
@@ -161,6 +205,41 @@
                         app:tint="#60FFFFFF" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <ProgressBar
+                android:id="@+id/rcvAudioProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_3sdp"
+                android:layout_marginTop="@dimen/_2sdp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvRcvAudioDownloadState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:fontFamily="@font/roboto_regular"
+                android:text="Downloading..."
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp"
+                android:visibility="gone" />
+
+
+            <Button
+                android:id="@+id/btnRetryRcvAudio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="Retry"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+
+
         </LinearLayout>
 
         <app.secure.kyber.Other.DecryptRevealTextView
@@ -450,6 +529,52 @@
                 android:src="@android:drawable/ic_media_play"
                 android:visibility="gone"
                 app:tint="#FFFFFF" />
+
+
+            <!-- Upload progress overlay for sent media -->
+            <FrameLayout
+                android:id="@+id/sentMediaProgressOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#80000000"
+                android:visibility="gone">
+
+                <ProgressBar
+                    android:id="@+id/sentMediaProgressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_4sdp"
+                    android:layout_gravity="bottom"
+                    android:layout_marginBottom="@dimen/_4sdp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressTint="#FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvSentMediaProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="0%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+
+                <Button
+                    android:id="@+id/btnRetrySentMedia"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="@dimen/_8sdp"
+                    android:text="Retry"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+
+
+            </FrameLayout>
+
+
         </FrameLayout>
 
         <LinearLayout
@@ -561,6 +686,40 @@
                         app:tint="#60FFFFFF" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
+
+            <ProgressBar
+                android:id="@+id/sentAudioProgressBar"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_3sdp"
+                android:layout_marginTop="@dimen/_2sdp"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvSentAudioUploadState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:fontFamily="@font/roboto_regular"
+                android:text="Uploading..."
+                android:textColor="#99FFFFFF"
+                android:textSize="10sp"
+                android:visibility="gone" />
+
+
+            <Button
+                android:id="@+id/btnRetrySentAudio"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:text="Retry"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+
         </LinearLayout>
 
         <TextView

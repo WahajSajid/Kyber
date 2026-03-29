@@ -75,6 +75,7 @@ import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import app.secure.kyber.roomdb.MessageUiModel
 import app.secure.kyber.roomdb.toUiModel
 import app.secure.kyber.Utils.EncryptionUtils
+import app.secure.kyber.media.MediaSender
 import com.google.android.material.textfield.TextInputEditText
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -118,6 +119,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     // ── Audio recording ───────────────────────────────────────────────────────
     private lateinit var audioRecordingManager: AudioRecordingManager
+    private lateinit var mediaSender: MediaSender
     private val recordingTimerHandler = Handler(Looper.getMainLooper())
     private var recordingSeconds = 0
     private var pulseAnimation: AlphaAnimation? = null
@@ -238,26 +240,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             )
                         }
                     } else {
-                        val base64Uri = encodeFileToBase64(item.uriString.toString())
-                        val messageId = UUID.randomUUID().toString()
-                        val timestamp = System.currentTimeMillis().toString()
                         lifecycleScope.launch {
                             val db = AppDb.get(requireContext())
-                            val contactRepo =
-                                app.secure.kyber.roomdb.ContactRepository(db.contactDao())
+                            val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                             val isContact = contactRepo.getContact(contactOnion) != null
-                            val transport = PrivateMessageTransportDto(
-                                messageId = messageId, msg = caption,
-                                senderOnion = onionAddr, senderName = name,
-                                timestamp = timestamp, type = item.type,
-                                uri = base64Uri, isRequest = !isContact
+                            mediaSender.sendMedia(
+                                contactOnion = contactOnion,
+                                senderOnion = onionAddr,
+                                senderName = name,
+                                filePath = item.uriString,
+                                mimeType = item.type,
+                                caption = caption,
+                                isContact = isContact
                             )
-                            vm.saveMessage(
-                                messageId = messageId, msg = EncryptionUtils.encrypt(caption),
-                                senderOnion = contactOnion, timestamp = timestamp, isSent = true,
-                                type = item.type, uri = EncryptionUtils.encrypt(item.uriString)
-                            )
-                            sendPrivateMessage(transport)
                         }
                     }
                 }
@@ -273,6 +268,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding = FragmentChatBinding.inflate(inflater, container, false)
         groupManager = GroupManager()
         audioRecordingManager = AudioRecordingManager(requireContext())
+
+        // In ChatFragment.onCreateView:
+        mediaSender = MediaSender(
+            context    = requireContext(),
+            messageDao = AppDb.get(requireContext()).messageDao()
+        )
+
+
         selectedMediaAdapter = SelectedMediaAdapter(
             selectedMedias,
             onRemove = { pos ->
@@ -770,48 +773,92 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         adapterMsg = MessageAdapter(
             myId = myRealOnion, lastSeenMessageId = lastSeenId,
             onClick = { msg ->
-                if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
-                    var actualUri = msg.decryptedUri ?: msg.decryptedMsg
-                    if (actualUri.isNotBlank()) {
-                        if (actualUri.startsWith("[IMAGE] ")) actualUri =
-                            actualUri.removePrefix("[IMAGE] ")
-                        else if (actualUri.startsWith("[VIDEO] ")) actualUri =
-                            actualUri.removePrefix("[VIDEO] ")
-                        actualUri = decodeBase64ToFile(actualUri, msg.type) ?: actualUri
-                        var finalUri = actualUri
-                        if (actualUri.startsWith("file://")) {
-                            try {
-                                val file = java.io.File(java.net.URI(actualUri))
-                                if (file.exists()) finalUri =
-                                    androidx.core.content.FileProvider.getUriForFile(
-                                        requireContext(),
-                                        "${requireContext().packageName}.provider",
-                                        file
-                                    ).toString()
-                            } catch (e: Exception) {
-                                try {
-                                    finalUri = androidx.core.content.FileProvider.getUriForFile(
-                                        requireContext(),
-                                        "${requireContext().packageName}.fileprovider",
-                                        java.io.File(java.net.URI(actualUri))
-                                    ).toString()
-                                } catch (e2: Exception) {
-                                    finalUri = actualUri
-                                }
-                            }
-                        }
-                        startActivity(
-                            Intent(
+                val type = msg.type.uppercase(Locale.getDefault())
+
+                // ── GUARD: block open if media is not fully ready ─────────────────
+                if (type == "IMAGE" || type == "VIDEO") {
+                    when {
+                        msg.downloadState == "downloading" || msg.downloadState == "pending" -> {
+                            Toast.makeText(
                                 requireContext(),
-                                FullscreenMediaActivity::class.java
-                            ).apply {
-                                putExtra("uri", finalUri); putExtra(
-                                "type",
-                                msg.type
-                            ); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            })
+                                "Still downloading… ${msg.downloadProgress}%",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@MessageAdapter  // safe early return, no navigation
+                        }
+                        msg.uploadState == "uploading" || msg.uploadState == "pending" -> {
+                            Toast.makeText(
+                                requireContext(),
+                                "Still uploading… ${msg.uploadProgress}%",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@MessageAdapter
+                        }
+                        msg.downloadState == "failed" -> {
+                            Toast.makeText(
+                                requireContext(),
+                                "Download failed. Tap retry.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@MessageAdapter
+                        }
                     }
                 }
+
+                if (type == "AUDIO") return@MessageAdapter  // audio handled by play button, not item click
+
+                // ── Resolve URI only when we know the file is ready ───────────────
+                val resolvedUri: String? = when {
+                    // Prefer the persisted local file path (set when download completes)
+                    !msg.localFilePath.isNullOrBlank() -> "file://${msg.localFilePath}"
+                    // Fallback: decrypt the stored URI
+                    !msg.decryptedUri.isNullOrBlank() -> {
+                        val stripped = msg.decryptedUri
+                            .removePrefix("[IMAGE] ")
+                            .removePrefix("[VIDEO] ")
+                        decodeBase64ToFile(stripped, type) ?: stripped
+                    }
+                    else -> null
+                }
+
+                if (resolvedUri.isNullOrBlank()) {
+                    Toast.makeText(requireContext(), "Media not available", Toast.LENGTH_SHORT).show()
+                    return@MessageAdapter
+                }
+
+                // ── Validate file actually exists on disk before opening ──────────
+                val fileExists = try {
+                    if (resolvedUri.startsWith("file://")) {
+                        java.io.File(java.net.URI(resolvedUri)).exists()
+                    } else {
+                        true // content:// or http:// — assume available
+                    }
+                } catch (e: Exception) { false }
+
+                if (!fileExists) {
+                    Toast.makeText(requireContext(), "Media file not found", Toast.LENGTH_SHORT).show()
+                    return@MessageAdapter
+                }
+
+                // ── Safe to open ──────────────────────────────────────────────────
+                val finalUri = try {
+                    if (resolvedUri.startsWith("file://")) {
+                        val file = java.io.File(java.net.URI(resolvedUri))
+                        androidx.core.content.FileProvider.getUriForFile(
+                            requireContext(),
+                            "${requireContext().packageName}.provider",
+                            file
+                        ).toString()
+                    } else resolvedUri
+                } catch (e: Exception) { resolvedUri }
+
+                startActivity(
+                    Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
+                        putExtra("uri", finalUri)
+                        putExtra("type", type)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                )
             },
             onLongClick = { view, msg ->
                 val t = msg.decryptedMsg
@@ -841,7 +888,48 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     hideKeyboard(messageEdit); messageEdit.postDelayed({ showEmojiPicker() }, 150)
                 }
             },
-            recentEmojis = recentEmojisList
+            recentEmojis = recentEmojisList,
+            onRetryUpload = { msg ->
+                lifecycleScope.launch {
+                    val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+                    val myName  = Prefs.getName(requireContext()) ?: ""
+                    val db = AppDb.get(requireContext())
+                    val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
+                    val isContact = contactRepo.getContact(contactOnion) != null
+                    mediaSender.retryUpload(
+                        messageId    = msg.messageId,
+                        contactOnion = contactOnion,
+                        senderOnion  = myOnion,
+                        senderName   = myName,
+                        isContact    = isContact
+                    )
+                }
+            },
+            onRetryDownload = { msg ->
+                // Download retry: mark as pending so UnionService re-assembles
+                // if chunks are still on disk, or user waits for re-send from sender
+                lifecycleScope.launch {
+                    val db = AppDb.get(requireContext())
+                    db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
+                    // Attempt reassembly if chunks already saved
+                    val entity = db.messageDao().getByMessageId(msg.messageId) ?: return@launch
+                    val mediaId = entity.remoteMediaId ?: return@launch
+                    val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunks(
+                        requireContext(), mediaId, entity.type
+                    )
+                    if (assembled != null) {
+                        val updated = entity.copy(
+                            uri = app.secure.kyber.Utils.EncryptionUtils.encrypt(assembled),
+                            downloadState = "done",
+                            downloadProgress = 100,
+                            localFilePath = assembled.removePrefix("file://")
+                        )
+                        db.messageDao().update(updated)
+                    } else {
+                        db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
+                    }
+                }
+            }
         )
         adapterMsg.messageDecryptor = { EncryptionUtils.decrypt(it) }
 
@@ -987,7 +1075,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val ampsJson = encodeAmplitudes(amplitudes)
         val messageText =
             "Voice Message (${formatDuration(getTotalDuration(requireContext(), fileUri))})"
-        val base64Uri = encodeFileToBase64(fileUri)
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
                 groupManager.sendMessage(
@@ -1002,23 +1089,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 )
             }
         } else {
-            val messageId = UUID.randomUUID().toString();
-            val timestamp = System.currentTimeMillis().toString()
             lifecycleScope.launch {
                 val db = AppDb.get(requireContext())
                 val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                 val isContact = contactRepo.getContact(contactOnion) != null
-                sendPrivateMessage(
-                    PrivateMessageTransportDto(
-                        messageId = messageId, msg = messageText,
-                        senderOnion = onionAddr, senderName = senderName, timestamp = timestamp,
-                        type = "AUDIO", uri = base64Uri, ampsJson = ampsJson, isRequest = !isContact
-                    )
-                )
-                vm.saveMessage(
-                    messageId = messageId, msg = EncryptionUtils.encrypt(messageText),
-                    senderOnion = contactOnion, timestamp = timestamp, isSent = true,
-                    type = "AUDIO", uri = EncryptionUtils.encrypt(fileUri), ampsJson = ampsJson
+                mediaSender.sendMedia(
+                    contactOnion = contactOnion,
+                    senderOnion = onionAddr,
+                    senderName = senderName,
+                    filePath = fileUri,
+                    mimeType = "AUDIO",
+                    caption = messageText,
+                    ampsJson = ampsJson,
+                    isContact = isContact
                 )
             }
         }
@@ -1258,23 +1341,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     )
                 }
             } else {
-                val messageId = UUID.randomUUID().toString();
-                val timestamp = System.currentTimeMillis().toString()
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                     val isContact = contactRepo.getContact(contactOnion) != null
-                    sendPrivateMessage(
-                        PrivateMessageTransportDto(
-                            messageId = messageId, msg = caption!!,
-                            senderOnion = onionAddr, senderName = name, timestamp = timestamp,
-                            type = m.type, uri = base64Uri, isRequest = !isContact
-                        )
-                    )
-                    vm.saveMessage(
-                        messageId = messageId, msg = EncryptionUtils.encrypt(caption),
-                        senderOnion = contactOnion, timestamp = timestamp, isSent = true,
-                        type = m.type, uri = EncryptionUtils.encrypt(m.uri.toString())
+                    mediaSender.sendMedia(
+                        contactOnion = contactOnion,
+                        senderOnion = onionAddr,
+                        senderName = name,
+                        filePath = m.uri.toString(),
+                        mimeType = m.type,
+                        caption = caption!!,
+                        isContact = isContact
                     )
                 }
             }

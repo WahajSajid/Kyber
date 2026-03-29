@@ -49,24 +49,68 @@ class FullscreenMediaActivity : AppCompatActivity() {
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
 
-        val uriString = intent?.getStringExtra("uri") ?: return finish()
-        val typeName = intent?.getStringExtra("type") ?: "TEXT"
-        val uri = Uri.parse(uriString)
-        val type = typeName.uppercase()
+        val uriString = intent?.getStringExtra("uri")
+        val typeName  = intent?.getStringExtra("type") ?: "TEXT"
+        val type      = typeName.uppercase()
+
+        // ── Guard 1: missing URI ──────────────────────────────────────────
+        if (uriString.isNullOrBlank()) {
+            android.widget.Toast.makeText(this, "Media not available", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        // ── Guard 2: file:// URI must exist on disk before we touch any player ──
+        if (uriString.startsWith("file://") || uriString.startsWith("/")) {
+            val path = uriString.removePrefix("file://")
+            val file = java.io.File(path)
+            if (!file.exists() || file.length() == 0L) {
+                android.widget.Toast.makeText(this, "Media file not ready", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+        }
+
+        val uri = try {
+            Uri.parse(uriString)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Invalid media URI", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
 
         if (type == "IMAGE") {
             fullImage.visibility = View.VISIBLE
             fullVideo.visibility = View.GONE
             videoControls.visibility = View.GONE
-            Glide.with(this).load(uri).into(fullImage)
+            try {
+                Glide.with(this).load(uri).into(fullImage)
+            } catch (e: Exception) {
+                android.widget.Toast.makeText(this, "Could not load image", android.widget.Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
             fullImage.setOnClickListener { finish() }
+
         } else if (type == "VIDEO") {
             fullImage.visibility = View.GONE
             fullVideo.visibility = View.VISIBLE
             videoControls.visibility = View.VISIBLE
+
+            // ── Error listener must be set BEFORE setVideoURI ────────────
+            fullVideo.setOnErrorListener { _, what, extra ->
+                android.util.Log.e("FullscreenMedia", "VideoView error: what=$what extra=$extra")
+                handler.removeCallbacks(updateSeekBar)
+                android.widget.Toast.makeText(
+                    this, "Could not play video", android.widget.Toast.LENGTH_SHORT
+                ).show()
+                finish()
+                true // consumed
+            }
+
             fullVideo.setVideoURI(uri)
-            
-            fullVideo.setOnPreparedListener { mp ->
+
+            fullVideo.setOnPreparedListener { _ ->
                 videoSeekBar.max = fullVideo.duration
                 tvTotalTime.text = formatTime(fullVideo.duration)
                 fullVideo.start()
@@ -74,11 +118,7 @@ class FullscreenMediaActivity : AppCompatActivity() {
             }
 
             fullVideo.setOnClickListener {
-                if (fullVideo.isPlaying) {
-                    fullVideo.pause()
-                } else {
-                    fullVideo.start()
-                }
+                if (fullVideo.isPlaying) fullVideo.pause() else fullVideo.start()
             }
 
             videoSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -93,13 +133,40 @@ class FullscreenMediaActivity : AppCompatActivity() {
             })
 
             fullVideo.setOnCompletionListener {
+                handler.removeCallbacks(updateSeekBar)
                 videoSeekBar.progress = 0
                 tvCurrentTime.text = formatTime(0)
-                handler.removeCallbacks(updateSeekBar)
             }
+
         } else {
             finish()
         }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Stop playback and handler when user navigates away
+        try {
+            if (::fullVideo.isInitialized && fullVideo.isPlaying) {
+                fullVideo.pause()
+            }
+        } catch (e: Exception) { /* ignore partial init */ }
+        handler.removeCallbacks(updateSeekBar)
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(updateSeekBar)
+        try {
+            if (::fullVideo.isInitialized) {
+                fullVideo.stopPlayback()  // safer than relying on VideoView's own onDetach
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FullscreenMedia", "onDestroy cleanup: ${e.message}")
+        }
+
+        handler.removeCallbacks(updateSeekBar)
+
+        super.onDestroy()
     }
 
     private fun formatTime(ms: Int): String {
@@ -109,8 +176,4 @@ class FullscreenMediaActivity : AppCompatActivity() {
         return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        handler.removeCallbacks(updateSeekBar)
-    }
 }

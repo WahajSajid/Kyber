@@ -37,7 +37,7 @@ class KyberRepository @Inject constructor(
     suspend fun createHiddenService(): Response<Unit> =
         apiService.createHiddenService()
 
-    suspend fun getMessages(onionAddress: String, circuitId: String? = null): Response<HiddenServiceMessageResponse> =
+    suspend fun getMessages(onionAddress: String, circuitId: String? = null, since: Long? = null): Response<HiddenServiceMessageResponse> =
         apiService.getMessages(onionAddress, circuitId)
 
     // --- Messaging ---

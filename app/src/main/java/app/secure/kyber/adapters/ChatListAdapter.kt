@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import app.secure.kyber.Other.Objects
 import app.secure.kyber.R
 import app.secure.kyber.backend.models.ChatModel
 import com.bumptech.glide.Glide
@@ -32,7 +33,8 @@ class ChatListAdapter(private var context: Context, private val onItemClick: (Ch
         setHasStableIds(true)
     }
 
-    override fun getItemId(position: Int) = getItem(position).onionAddress?.hashCode()?.toLong() ?: position.toLong()
+    override fun getItemId(position: Int) =
+        getItem(position).onionAddress?.hashCode()?.toLong() ?: position.toLong()
 
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
         val titleTextView: TextView = itemView.findViewById(R.id.tvName)
@@ -45,7 +47,9 @@ class ChatListAdapter(private var context: Context, private val onItemClick: (Ch
             // Fix: Fallback to onionAddress if name is null or blank
             titleTextView.text = if (!item.name.isNullOrBlank()) item.name else item.onionAddress
             subTitleTextView.text = item.lastMessage
-            timeTV.text = item.time?.let { convertDatetime(it) } ?: ""
+            timeTV.text = item.time?.let {
+                it.toLongOrNull()?.let { ms -> Objects.formatTimestamp(ms) } ?: ""
+            } ?: ""
 
             if (item.unreadCount == 0 || item.unreadCount == null) {
                 countTV.visibility = View.GONE
@@ -73,15 +77,5 @@ class ChatListAdapter(private var context: Context, private val onItemClick: (Ch
 
     override fun onBindViewHolder(holder: ChatListAdapter.VH, position: Int) {
         holder.bind(getItem(position))
-    }
-
-    fun convertDatetime(rawMillis: String): String {
-        return try {
-            val instantFromMillis = Instant.ofEpochMilli(rawMillis.toLong())
-            val outFmt = DateTimeFormatter.ofPattern("h:mm a").withZone(ZoneId.systemDefault())
-            outFmt.format(instantFromMillis)
-        } catch (e: Exception) {
-            ""
-        }
     }
 }

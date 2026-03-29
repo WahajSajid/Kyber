@@ -5,6 +5,10 @@ import android.content.SharedPreferences
 import org.json.JSONArray
 
 object Prefs {
+
+    private const val KEY_LAST_SYNC_TIME = "last_sync_time"
+    private const val KEY_LAST_MSG_TIME  = "last_msg_server_time"
+
     private const val FILE = "kyber_prefs"
     private const val KEY_ONION_ADDRESS = "onion_address"
     private const val KEY_PUBLIC_KEY = "public_key"
@@ -116,4 +120,22 @@ object Prefs {
     fun clear(ctx: Context) = prefs(ctx).edit().clear().apply()
     fun removeOnionAddress(ctx: Context) = prefs(ctx).edit().remove(KEY_ONION_ADDRESS).apply()
     fun removePublicKey(ctx: Context) = prefs(ctx).edit().remove(KEY_PUBLIC_KEY).apply()
+
+
+    fun getLastSyncTime(context: Context): Long =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getLong(KEY_LAST_SYNC_TIME, 0L)
+
+    fun setLastSyncTime(context: Context, time: Long) =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_LAST_SYNC_TIME, time).apply()
+
+    fun getLastMsgTime(context: Context): Long =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .getLong(KEY_LAST_MSG_TIME, 0L)
+
+    fun setLastMsgTime(context: Context, time: Long) =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_LAST_MSG_TIME, time).apply()
+
 }

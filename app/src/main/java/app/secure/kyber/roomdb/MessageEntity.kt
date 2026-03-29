@@ -22,7 +22,15 @@ data class MessageEntity(
     val ampsJson: String = "",
     var reaction: String = "",
     var updatedAt: String = "",
-    val isRequest: Boolean = false
+    val isRequest: Boolean = false,
+    val uploadState: String = "done",      // "pending","uploading","done","failed"
+    val downloadState: String = "done",    // "pending","downloading","done","failed"
+    val uploadProgress: Int = 100,         // 0-100
+    val downloadProgress: Int = 100,       // 0-100
+    val localFilePath: String? = null,     // absolute path once file is local
+    val remoteMediaId: String? = null,     // chunk group id for reassembly
+    val mediaDurationMs: Long = 0L,
+    val mediaSizeBytes: Long = 0L
 )
 
 /**
@@ -44,6 +52,13 @@ data class MessageUiModel(
     val isSent: Boolean get() = entity.isSent
     val type: String get() = entity.type
     val isRequest: Boolean get() = entity.isRequest
+    val uploadState: String get() = entity.uploadState
+    val downloadState: String get() = entity.downloadState
+    val uploadProgress: Int get() = entity.uploadProgress
+    val downloadProgress: Int get() = entity.downloadProgress
+    val localFilePath: String? get() = entity.localFilePath
+    val remoteMediaId: String? get() = entity.remoteMediaId
+    val mediaDurationMs: Long get() = entity.mediaDurationMs
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson

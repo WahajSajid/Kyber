@@ -18,6 +18,7 @@ import androidx.fragment.app.commit
 import androidx.navigation.NavArgs
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
+import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
@@ -30,6 +31,7 @@ import app.secure.kyber.databinding.FragmentGroupChatListBinding
 import app.secure.kyber.fragments.ContactBottomSheet
 import app.secure.kyber.fragments.GroupChatListFragment
 import app.secure.kyber.onionrouting.UnionClient
+import app.secure.kyber.workers.SyncWorker
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -91,7 +93,8 @@ class MainActivity : AppCompatActivity() {
         appBarLayout = findViewById(R.id.app_bar)
         bottomBar = findViewById(R.id.bottomNavigationView)
 
-        controller = this.findNavController(R.id.main_fragment)
+        val navHostFragment = supportFragmentManager.findFragmentById(R.id.main_fragment) as NavHostFragment
+        controller = navHostFragment.navController
 
         setUpNavBar()
 
@@ -277,11 +280,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        controller.addOnDestinationChangedListener(listener)
-    }
-
     override fun onPause() {
         controller.removeOnDestinationChangedListener(listener)
         super.onPause()
@@ -289,7 +287,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setUpNavBar() {
         val navView: BottomNavigationView = findViewById(R.id.bottomNavigationView)
-        controller = this.findNavController(R.id.main_fragment)
+        // controller is already initialized in onCreate
         navView.setupWithNavController(controller)
     }
 
@@ -375,6 +373,28 @@ class MainActivity : AppCompatActivity() {
 
     public fun hideTopBar() {
         appBarLayout.visibility = View.GONE
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        controller.addOnDestinationChangedListener(listener)
+
+        // Every time the app comes to foreground, trigger an immediate
+        // one-time sync to catch any messages missed since last open.
+        val constraints = androidx.work.Constraints.Builder()
+            .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+            .build()
+        val immediateSync = androidx.work.OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(constraints)
+            .addTag("foreground_sync")
+            .build()
+        androidx.work.WorkManager.getInstance(this)
+            .enqueueUniqueWork(
+                "foreground_sync_once",
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                immediateSync
+            )
     }
 
 }
