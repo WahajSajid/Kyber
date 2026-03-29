@@ -30,6 +30,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
@@ -56,6 +57,8 @@ class UnionService : Service() {
     private lateinit var messageDao: MessageDao
     private lateinit var contactRepo: ContactRepository
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val chunkMutexes = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
 
     private lateinit var transferNotifier: MediaTransferNotifier
 
@@ -603,6 +606,7 @@ class UnionService : Service() {
     }
 
 
+
     private suspend fun handleChunk(
         transport: PrivateMessageTransportDto,
         apiMsg: app.secure.kyber.backend.beans.ApiMessage?
@@ -610,125 +614,161 @@ class UnionService : Service() {
         try {
             val chunk = chunkAdapter.fromJson(transport.uri ?: return) ?: return
             val mediaId = chunk.mediaId
-            val originalMessageId = chunk.messageId
 
-            // Save chunk to disk
-            MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
-
-            val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
-            val progress = (savedCount * 100) / chunk.total
-
-            // First chunk: create the placeholder message row immediately
-            if (chunk.index == 0) {
-                val existing = messageDao.getByRemoteMediaId(mediaId)
-                if (existing == null) {
-                    val entity = MessageEntity(
-                        messageId = originalMessageId,
-                        apiMessageId = apiMsg?.id,
-                        msg = EncryptionUtils.encrypt(chunk.caption.ifBlank {
-                            when (chunk.mimeType) {
-                                "AUDIO" -> "Voice Message"
-                                "VIDEO" -> "video"
-                                else -> "photo"
-                            }
-                        }),
-                        senderOnion = transport.senderOnion,
-                        time = System.currentTimeMillis().toString(),
-                        isSent = false,
-                        type = chunk.mimeType,
-                        uri = null,
-                        ampsJson = if (chunk.ampsJson.isNotBlank())
-                            EncryptionUtils.encrypt(chunk.ampsJson) else "",
-                        downloadState = "downloading",
-                        downloadProgress = progress,
-                        remoteMediaId = mediaId,
-                        mediaDurationMs = chunk.durationMs,
-                        mediaSizeBytes = chunk.totalBytes,
-                        isRequest = transport.isRequest
-                    )
-                    messageDao.insert(entity)
-
-                    // Show immediate notification for first chunk
-                    val isAccepted = contactRepo.getContact(transport.senderOnion) != null
-                    if (!transport.isRequest && isAccepted) {
-                        val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
-                        val displayMsg = when (chunk.mimeType) {
-                            "AUDIO" -> "🎵 Voice Message"
-                            "VIDEO" -> "🎥 Video"
-                            else -> "📷 Photo"
-                        }
-                        showPushNotification(transport.senderOnion, name, displayMsg)
-                    }
-                }
-            } else {
-                // Update download progress for subsequent chunks
-                val existing = messageDao.getByRemoteMediaId(mediaId)
-                if (existing != null) {
-                    messageDao.updateDownloadProgress(existing.messageId, "downloading", progress)
-                }
+            // Serialize all chunk processing for this mediaId — prevents race condition
+            getChunkMutex(mediaId).withLock {
+                handleChunkLocked(chunk, transport, apiMsg)
             }
 
-            // All chunks received — assemble
-            if (savedCount >= chunk.total) {
-                val entity = messageDao.getByRemoteMediaId(mediaId)
-                if (entity != null) {
-                    messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
-// Only post notification every ~10% to avoid Android notification rate-limiting
-                    val myApp = try {
-                        applicationContext as app.secure.kyber.MyApp.MyApp
-                    } catch (e: Exception) {
-                        null
+            // Clean up mutex when transfer is complete
+            val entity = messageDao.getByRemoteMediaId(mediaId)
+            if (entity?.downloadState == "done" || entity?.downloadState == "failed") {
+                chunkMutexes.remove(mediaId)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "handleChunk error", e)
+        }
+    }
+
+
+    private suspend fun handleChunkLocked(
+        chunk: MediaChunkDto,
+        transport: PrivateMessageTransportDto,
+        apiMsg: app.secure.kyber.backend.beans.ApiMessage?
+    ) {
+        val mediaId = chunk.mediaId
+        val originalMessageId = chunk.messageId
+
+        // Dedup: skip if this exact chunk index is already saved
+        val chunkDir = java.io.File(applicationContext.cacheDir, "chunks_$mediaId")
+        val chunkFile = java.io.File(chunkDir, "chunk_${chunk.index.toString().padStart(6, '0')}")
+        if (chunkFile.exists() && chunkFile.length() > 0) {
+            Log.d(TAG, "Chunk ${chunk.index} already saved, skipping duplicate")
+            return
+        }
+
+        // Save chunk to disk
+        MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
+
+        val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
+        val progress = (savedCount * 100) / chunk.total
+
+        // ... rest of existing handleChunk body unchanged ...
+
+
+        // First chunk: create the placeholder message row immediately
+        if (chunk.index == 0) {
+            val existing = messageDao.getByRemoteMediaId(mediaId)
+            if (existing == null) {
+                val entity = MessageEntity(
+                    messageId = originalMessageId,
+                    apiMessageId = apiMsg?.id,
+                    msg = EncryptionUtils.encrypt(chunk.caption.ifBlank {
+                        when (chunk.mimeType) {
+                            "AUDIO" -> "Voice Message"
+                            "VIDEO" -> "video"
+                            else -> "photo"
+                        }
+                    }),
+                    senderOnion = transport.senderOnion,
+                    time = System.currentTimeMillis().toString(),
+                    isSent = false,
+                    type = chunk.mimeType,
+                    uri = null,
+                    ampsJson = if (chunk.ampsJson.isNotBlank())
+                        EncryptionUtils.encrypt(chunk.ampsJson) else "",
+                    downloadState = "downloading",
+                    downloadProgress = progress,
+                    remoteMediaId = mediaId,
+                    mediaDurationMs = chunk.durationMs,
+                    mediaSizeBytes = chunk.totalBytes,
+                    isRequest = transport.isRequest
+                )
+                messageDao.insert(entity)
+
+                // Show immediate notification for first chunk
+                val isAccepted = contactRepo.getContact(transport.senderOnion) != null
+                if (!transport.isRequest && isAccepted) {
+                    val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
+                    val displayMsg = when (chunk.mimeType) {
+                        "AUDIO" -> "🎵 Voice Message"
+                        "VIDEO" -> "🎥 Video"
+                        else -> "📷 Photo"
                     }
-                    val isInChat = myApp?.activeChatOnion == entity.senderOnion
-                    if (!isInChat && progress % 10 == 0) {
+                    showPushNotification(transport.senderOnion, name, displayMsg)
+                }
+            }
+        } else {
+            // Update download progress for subsequent chunks
+            val existing = messageDao.getByRemoteMediaId(mediaId)
+            if (existing != null) {
+                messageDao.updateDownloadProgress(existing.messageId, "downloading", progress)
+            }
+        }
+
+        // All chunks received — assemble
+        if (savedCount >= chunk.total) {
+            val entity = messageDao.getByRemoteMediaId(mediaId)
+            if (entity != null) {
+                messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
+// Only post notification every ~10% to avoid Android notification rate-limiting
+                val myApp = try {
+                    applicationContext as app.secure.kyber.MyApp.MyApp
+                } catch (e: Exception) {
+                    null
+                }
+                val isInChat = myApp?.activeChatOnion == entity.senderOnion
+                if (!isInChat && progress % 10 == 0) {
+                    transferNotifier.showDownloadProgress(
+                        entity.messageId,
+                        chunk.mimeType,
+                        progress
+                    )
+                }
+                val assembledPath = MediaChunkManager.assembleChunks(
+                    applicationContext, mediaId, chunk.mimeType
+                ) { p ->
+                    serviceScope.launch {
+                        messageDao.updateDownloadProgress(
+                            entity.messageId,
+                            "downloading",
+                            progress
+                        )
                         transferNotifier.showDownloadProgress(
                             entity.messageId,
                             chunk.mimeType,
                             progress
                         )
                     }
-                    val assembledPath = MediaChunkManager.assembleChunks(
-                        applicationContext, mediaId, chunk.mimeType
-                    ) { p ->
-                        serviceScope.launch {
-                            messageDao.updateDownloadProgress(
-                                entity.messageId,
-                                "downloading",
-                                progress
-                            )
-                            transferNotifier.showDownloadProgress(
-                                entity.messageId,
-                                chunk.mimeType,
-                                progress
-                            )
-                        }
-                    }
-                    if (assembledPath != null) {
-                        val updated = entity.copy(
-                            uri = EncryptionUtils.encrypt(assembledPath),
-                            downloadState = "done",
-                            downloadProgress = 100,
-                            localFilePath = assembledPath.removePrefix("file://")
-                        )
-                        messageDao.update(updated)
-                        val myApp2 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
-                        if (myApp2?.activeChatOnion != entity.senderOnion) {
-                            // Only show "received" notification if user is NOT already in that chat
-                            transferNotifier.showDownloadComplete(entity.messageId, chunk.mimeType)
-                        } else {
-                            transferNotifier.cancel(entity.messageId)
-                        }
+                }
+                if (assembledPath != null) {
+                    val updated = entity.copy(
+                        uri = EncryptionUtils.encrypt(assembledPath),
+                        downloadState = "done",
+                        downloadProgress = 100,
+                        localFilePath = assembledPath.removePrefix("file://")
+                    )
+                    messageDao.update(updated)
+                    val myApp2 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                    if (myApp2?.activeChatOnion != entity.senderOnion) {
+                        // Only show "received" notification if user is NOT already in that chat
+                        transferNotifier.showDownloadComplete(entity.messageId, chunk.mimeType)
                     } else {
-                        messageDao.updateDownloadProgress(entity.messageId, "failed", 0)
-                        val myApp3 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
-                        if (myApp3?.activeChatOnion != entity.senderOnion) {
-                            transferNotifier.showDownloadFailed(entity.messageId, chunk.mimeType)
-                        }
+                        transferNotifier.cancel(entity.messageId)
+                    }
+                } else {
+                    messageDao.updateDownloadProgress(entity.messageId, "failed", 0)
+                    val myApp3 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                    if (myApp3?.activeChatOnion != entity.senderOnion) {
+                        transferNotifier.showDownloadFailed(entity.messageId, chunk.mimeType)
                     }
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "handleChunk error", e)
         }
+
     }
+
+    private fun getChunkMutex(mediaId: String): kotlinx.coroutines.sync.Mutex =
+        chunkMutexes.getOrPut(mediaId) { kotlinx.coroutines.sync.Mutex() }
+
 }

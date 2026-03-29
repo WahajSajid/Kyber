@@ -1,5 +1,6 @@
 package app.secure.kyber.media
 
+import android.R.attr.mimeType
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.util.Log
@@ -34,6 +35,11 @@ class MediaSender(
         val fileSize   = resolveFileSize(filePath)
         val durationMs = if (mimeType != "IMAGE") getDurationMs(filePath) else 0L
 
+
+        val actualFilePath = if (mimeType == "IMAGE") {
+            compressImageIfNeeded(context, filePath)
+        } else filePath
+
         // 1. Insert local pending row immediately — UI sees bubble right away
         messageDao.insert(
             MessageEntity(
@@ -59,7 +65,7 @@ class MediaSender(
         val request = MediaUploadWorker.buildRequest(
             messageId    = messageId,
             mediaId      = mediaId,
-            filePath     = filePath,
+            filePath     = actualFilePath,
             mimeType     = mimeType,
             caption      = caption,
             ampsJson     = ampsJson,
@@ -131,4 +137,42 @@ class MediaSender(
             d
         } catch (e: Exception) { 0L }
     }
+
+    // Add this private function to MediaSender:
+    private fun compressImageIfNeeded(context: Context, filePath: String): String {
+        return try {
+            val file = java.io.File(filePath.removePrefix("file://"))
+            if (!file.exists()) return filePath
+            // Only compress images over 500 KB
+            if (file.length() < 500 * 1024) return filePath
+
+            val bitmap =
+                android.graphics.BitmapFactory.decodeFile(file.absolutePath) ?: return filePath
+            // Cap at 1920px on longest side
+            val maxDim = 1920
+            val scale = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height, 1f)
+            val scaled = if (scale < 1f) {
+                android.graphics.Bitmap.createScaledBitmap(
+                    bitmap,
+                    (bitmap.width * scale).toInt(),
+                    (bitmap.height * scale).toInt(),
+                    true
+                )
+            } else bitmap
+
+            val outFile =
+                java.io.File(context.cacheDir, "compressed_${System.currentTimeMillis()}.jpg")
+            outFile.outputStream().use { out ->
+                scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, out)
+            }
+            if (scaled != bitmap) scaled.recycle()
+            bitmap.recycle()
+            "file://${outFile.absolutePath}"
+        } catch (e: Exception) {
+            Log.e("MediaSender", "Image compression failed, using original", e)
+            filePath
+        }
+    }
+
+
 }

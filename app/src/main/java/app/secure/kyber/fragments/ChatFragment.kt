@@ -244,6 +244,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             val db = AppDb.get(requireContext())
                             val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                             val isContact = contactRepo.getContact(contactOnion) != null
+
+                            if (item.type == "VIDEO") {
+                                val fileSize = try {
+                                    val uri = android.net.Uri.parse(item.uriString)
+                                    requireContext().contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L
+                                } catch (e: Exception) { 0L }
+
+                                if (fileSize > 50 * 1024 * 1024) { // 50 MB limit
+                                    android.widget.Toast.makeText(
+                                        requireContext(),
+                                        "Video too large (max 50 MB). Please trim or compress it first.",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                    return@launch
+                                }
+                            }
                             mediaSender.sendMedia(
                                 contactOnion = contactOnion,
                                 senderOnion = onionAddr,
@@ -1345,6 +1361,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                     val isContact = contactRepo.getContact(contactOnion) != null
+
                     mediaSender.sendMedia(
                         contactOnion = contactOnion,
                         senderOnion = onionAddr,

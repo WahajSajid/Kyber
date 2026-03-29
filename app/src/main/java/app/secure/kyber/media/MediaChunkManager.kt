@@ -10,7 +10,7 @@ import java.io.RandomAccessFile
 object MediaChunkManager {
 
     private const val TAG = "MediaChunkManager"
-    const val CHUNK_SIZE_BYTES = 64 * 1024 // 64 KB raw → ~88 KB per message payload
+    const val CHUNK_SIZE_BYTES = 32 * 1024 // 64 KB raw → ~88 KB per message payload
 
     fun buildChunks(
         context: Context,
@@ -87,19 +87,35 @@ object MediaChunkManager {
             if (chunkFiles.isEmpty()) return null
 
             val ext = when (mimeType.uppercase()) {
-                "AUDIO" -> "m4a"
-                "VIDEO" -> "mp4"
-                else -> "jpg"
+                "AUDIO" -> "m4a"; "VIDEO" -> "mp4"; else -> "jpg"
             }
             val outFile = File(context.cacheDir, "assembled_${mediaId}.$ext")
-            outFile.outputStream().use { out ->
+            // Write to temp file first, rename atomically when complete
+            val tmpFile = File(context.cacheDir, "assembling_${mediaId}.$ext")
+
+            tmpFile.outputStream().buffered(32 * 1024).use { out ->
                 chunkFiles.forEachIndexed { idx, chunkFile ->
-                    val decoded = Base64.decode(chunkFile.readText(), Base64.NO_WRAP)
-                    out.write(decoded)
+                    // Streaming decode: read Base64 text → decode → write directly
+                    // Never hold entire file in memory
+                    chunkFile.inputStream().bufferedReader().use { reader ->
+                        val b64 = reader.readText()
+                        val decoded = Base64.decode(b64, Base64.NO_WRAP)
+                        out.write(decoded)
+                        decoded.fill(0) // allow GC immediately
+                    }
                     onProgress?.invoke(((idx + 1) * 100) / chunkFiles.size)
                 }
+                out.flush()
             }
-            // Clean up chunk dir after assembly
+
+            // Atomic rename — only exists as final path if fully written
+            tmpFile.renameTo(outFile)
+
+            if (!outFile.exists() || outFile.length() == 0L) {
+                tmpFile.delete()
+                return null
+            }
+
             chunkDir.deleteRecursively()
             "file://${outFile.absolutePath}"
         } catch (e: Exception) {
