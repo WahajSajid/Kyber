@@ -541,13 +541,17 @@ class MessageAdapter(
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
 
         // FIX: Route the raw decrypted source through the Base64 file resolver
-        val uriStr = if (!item.localFilePath.isNullOrBlank() &&
-            (item.uploadState == "done" || item.downloadState == "done")
-        ) {
-            "file://${item.localFilePath}"
-        } else {
-            val rawSource = item.decryptedUri ?: item.decryptedMsg
-            resolveMediaSource(h.itemView.context, rawSource, type)
+        val uriStr: String = when {
+            // Prefer a real file:// local path
+            !item.localFilePath.isNullOrBlank() && !item.localFilePath!!.startsWith("content://") -> {
+                val f = java.io.File(item.localFilePath!!)
+                if (f.exists()) "file://${item.localFilePath}" else ""
+            }
+            // Fallback: decrypt uri field (may be content:// or base64)
+            else -> {
+                val rawSource = item.decryptedUri ?: item.decryptedMsg
+                resolveMediaSource(h.itemView.context, rawSource, type)
+            }
         }
         val uri = try {
             uriStr.toUri()
@@ -587,10 +591,27 @@ class MessageAdapter(
         // After existing Glide load and click listener setup, add:
         if (sent) {
             when (item.uploadState) {
-                "pending", "uploading" -> {
+                "pending" -> {
+                    h.sentMediaProgressOverlay.visibility = View.VISIBLE
+                    h.sentMediaProgressBar.progress = 0
+                    h.tvSentMediaProgress.text = "Preparing…"
+                    h.btnRetrySentMedia.visibility = View.GONE
+                    h.ivSentPlay.isVisible = false
+                }
+
+                "compressing" -> {
                     h.sentMediaProgressOverlay.visibility = View.VISIBLE
                     h.sentMediaProgressBar.progress = item.uploadProgress
-                    h.tvSentMediaProgress.text = "${item.uploadProgress}%"
+                    h.tvSentMediaProgress.text = "Compressing… ${item.uploadProgress}%"
+                    h.btnRetrySentMedia.visibility = View.GONE
+                    h.ivSentPlay.isVisible = false
+                }
+
+                "uploading" -> {
+                    h.sentMediaProgressOverlay.visibility = View.VISIBLE
+                    h.sentMediaProgressBar.progress = item.uploadProgress
+                    h.tvSentMediaProgress.text = "Uploading… ${item.uploadProgress}%"
+                    h.btnRetrySentMedia.visibility = View.GONE
                     h.ivSentPlay.isVisible = false
                 }
 
@@ -627,6 +648,28 @@ class MessageAdapter(
                 else -> {
                     h.rcvMediaProgressOverlay.visibility = View.GONE
                     h.btnRetryRcvMedia.visibility = View.GONE
+                }
+            }
+        }
+
+
+        if (item.type.uppercase() == "VIDEO") {
+            val thumbSource: Any? = when {
+                !item.thumbnailPath.isNullOrBlank() -> java.io.File(item.thumbnailPath)
+                !item.localFilePath.isNullOrBlank() -> java.io.File(item.localFilePath!!)
+                else -> null
+            }
+            if (thumbSource != null) {
+                if (sent) {
+                    Glide.with(h.itemView.context)
+                        .load(thumbSource)
+                        .apply(RequestOptions.centerCropTransform())
+                        .into(h.ivSentMedia)
+                } else {
+                    Glide.with(h.itemView.context)
+                        .load(thumbSource)
+                        .apply(RequestOptions.centerCropTransform())
+                        .into(h.ivRcvMedia)
                 }
             }
         }
@@ -695,6 +738,7 @@ class MessageAdapter(
                     h.btnRetrySentAudio.setOnClickListener { onRetryUpload(item) }
                     h.playPauseFrame(true).isEnabled = false
                 }
+
                 else -> {
                     h.sentAudioProgressBar.visibility = View.GONE
                     h.tvSentAudioUploadState.visibility = View.GONE
@@ -731,6 +775,7 @@ class MessageAdapter(
                     h.btnRetryRcvAudio.setOnClickListener { onRetryDownload(item) }
                     h.playPauseFrame(false).isEnabled = false
                 }
+
                 else -> {
                     h.rcvAudioProgressBar.visibility = View.GONE
                     h.tvRcvAudioDownloadState.visibility = View.GONE

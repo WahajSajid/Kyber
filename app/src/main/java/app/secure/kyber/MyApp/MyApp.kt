@@ -3,6 +3,7 @@ package app.secure.kyber.MyApp
 import android.content.Intent
 import android.os.Build
 import androidx.lifecycle.MutableLiveData
+import androidx.work.PeriodicWorkRequestBuilder
 import app.secure.kyber.ApplicationClass
 import app.secure.kyber.adapters.AddedMembers
 import app.secure.kyber.onionrouting.UnionService
@@ -41,8 +42,8 @@ class MyApp : ApplicationClass() {
             .build()
 
         // Periodic worker: runs every 15 minutes even when app is closed
-        val periodicRequest = androidx.work.PeriodicWorkRequestBuilder<SyncWorker>(
-            15, java.util.concurrent.TimeUnit.MINUTES
+        val periodicRequest = PeriodicWorkRequestBuilder<SyncWorker>(
+            15, java.util.concurrent.TimeUnit.MINUTES       // ← CORRECT
         )
             .setConstraints(constraints)
             .setBackoffCriteria(

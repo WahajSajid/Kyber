@@ -66,6 +66,10 @@ interface MessageDao {
     suspend fun getByMessageId(messageId: String): MessageEntity?
 
 
+    @Query("UPDATE messages SET thumbnailPath = :path WHERE messageId = :messageId")
+    suspend fun setThumbnailPath(messageId: String, path: String)
+
+
     /**
      * Normal accepted chat list.
      *

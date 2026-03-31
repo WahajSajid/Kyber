@@ -30,7 +30,8 @@ data class MessageEntity(
     val localFilePath: String? = null,     // absolute path once file is local
     val remoteMediaId: String? = null,     // chunk group id for reassembly
     val mediaDurationMs: Long = 0L,
-    val mediaSizeBytes: Long = 0L
+    val mediaSizeBytes: Long = 0L,
+    val thumbnailPath: String? = null   // local path to thumbnail image
 )
 
 /**
@@ -59,6 +60,9 @@ data class MessageUiModel(
     val localFilePath: String? get() = entity.localFilePath
     val remoteMediaId: String? get() = entity.remoteMediaId
     val mediaDurationMs: Long get() = entity.mediaDurationMs
+
+    // Add to MessageUiModel:
+    val thumbnailPath: String? get() = entity.thumbnailPath
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson

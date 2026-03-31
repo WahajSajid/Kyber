@@ -54,26 +54,48 @@ class MediaTransferNotifier(private val context: Context) {
 
     // ── Upload ────────────────────────────────────────────────────────────────
 
-    fun buildUploadForegroundInfo(messageId: String, mimeType: String, progress: Int): ForegroundInfo {
+    fun buildUploadForegroundInfo(
+        messageId: String,
+        mimeType: String,
+        progress: Int,
+        stateLabel: String = ""   // ADD THIS PARAMETER
+    ): ForegroundInfo {
         val notifId = UPLOAD_BASE_ID + messageId.hashCode().and(0xFFFF)
         val label = typeLabel(mimeType)
+        val contentText = when {
+            stateLabel.isNotBlank() -> "$stateLabel $progress%"
+            progress == 0 -> "Starting…"
+            else -> "$progress%"
+        }
         val notification = NotificationCompat.Builder(context, UPLOAD_CHANNEL_ID)
             .setContentTitle("Sending $label")
-            .setContentText("$progress%")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.notification)
-            .setProgress(100, progress, progress == 0)
+            .setProgress(100, progress, progress == 0 && stateLabel.isBlank())
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(launchIntent())
             .build()
         return if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            ForegroundInfo(
-                notifId, notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            )
+            ForegroundInfo(notifId, notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             ForegroundInfo(notifId, notification)
         }
+    }
+
+    fun showCompressionProgress(messageId: String, progress: Int) {
+        val notifId = UPLOAD_BASE_ID + messageId.hashCode().and(0xFFFF)
+        val n = NotificationCompat.Builder(context, UPLOAD_CHANNEL_ID)
+            .setContentTitle("Compressing video")
+            .setContentText("$progress%")
+            .setSmallIcon(R.drawable.notification)
+            .setProgress(100, progress, false)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(launchIntent())
+            .build()
+        nm.notify(notifId, n)
     }
 
     fun showUploadComplete(messageId: String, mimeType: String) {

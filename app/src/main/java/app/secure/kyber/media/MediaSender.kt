@@ -36,9 +36,11 @@ class MediaSender(
         val durationMs = if (mimeType != "IMAGE") getDurationMs(filePath) else 0L
 
 
-        val actualFilePath = if (mimeType == "IMAGE") {
-            compressImageIfNeeded(context, filePath)
-        } else filePath
+        val durableFilePath = when (mimeType) {
+            "IMAGE" -> prepareImageForUpload(context, filePath)   // compress + copy
+            "AUDIO" -> copyToAppStorage(context, filePath, mimeType)
+            else    -> filePath  // VIDEO handled by MediaUploadWorker
+        }
 
         // 1. Insert local pending row immediately — UI sees bubble right away
         messageDao.insert(
@@ -65,7 +67,7 @@ class MediaSender(
         val request = MediaUploadWorker.buildRequest(
             messageId    = messageId,
             mediaId      = mediaId,
-            filePath     = actualFilePath,
+            filePath     = durableFilePath,
             mimeType     = mimeType,
             caption      = caption,
             ampsJson     = ampsJson,
@@ -172,6 +174,126 @@ class MediaSender(
             Log.e("MediaSender", "Image compression failed, using original", e)
             filePath
         }
+    }
+
+
+    // Replace copyToAppStorage + add compressAndCopyImage:
+
+    private suspend fun prepareImageForUpload(context: Context, uriString: String): String {
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Step 1: Resolve to a readable InputStream
+                val uri = android.net.Uri.parse(uriString)
+                val inputStream = when {
+                    uriString.startsWith("file://") || uriString.startsWith("/") -> {
+                        java.io.File(uriString.removePrefix("file://")).inputStream()
+                    }
+                    else -> context.contentResolver.openInputStream(uri)
+                } ?: return@withContext uriString
+
+                // Step 2: Decode with inJustDecodeBounds first to get dimensions
+                val boundsOpts = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                val boundsBytes = inputStream.readBytes()
+                inputStream.close()
+                android.graphics.BitmapFactory.decodeByteArray(boundsBytes, 0, boundsBytes.size, boundsOpts)
+
+                val origW = boundsOpts.outWidth
+                val origH = boundsOpts.outHeight
+
+                // Step 3: Calculate sample size to avoid loading huge bitmap into memory
+                val maxDim = 1920
+                var sampleSize = 1
+                var tmpW = origW; var tmpH = origH
+                while (tmpW > maxDim * 2 || tmpH > maxDim * 2) {
+                    sampleSize *= 2; tmpW /= 2; tmpH /= 2
+                }
+
+                // Step 4: Decode with sampling
+                val decodeOpts = android.graphics.BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                    inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888
+                }
+                var bitmap = android.graphics.BitmapFactory.decodeByteArray(
+                    boundsBytes, 0, boundsBytes.size, decodeOpts
+                ) ?: return@withContext uriString
+
+                // Step 5: Scale down if still over maxDim
+                val longerSide = maxOf(bitmap.width, bitmap.height)
+                if (longerSide > maxDim) {
+                    val scale = maxDim.toFloat() / longerSide
+                    val scaled = android.graphics.Bitmap.createScaledBitmap(
+                        bitmap,
+                        (bitmap.width * scale).toInt(),
+                        (bitmap.height * scale).toInt(),
+                        true
+                    )
+                    bitmap.recycle()
+                    bitmap = scaled
+                }
+
+                // Step 6: Preserve EXIF orientation
+                try {
+                    val exif = androidx.exifinterface.media.ExifInterface(
+                        java.io.ByteArrayInputStream(boundsBytes)
+                    )
+                    val orientation = exif.getAttributeInt(
+                        androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION,
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL
+                    )
+                    val matrix = android.graphics.Matrix()
+                    when (orientation) {
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_90  -> matrix.postRotate(90f)
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
+                        androidx.exifinterface.media.ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
+                    }
+                    if (!matrix.isIdentity) {
+                        val rotated = android.graphics.Bitmap.createBitmap(
+                            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+                        )
+                        bitmap.recycle()
+                        bitmap = rotated
+                    }
+                } catch (e: Exception) { /* EXIF read failed, continue without rotation fix */ }
+
+                // Step 7: Compress to JPEG at 82% quality into app-owned storage
+                val destDir = java.io.File(context.filesDir, "sent_media").apply { mkdirs() }
+                val destFile = java.io.File(destDir, "img_${System.currentTimeMillis()}.jpg")
+                destFile.outputStream().use { out ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 82, out)
+                }
+                bitmap.recycle()
+
+                android.util.Log.d("MediaSender",
+                    "Image compressed: ${boundsBytes.size / 1024}KB → ${destFile.length() / 1024}KB")
+
+                "file://${destFile.absolutePath}"
+            } catch (e: Exception) {
+                android.util.Log.e("MediaSender", "Image compression failed, using original", e)
+                // Fallback: just copy to durable storage without compression
+                copyToAppStorage(context, uriString, "IMAGE")
+            }
+        }
+    }
+
+    private fun copyToAppStorage(context: Context, uriString: String, mimeType: String): String {
+        if (uriString.startsWith("file://") || uriString.startsWith("/")) {
+            val f = java.io.File(uriString.removePrefix("file://"))
+            if (f.exists()) return "file://${f.absolutePath}"
+        }
+        return try {
+            val uri = android.net.Uri.parse(uriString)
+            val ext = when (mimeType.uppercase()) { "VIDEO" -> "mp4"; "AUDIO" -> "m4a"; else -> "jpg" }
+            val destDir = java.io.File(context.filesDir, "sent_media").apply { mkdirs() }
+            val destFile = java.io.File(destDir, "sent_${System.currentTimeMillis()}.$ext")
+            context.contentResolver.openInputStream(uri)?.use { i ->
+                destFile.outputStream().use { o -> i.copyTo(o) }
+            }
+            if (destFile.exists() && destFile.length() > 0) "file://${destFile.absolutePath}"
+            else uriString
+        } catch (e: Exception) { uriString }
     }
 
 
