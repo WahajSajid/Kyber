@@ -559,9 +559,16 @@ class UnionService : Service() {
                 NotificationManager.IMPORTANCE_LOW
             ).apply { setShowBadge(false) }
 
+            val messageChannel = NotificationChannel(
+                MSG_CHANNEL_ID,
+                "Message Notifications",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply { setShowBadge(true) }
+
             notificationManager.createNotificationChannel(downloadChannel)
             notificationManager.createNotificationChannel(uploadChannel)
             notificationManager.createNotificationChannel(serviceChannel)
+            notificationManager.createNotificationChannel(messageChannel)
         }
     }
 

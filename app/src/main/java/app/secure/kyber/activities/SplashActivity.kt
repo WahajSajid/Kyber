@@ -49,35 +49,30 @@ class SplashActivity : AppCompatActivity() {
             insets
         }
         ViewCompat.requestApplyInsets(root)
-        openActivity()
-//        if(ContextCompat.checkSelfPermission(
-//                this, Manifest.permission.POST_NOTIFICATIONS
-//            ) == PackageManager.PERMISSION_GRANTED ){
-//            openActivity()
-//        }else if(shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)){
-//            Snackbar.make(
-//                findViewById(android.R.id.content) ,
-//                "Notifications blocked",
-//                Snackbar.LENGTH_LONG
-//            ).setAction("Settings") {
-//                // Responds to click on the action
-//                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-//                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-//                val uri: Uri = Uri.fromParts("package", packageName, null)
-//                intent.data = uri
-//                startActivity(intent)
-//            }.show()
-//          //  Handler().postDelayed({
-//            openActivity()
-//               // }, 4000)
-//        }
-//        else {
-//            // The registered ActivityResultCallback gets the result of this request
-//            requestPermissionLauncher.launch(
-//                Manifest.permission.POST_NOTIFICATIONS
-//            )
-//        }
-
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED) {
+                openActivity()
+            } else if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                Snackbar.make(
+                    findViewById(android.R.id.content),
+                    "Notifications blocked. Some app features will not work.",
+                    Snackbar.LENGTH_LONG
+                ).setAction("Settings") {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val uri: Uri = Uri.fromParts("package", packageName, null)
+                    intent.data = uri
+                    startActivity(intent)
+                }.show()
+                openActivity()
+            } else {
+                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } else {
+            openActivity()
+        }
     }
 
     override fun onResume() {

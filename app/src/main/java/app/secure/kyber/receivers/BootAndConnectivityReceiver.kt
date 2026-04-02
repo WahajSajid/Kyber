@@ -53,7 +53,15 @@ class BootAndConnectivityReceiver : BroadcastReceiver() {
                     val serviceIntent = Intent(context, UnionService::class.java).apply {
                         action = UnionService.ACTION_START_SERVICE
                     }
-                    context.startForegroundService(serviceIntent)
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        try {
+                            context.startForegroundService(serviceIntent)
+                        } catch (e: Exception) {
+                            Log.e("BootReceiver", "ForegroundLaunch blocked by OS: ${e.message}")
+                        }
+                    } else {
+                        context.startService(serviceIntent)
+                    }
                 } catch (e: Exception) {
                     Log.e("BootReceiver", "Could not start UnionService: ${e.message}")
                 }

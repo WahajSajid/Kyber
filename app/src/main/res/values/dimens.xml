@@ -687,4 +687,8 @@
     <dimen name="audio_play_ic_dimen">18dp</dimen>
     <dimen name="reaction_size">16dp</dimen>
 
+    <dimen name="video_playback_bg">32dp</dimen>
+    <dimen name="video_playback_ic">15dp</dimen>
+
+
 </resources>

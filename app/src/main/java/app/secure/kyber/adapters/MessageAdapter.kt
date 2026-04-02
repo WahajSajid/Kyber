@@ -167,8 +167,8 @@ class MessageAdapter(
         val rcvdMedia: FrameLayout = view.findViewById(R.id.received_message_media)
         val ivSentMedia: ImageView = view.findViewById(R.id.ivSentMedia)
         val ivRcvMedia: ImageView = view.findViewById(R.id.ivRcvMedia)
-        val ivSentPlay: ImageView = view.findViewById(R.id.ivSentPlay)
-        val ivRcvPlay: ImageView = view.findViewById(R.id.ivRcvPlay)
+        val ivSentPlay: ConstraintLayout = view.findViewById(R.id.ivSentPlay)
+        val ivRcvPlay: ConstraintLayout = view.findViewById(R.id.ivRcvPlay)
 
         val sentAudio: LinearLayout = view.findViewById(R.id.sentAudioContainer)
         val ivSentPlayPause: ConstraintLayout = view.findViewById(R.id.ivSentPlayPause)
@@ -239,6 +239,9 @@ class MessageAdapter(
         val btnRetrySentAudio: android.widget.Button = view.findViewById(R.id.btnRetrySentAudio)
         val btnRetryRcvAudio: android.widget.Button = view.findViewById(R.id.btnRetryRcvAudio)
 
+        // Text specific
+        val ivSentStatus: ImageView? = view.findViewById(R.id.ivSentStatus)
+        val btnRetrySentText: android.widget.Button? = view.findViewById(R.id.btnRetrySentText)
 
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
@@ -442,6 +445,24 @@ class MessageAdapter(
             h.tvRcv.cancelAndShowFinal()
             h.tvSent.text = item.decryptedMsg
             h.tvDecryptingRcv?.visibility = View.GONE
+            
+            // Text retry and pending logic
+            h.btnRetrySentText?.isVisible = false
+            if (item.uploadState == "pending" || item.uploadState == "uploading") {
+                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Or replace with a clock if one exists later
+                h.ivSentStatus?.setColorFilter(android.graphics.Color.GRAY)
+            } else if (item.uploadState == "failed") {
+                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Or replace with an error if one exists later
+                h.ivSentStatus?.setColorFilter(android.graphics.Color.RED)
+                h.btnRetrySentText?.isVisible = true
+            } else {
+                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Default double check/sent
+                h.ivSentStatus?.colorFilter = null
+            }
+
+            h.btnRetrySentText?.setOnClickListener {
+                onRetryUpload(item)
+            }
             return
         }
 
@@ -783,6 +804,16 @@ class MessageAdapter(
                     h.playPauseFrame(false).isEnabled = true
                     h.waveform(false).alpha = 1f
                 }
+            }
+        }
+
+
+        //enabling the play_pause_icon once the downloading progress reaches 100 %
+        when(item.downloadProgress){
+            100 -> {
+                h.playPauseFrame(false).isEnabled = true
+                h.rcvAudioProgressBar.visibility = View.GONE
+                h.tvRcvAudioDownloadState.visibility = View.GONE
             }
         }
 

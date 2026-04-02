@@ -89,6 +89,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
+import app.secure.kyber.workers.TextUploadWorker
 
 @Suppress("UNCHECKED_CAST")
 @AndroidEntryPoint
@@ -624,17 +627,38 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val db = AppDb.get(requireContext())
             val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
             val isContact = contactRepo.getContact(contactOnion) != null
-            val transport = PrivateMessageTransportDto(
-                messageId = messageId, msg = text,
-                senderOnion = onionAddr, senderName = name,
+            val isRequest = !isContact
+            
+            // Immediately save to local DB with pending state
+            db.messageDao().insert(
+                MessageEntity(
+                    messageId = messageId,
+                    msg = EncryptionUtils.encrypt(text),
+                    senderOnion = contactOnion,
+                    time = timestamp,
+                    isSent = true,
+                    type = "TEXT",
+                    uploadState = "pending",
+                    uploadProgress = 0
+                )
+            )
+
+            val request = TextUploadWorker.buildRequest(
+                messageId = messageId,
+                text = text,
+                contactOnion = contactOnion,
+                senderOnion = onionAddr,
+                senderName = name,
                 timestamp = timestamp,
-                isRequest = !isContact
+                isRequest = isRequest
             )
-            vm.saveMessage(
-                messageId = messageId, msg = EncryptionUtils.encrypt(text),
-                senderOnion = contactOnion, timestamp = timestamp, isSent = true
-            )
-            sendPrivateMessage(transport)
+            WorkManager.getInstance(requireContext())
+                .enqueueUniqueWork(
+                    "text_upload_$messageId",
+                    ExistingWorkPolicy.REPLACE,
+                    request
+                )
+
             binding.etMsg.setText("")
         }
     }
@@ -912,13 +936,28 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                     val isContact = contactRepo.getContact(contactOnion) != null
-                    mediaSender.retryUpload(
-                        messageId    = msg.messageId,
-                        contactOnion = contactOnion,
-                        senderOnion  = myOnion,
-                        senderName   = myName,
-                        isContact    = isContact
-                    )
+                    
+                    if (msg.type == "TEXT") {
+                        val request = TextUploadWorker.buildRequest(
+                            messageId = msg.messageId,
+                            text = EncryptionUtils.decrypt(msg.msg), // msg.msg is encrypted in DB, but MessageUiModel has decryptedMsg (let's use msg.decryptedMsg)
+                            contactOnion = contactOnion,
+                            senderOnion = myOnion,
+                            senderName = myName,
+                            timestamp = msg.time,
+                            isRequest = !isContact
+                        )
+                        WorkManager.getInstance(requireContext())
+                            .enqueueUniqueWork("text_upload_${msg.messageId}", ExistingWorkPolicy.REPLACE, request)
+                    } else {
+                        mediaSender.retryUpload(
+                            messageId    = msg.messageId,
+                            contactOnion = contactOnion,
+                            senderOnion  = myOnion,
+                            senderName   = myName,
+                            isContact    = isContact
+                        )
+                    }
                 }
             },
             onRetryDownload = { msg ->

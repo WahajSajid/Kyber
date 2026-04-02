@@ -167,7 +167,15 @@ class SyncWorker(
                 val serviceIntent = Intent(context, UnionService::class.java).apply {
                     action = UnionService.ACTION_START_SERVICE
                 }
-                context.startForegroundService(serviceIntent)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    try {
+                        context.startForegroundService(serviceIntent)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "ForegroundLaunch blocked by OS: ${e.message}")
+                    }
+                } else {
+                    context.startService(serviceIntent)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Could not restart UnionService from worker: ${e.message}")
             }

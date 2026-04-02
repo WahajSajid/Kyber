@@ -42,14 +42,28 @@
                 android:src="@drawable/poetry"
                 app:shapeAppearanceOverlay="@style/ReceivedMessageRoundedTopCorners" />
 
-            <ImageView
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="@dimen/video_playback_bg"
+                android:layout_height="@dimen/video_playback_bg"
                 android:id="@+id/ivRcvPlay"
-                android:layout_width="@dimen/_24sdp"
-                android:layout_height="@dimen/_24sdp"
-                android:layout_gravity="center"
-                android:src="@drawable/pause_icon_1"
+                android:background="@drawable/video_playback_bg"
                 android:visibility="gone"
-                app:tint="#FFFFFF" />
+                android:layout_gravity="center">
+
+
+
+                <ImageView
+                    android:layout_width="@dimen/video_playback_ic"
+                    android:layout_height="@dimen/video_playback_ic"
+                    android:src="@drawable/pause_icon_1"
+                    app:tint="@color/black"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"/>
+
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
             <!-- Download progress overlay for received media -->
             <FrameLayout
@@ -521,14 +535,26 @@
                 android:src="@drawable/poetry"
                 app:shapeAppearanceOverlay="@style/SentMessageRoundedTopCorners" />
 
-            <ImageView
-                android:id="@+id/ivSentPlay"
-                android:layout_width="@dimen/_24sdp"
-                android:layout_height="@dimen/_24sdp"
-                android:layout_gravity="center"
-                android:src="@android:drawable/ic_media_play"
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="@dimen/video_playback_bg"
+                android:layout_height="@dimen/video_playback_bg"
+                android:background="@drawable/video_playback_bg"
                 android:visibility="gone"
-                app:tint="#FFFFFF" />
+                android:id="@+id/ivSentPlay"
+                android:layout_gravity="center">
+
+                <ImageView
+                    android:layout_width="@dimen/video_playback_ic"
+                    android:layout_height="@dimen/video_playback_ic"
+                    android:src="@drawable/pause_icon_1"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:tint="@color/black" />
+
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
 
 
             <!-- Upload progress overlay for sent media -->
@@ -586,7 +612,7 @@
             android:paddingTop="@dimen/_8sdp"
             android:paddingEnd="@dimen/_8sdp"
             android:paddingBottom="@dimen/_4sdp"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
@@ -757,12 +783,23 @@
                 android:textSize="12sp" />
 
             <ImageView
+                android:id="@+id/ivSentStatus"
                 android:layout_width="@dimen/_15sdp"
                 android:layout_height="@dimen/_15sdp"
                 android:layout_gravity="center_vertical"
                 android:src="@drawable/privacy"
                 app:tint="#60FFFFFF" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/btnRetrySentText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="@dimen/_4sdp"
+            android:text="Retry Text"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 
