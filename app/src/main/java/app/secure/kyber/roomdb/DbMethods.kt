@@ -17,7 +17,8 @@ class MessageRepository(private val dao: MessageDao) {
         ampsJson: String? = null,
         apiMessageId: String? = null,
         reaction: String = "",
-        isRequest: Boolean = false
+        isRequest: Boolean = false,
+        keyFingerprint: String? = null
     ) {
         dao.insert(
             MessageEntity(
@@ -31,7 +32,8 @@ class MessageRepository(private val dao: MessageDao) {
                 ampsJson = ampsJson ?: "",
                 apiMessageId = apiMessageId,
                 reaction = reaction,
-                isRequest = isRequest
+                isRequest = isRequest,
+                keyFingerprint = keyFingerprint
             )
         )
     }
@@ -44,7 +46,6 @@ class MessageRepository(private val dao: MessageDao) {
         dao.delete(message)
     }
 
-    /** Delete every message exchanged with a given onion in one query (used by rejectRequest). */
     suspend fun deleteAllBySender(senderOnion: String) {
         dao.deleteAllBySender(senderOnion)
     }
@@ -54,18 +55,14 @@ class MessageRepository(private val dao: MessageDao) {
     fun observeAll(senderOnion: String): Flow<List<MessageEntity>> =
         dao.observeAll(senderOnion)
 
-    /** Normal accepted chat list */
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
 
-    /** Incoming pending message requests (unknown senders, never replied to) */
     fun observeIncomingRequests(): Flow<List<ChatModel>> =
         dao.observeIncomingRequests()
 
     suspend fun getMessageByMessageId(messageId: String): MessageEntity? =
         dao.getMessageByMessageId(messageId)
-
-
 
     suspend fun updateUploadProgress(messageId: String, state: String, progress: Int) =
         dao.updateUploadProgress(messageId, state, progress)
@@ -125,8 +122,15 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
 
 class ContactRepository(private val dao: ContactDao) {
 
-    suspend fun saveContact(onionAddress: String, name: String) {
-        dao.insert(ContactEntity(onionAddress = onionAddress, name = name))
+    suspend fun saveContact(onionAddress: String, name: String, publicKey: String? = null) {
+        val existing = dao.get(onionAddress)
+        dao.insert(ContactEntity(
+            onionAddress = onionAddress, 
+            name = name, 
+            publicKey = publicKey ?: existing?.publicKey,
+            keyVersion = existing?.keyVersion,
+            lastKeyUpdate = if (publicKey != null) System.currentTimeMillis() else (existing?.lastKeyUpdate ?: 0L)
+        ))
     }
 
     suspend fun getContact(onionAddress: String): ContactEntity? {
@@ -135,6 +139,7 @@ class ContactRepository(private val dao: ContactDao) {
 
     suspend fun getAllOnce(): List<ContactEntity> = dao.getAll()
     fun observeAll(): Flow<List<ContactEntity>> = dao.observeAll()
+    fun observeContact(onionAddress: String): Flow<ContactEntity?> = dao.observeContact(onionAddress)
 }
 
 

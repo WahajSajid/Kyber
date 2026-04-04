@@ -8,6 +8,7 @@ import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.runtime.key
 import androidx.lifecycle.lifecycleScope
 import app.secure.kyber.R
 import app.secure.kyber.activities.MainActivity
@@ -15,10 +16,16 @@ import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentDisplayNameBinding
 import app.secure.kyber.onionrouting.UnionClient
+import app.secure.kyber.roomdb.AppDb
+import app.secure.kyber.roomdb.KeyEntity
+import app.secure.kyber.Utils.SecureKeyManager
+import app.secure.kyber.workers.KeyRotationWorker
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import java.security.MessageDigest
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -59,17 +66,31 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
                     val client = UnionClient()
                     val identity = client.exportIdentity()
                     val onionAddress = identity["onionAddress"] ?: ""
-                    val publicKeyHex = identity["publicKey"] ?: ""
-                    val publicKeyBase64 = identity["publicKeyBase64"] ?: ""
+
+                    // --- SECURE KEY GENERATION ---
+                    val keyId = UUID.randomUUID().toString()
+                    val keypair = SecureKeyManager.generateNewKeyPair()
+                    val now = System.currentTimeMillis()
+                    
+                    val db = AppDb.get(requireContext())
+                    db.keyDao().insert(KeyEntity(
+                        keyId = keyId,
+                        publicKey = keypair.publicKeyBase64,
+                        privateKeyEncrypted = keypair.privateKeyEncrypted,
+                        createdAt = now,
+                        activatedAt = now,
+                        expiresAt = now + TimeUnit.DAYS.toMillis(1),
+                        status = "ACTIVE"
+                    ))
+                    // -----------------------------
 
                     // 2. Hash the display name for the discovery service (API expects Base64)
                     val nameHash = hashUsername(name)
                     
                     // 3. Register using the Discovery endpoint since we are providing a username hash
-                    // API expects Base64 encoded public key
                     val response = repository.registerDiscovery(
                         licenseKey = licenseKey,
-                        publicKey = publicKeyBase64,
+                        publicKey = keypair.publicKeyBase64,
                         usernameHash = nameHash,
                         usernameEncrypted = "" // Placeholder
                     )
@@ -79,11 +100,10 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
 
                         // 4. Save all identity info to Prefs
                         Prefs.setName(requireContext(), name)
-                        Prefs.setOnionAddress(requireContext(), onionAddress)
-                        Prefs.setPublicKey(requireContext(), publicKeyHex)
+//                        Prefs.setOnionAddress(requireContext(), onionAddress)
+                        Prefs.setPublicKey(requireContext(), keypair.publicKeyBase64)
                         Prefs.setSessionToken(requireContext(), body.sessionToken)
                         
-                        // Backend might return a different onion address or session info
                         body.onionAddress?.let { Prefs.setOnionAddress(requireContext(), it) }
 
                         // Create initial circuit after registration
@@ -94,12 +114,16 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
                                 circuitResp.body()?.circuitId
                             )
                         }
+                        // Schedule the first key rotation
+                        KeyRotationWorker.schedule(requireContext())
 
                         goToMainActivity()
                     } else {
                         val errorMsg = response.body()?.error ?: "Registration failed"
                         Log.e("### Registration Error ###", errorMsg)
                         Snackbar.make(binding.root, errorMsg, Snackbar.LENGTH_SHORT).show()
+                        // Clean up the key if registration failed
+//                        SecureKeyManager.deleteKey(keyId)
                     }
                 } catch (e: Exception) {
                     Log.e("DisplayNameFragment", "Error: ${e.message}", e)
@@ -115,9 +139,6 @@ class DisplayNameFragment : Fragment(R.layout.fragment_display_name) {
         }
     }
 
-    /**
-     * Hashes username using SHA-256 and encodes to Base64 as required by the backend API.
-     */
     private fun hashUsername(name: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val hashBytes = digest.digest(name.toByteArray(Charsets.UTF_8))

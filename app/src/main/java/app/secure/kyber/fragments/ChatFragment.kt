@@ -39,9 +39,11 @@ import androidx.emoji2.emojipicker.EmojiPickerView
 import androidx.emoji2.emojipicker.RecentEmojiProviderAdapter
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -74,7 +76,7 @@ import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
 import app.secure.kyber.roomdb.MessageUiModel
 import app.secure.kyber.roomdb.toUiModel
-import app.secure.kyber.Utils.EncryptionUtils
+import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.media.MediaSender
 import com.google.android.material.textfield.TextInputEditText
 import com.squareup.moshi.Moshi
@@ -149,8 +151,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
 
-    private val decryptedMediaCache = mutableMapOf<Long, MessageEntity>()
-
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
@@ -169,10 +169,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private val groupId by lazy { requireArguments().getString("group_id").orEmpty() }
     private val groupName by lazy { requireArguments().getString("group_name").orEmpty() }
 
-    /**
-     * Mutable so we can flip it to false in-place when the receiver accepts.
-     * Initialised in onViewCreated from the comingFrom argument.
-     */
     private var isRequestMode: Boolean = false
 
     private val vm: MessagesViewModel by viewModels {
@@ -181,6 +177,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 MessagesViewModel(repo, contactOnion) as T
+        }
+    }
+
+    private val contactsVm: app.secure.kyber.roomdb.roomViewModel.ContactsViewModel by viewModels {
+        val db = AppDb.get(requireContext())
+        val repo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                app.secure.kyber.roomdb.roomViewModel.ContactsViewModel(repo) as T
         }
     }
 
@@ -288,7 +293,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         groupManager = GroupManager()
         audioRecordingManager = AudioRecordingManager(requireContext())
 
-        // In ChatFragment.onCreateView:
         mediaSender = MediaSender(
             context    = requireContext(),
             messageDao = AppDb.get(requireContext()).messageDao()
@@ -343,7 +347,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }, groupId)
         }
 
-        // ── Emoji picker ──────────────────────────────────────────────────────
         emojiPickerView = EmojiPickerView(requireContext()).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -388,7 +391,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         messageEdit.setOnFocusChangeListener { _, hasFocus -> if (hasFocus && isEmojiPickerVisible) hideEmojiPicker() }
 
-        // ── Keyboard visibility ───────────────────────────────────────────────
         binding.tilMsg.viewTreeObserver.addOnGlobalLayoutListener {
             val r = Rect(); binding.tilMsg.getWindowVisibleDisplayFrame(r)
             val screenH = binding.tilMsg.rootView.height
@@ -420,7 +422,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             false
         }
 
-        // ── Back press ────────────────────────────────────────────────────────
         requireActivity().onBackPressedDispatcher.addCallback(
             viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
@@ -445,7 +446,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             )
         }
 
-        // ── Mic touch ─────────────────────────────────────────────────────────
         binding.ivMic.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -554,7 +554,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
         navController = view.findNavController()
 
-        // ── Request mode: show Accept/Reject bar ──────────────────────────────
         if (isRequestMode) {
             binding.bottomItemsLayout.visibility = View.GONE
             binding.requestActionBar.visibility = View.VISIBLE
@@ -607,19 +606,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             adapter = selectedMediaAdapter
         }
         updatePreviewVisibility()
+        
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                contactsVm.observeContact(contactOnion).collect { contact ->
+                    if (contact != null && !isRequestMode) {
+                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(0, 14) else contact.name
+                        (requireActivity() as MainActivity).setAppChatUser(newDisplayName)
+                    }
+                }
+            }
+        }
     }
-
-    // ── Display name helper ───────────────────────────────────────────────────
 
     private fun resolveDisplayName(): String =
         contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
 
-    // ── Unified text-send helper ──────────────────────────────────────────────
-
-    /**
-     * Sends a plain-text message, always including senderName so the remote
-     * side can learn our display name from every incoming transport.
-     */
     private fun sendTextMessage(text: String, onionAddr: String, name: String) {
         val messageId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis().toString()
@@ -629,11 +631,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val isContact = contactRepo.getContact(contactOnion) != null
             val isRequest = !isContact
             
-            // Immediately save to local DB with pending state
             db.messageDao().insert(
                 MessageEntity(
                     messageId = messageId,
-                    msg = EncryptionUtils.encrypt(text),
+                    msg = MessageEncryptionManager.encryptLocal(requireContext(), text).encryptedBlob,
                     senderOnion = contactOnion,
                     time = timestamp,
                     isSent = true,
@@ -662,8 +663,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             binding.etMsg.setText("")
         }
     }
-
-    // ── Private message delivery ──────────────────────────────────────────────
 
     private fun sendPrivateMessage(transport: PrivateMessageTransportDto) {
         lifecycleScope.launch {
@@ -707,8 +706,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    // ── Reactions / Reply / Forward / Info / Delete ───────────────────────────
-
     private fun handleReaction(emoji: String) {
         lifecycleScope.launch {
             if (comingFrom == "group_chat_list") {
@@ -737,7 +734,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             type = msg.type,
                             uri = msg.decryptedUri,
                             ampsJson = msg.ampsJson,
-                            reaction = formattedReaction
+                            reaction = formattedReaction,
+                            senderPublicKey = Prefs.getPublicKey(requireContext())
                         )
                     )
                 }
@@ -801,8 +799,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    // ── Adapter setup ─────────────────────────────────────────────────────────
-
     private fun setListMessageAdapter() {
         recyclerview = binding.rvMsg
         val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
@@ -815,7 +811,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onClick = { msg ->
                 val type = msg.type.uppercase(Locale.getDefault())
 
-                // ── GUARD: block open if media is not fully ready ─────────────────
                 if (type == "IMAGE" || type == "VIDEO") {
                     when {
                         msg.downloadState == "downloading" || msg.downloadState == "pending" -> {
@@ -824,7 +819,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 "Still downloading… ${msg.downloadProgress}%",
                                 Toast.LENGTH_SHORT
                             ).show()
-                            return@MessageAdapter  // safe early return, no navigation
+                            return@MessageAdapter 
                         }
                         msg.uploadState == "uploading" || msg.uploadState == "pending" -> {
                             Toast.makeText(
@@ -845,15 +840,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     }
                 }
 
-                if (type == "AUDIO") return@MessageAdapter  // audio handled by play button, not item click
+                if (type == "AUDIO") return@MessageAdapter
 
-                // ── Resolve URI only when we know the file is ready ───────────────
                 val resolvedUri: String? = when {
-                    // Prefer the persisted local file path (set when download completes)
                     !msg.localFilePath.isNullOrBlank() -> "file://${msg.localFilePath}"
-                    // Fallback: decrypt the stored URI
                     !msg.decryptedUri.isNullOrBlank() -> {
-                        val stripped = msg.decryptedUri
+                        val stripped = msg.decryptedUri!!
                             .removePrefix("[IMAGE] ")
                             .removePrefix("[VIDEO] ")
                         decodeBase64ToFile(stripped, type) ?: stripped
@@ -866,12 +858,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     return@MessageAdapter
                 }
 
-                // ── Validate file actually exists on disk before opening ──────────
                 val fileExists = try {
                     if (resolvedUri.startsWith("file://")) {
                         java.io.File(java.net.URI(resolvedUri)).exists()
                     } else {
-                        true // content:// or http:// — assume available
+                        true 
                     }
                 } catch (e: Exception) { false }
 
@@ -880,7 +871,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     return@MessageAdapter
                 }
 
-                // ── Safe to open ──────────────────────────────────────────────────
                 val finalUri = try {
                     if (resolvedUri.startsWith("file://")) {
                         val file = java.io.File(java.net.URI(resolvedUri))
@@ -940,7 +930,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     if (msg.type == "TEXT") {
                         val request = TextUploadWorker.buildRequest(
                             messageId = msg.messageId,
-                            text = EncryptionUtils.decrypt(msg.msg), // msg.msg is encrypted in DB, but MessageUiModel has decryptedMsg (let's use msg.decryptedMsg)
+                            text = msg.decryptedMsg,
                             contactOnion = contactOnion,
                             senderOnion = myOnion,
                             senderName = myName,
@@ -961,12 +951,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
             },
             onRetryDownload = { msg ->
-                // Download retry: mark as pending so UnionService re-assembles
-                // if chunks are still on disk, or user waits for re-send from sender
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
                     db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
-                    // Attempt reassembly if chunks already saved
                     val entity = db.messageDao().getByMessageId(msg.messageId) ?: return@launch
                     val mediaId = entity.remoteMediaId ?: return@launch
                     val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunks(
@@ -974,7 +961,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     )
                     if (assembled != null) {
                         val updated = entity.copy(
-                            uri = app.secure.kyber.Utils.EncryptionUtils.encrypt(assembled),
+                            uri = MessageEncryptionManager.encryptLocal(requireContext(), assembled).encryptedBlob,
                             downloadState = "done",
                             downloadProgress = 100,
                             localFilePath = assembled.removePrefix("file://")
@@ -986,12 +973,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
             }
         )
-        adapterMsg.messageDecryptor = { EncryptionUtils.decrypt(it) }
+        adapterMsg.messageDecryptor = { MessageEncryptionManager.decryptLocal(requireContext(), it) }
 
         recyclerview.apply {
             viewLifecycleOwner.lifecycleScope.launch {
                 vm.messagesFlow.collect { list ->
-                    val uiModels = list.map { it.toUiModel() }
+                    val uiModels = list.map { it.toUiModel(requireContext()) }
                     adapterMsg.submitList(uiModels) {
                         scrollToPosition(adapterMsg.itemCount - 1)
                         val maxId = uiModels.maxOfOrNull { it.id } ?: 0L
@@ -1069,8 +1056,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }
         }
     }
-
-    // ── Audio recording ───────────────────────────────────────────────────────
 
     private fun hasAudioPermission() =
         ContextCompat.checkSelfPermission(
@@ -1249,8 +1234,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             JSONArray(); sampled.forEach { array.put(it.toDouble()) }; return array.toString()
     }
 
-    // ── Emoji Picker ──────────────────────────────────────────────────────────
-
     private fun showEmojiPicker() {
         isEmojiPickerVisible = true; emojiPickerContainer.isVisible = true
         binding.ivSend.isVisible = true; binding.ivCamera.isVisible =
@@ -1262,8 +1245,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.ivSend.isVisible = false; binding.ivCamera.isVisible =
             true; binding.ivMic.isVisible = true
     }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onResume() {
         super.onResume()
@@ -1307,8 +1288,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
 
-    // ── Recent Emojis ─────────────────────────────────────────────────────────
-
     private fun loadRecentEmojis() {
         val saved = Prefs.getRecentEmojis(requireContext())
         if (saved != null) {
@@ -1325,8 +1304,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             recentEmojisList
         )
     }
-
-    // ── Media Picker ──────────────────────────────────────────────────────────
 
     private fun openPicker() {
         pickMediaLauncher.launch(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -1382,7 +1359,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         for (m in selectedMedias) {
             val caption =
                 if (m.caption.isNullOrBlank()) (if (m.type == "VIDEO") "video" else "photo") else m.caption
-            val base64Uri = encodeFileToBase64(m.uri.toString())
             if (comingFrom == "group_chat_list") {
                 lifecycleScope.launch {
                     groupManager.sendMessage(
@@ -1420,8 +1396,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         ); updatePreviewVisibility(); binding.etMsg.setText("")
     }
 
-    // ── Keyboard ──────────────────────────────────────────────────────────────
-
     private fun hideKeyboard(view: View) =
         (requireActivity().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(
             view.windowToken,
@@ -1434,8 +1408,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             InputMethodManager.SHOW_IMPLICIT
         )
     }
-
-    // ── Utility ───────────────────────────────────────────────────────────────
 
     private fun formatDuration(ms: Int): String {
         val s = (ms / 1000).coerceAtLeast(0); return String.format(
@@ -1478,23 +1450,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun formatTimestamp(ms: Long): String =
         SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH).format(java.util.Date(ms))
 
-    private fun encodeFileToBase64(uriStr: String): String {
-        return try {
-            val uri = Uri.parse(uriStr)
-            val inputStream =
-                if (uri.scheme == "content" || uri.scheme == "file") requireContext().contentResolver.openInputStream(
-                    uri
-                ) else java.io.File(uriStr).inputStream()
-            val bytes = inputStream?.readBytes(); inputStream?.close()
-            if (bytes != null) android.util.Base64.encodeToString(
-                bytes,
-                android.util.Base64.DEFAULT
-            ) else uriStr
-        } catch (e: Exception) {
-            Log.e("ChatFragment", "Failed to encode file to base64", e); uriStr
-        }
-    }
-
     private fun decodeBase64ToFile(base64Data: String?, type: String): String? {
         if (base64Data.isNullOrBlank()) return null
         if (base64Data.startsWith("content://") || base64Data.startsWith("file://") || base64Data.startsWith(
@@ -1516,26 +1471,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    // ── Request acceptance / rejection ────────────────────────────────────────
-
-    /**
-     * Accept the message request. Performs four actions:
-     *
-     * 1. Saves the sender as a contact on the RECEIVER's device using the name
-     *    resolved from the transport cache (populated when the request arrived).
-     *
-     * 2. Sends an isAcceptance=true acknowledgement back to the SENDER carrying
-     *    the receiver's own name in senderName, so the sender's ChatListFragment
-     *    can auto-save the receiver as a contact — completing the two-sided
-     *    contact relationship without any manual action from the sender.
-     *
-     * 3. Cleans up the SharedPreferences name-cache entry for this onion.
-     *
-     * 4. Transitions the current screen IN-PLACE to normal chat mode:
-     *    hides requestActionBar, shows the compose input, wires the send button,
-     *    and updates the toolbar to show the sender's real name. No navigation
-     *    occurs — the user stays in the conversation and can reply immediately.
-     */
     private fun acceptRequest() {
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
@@ -1543,15 +1478,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
             val myName = Prefs.getName(requireContext()) ?: ""
 
-            // 1. Save sender as contact on the receiver's device.
             val cachedName = requireContext()
                 .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
                 .getString("pending_name_$contactOnion", null)
                 ?.takeIf { it.isNotBlank() && it != contactOnion }
             val senderName = cachedName ?: contactOnion
-            contactRepo.saveContact(onionAddress = contactOnion, name = senderName)
+            
+            val publicKey = requireContext().getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                .getString("pending_key_$contactOnion", null)
+            
+            contactRepo.saveContact(onionAddress = contactOnion, name = senderName, publicKey = publicKey)
 
-            // 2. Send acceptance ack to the sender.
             sendPrivateMessage(
                 PrivateMessageTransportDto(
                     messageId = UUID.randomUUID().toString(),
@@ -1559,16 +1496,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     senderOnion = myOnion,
                     senderName = myName,
                     timestamp = System.currentTimeMillis().toString(),
-                    isAcceptance = true
+                    isAcceptance = true,
+                    senderPublicKey = Prefs.getPublicKey(requireContext())
                 )
             )
 
-            // 3. Remove pending name cache entry.
             requireContext()
                 .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-                .edit().remove("pending_name_$contactOnion").apply()
+                .edit()
+                .remove("pending_name_$contactOnion")
+                .remove("pending_key_$contactOnion")
+                .apply()
 
-            // 4. Transition UI in-place to normal chat mode.
             isRequestMode = false
             binding.requestActionBar.visibility = View.GONE
             binding.bottomItemsLayout.visibility = View.VISIBLE
@@ -1578,7 +1517,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             (requireActivity() as MainActivity).setAppChatUser(displayName)
             (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, senderName)
 
-            // Wire send button for the now-active normal chat.
             binding.ivSend.setOnClickListener {
                 val text = binding.etMsg.text.toString().trim()
                 if (text.isNotEmpty()) sendTextMessage(text, myOnion, myName)
@@ -1588,16 +1526,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    /**
-     * Reject the message request.
-     * Bulk-deletes all messages from this sender and navigates back.
-     */
     private fun rejectRequest() {
         lifecycleScope.launch {
             vm.deleteAllBySender(contactOnion)
             requireContext()
                 .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-                .edit().remove("pending_name_$contactOnion").apply()
+                .edit()
+                .remove("pending_name_$contactOnion")
+                .remove("pending_key_$contactOnion")
+                .apply()
             Toast.makeText(requireContext(), "Request rejected", Toast.LENGTH_SHORT).show()
             navController.popBackStack()
         }

@@ -11,6 +11,7 @@ import app.secure.kyber.media.MediaTransferNotifier
 import app.secure.kyber.media.VideoCompressor
 import app.secure.kyber.roomdb.AppDb
 import android.util.Base64
+import app.secure.kyber.Utils.MessageEncryptionManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.EntryPointAccessors
@@ -84,11 +85,10 @@ class MediaUploadWorker(
         }
     }
 
-    // ── Instance fields (NOT companion) ───────────────────────────────────────
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
-    private var serviceScope: CoroutineScope? = null  // instance field, not companion
+    private var serviceScope: CoroutineScope? = null
 
     override suspend fun doWork(): Result {
         val messageId = inputData.getString(KEY_MESSAGE_ID) ?: return Result.failure()
@@ -108,18 +108,15 @@ class MediaUploadWorker(
         val notifier = MediaTransferNotifier(context)
         serviceScope = CoroutineScope(Dispatchers.IO)
 
-        // Get repository via Hilt entry point
         val repository = EntryPointAccessors.fromApplication(
             context.applicationContext,
             SyncWorkerEntryPoint::class.java
         ).repository()
 
         return try {
-            // ── Stage 0: Initial foreground notification ──────────────────────
             val fgInfo = notifier.buildUploadForegroundInfo(messageId, mimeType, 0)
             setForeground(fgInfo)
 
-            // ── Stage 1: Compress video if needed ────────────────────────────
             val uploadFilePath: String
             val thumbnailPath: String?
 
@@ -170,7 +167,6 @@ class MediaUploadWorker(
                 thumbnailPath = null
             }
 
-            // ── Stage 2: Build chunks ─────────────────────────────────────────
             messageDao.updateUploadProgress(messageId, "uploading", 0)
 
             val chunks = MediaChunkManager.buildChunks(
@@ -191,7 +187,25 @@ class MediaUploadWorker(
                 return Result.failure()
             }
 
-            // ── Stage 3: Send chunks ──────────────────────────────────────────
+            // Get recipient public key
+            val contact = db.contactDao().get(contactOnion)
+            var recipientPublicKey = contact?.publicKey
+            if (recipientPublicKey == null) {
+                recipientPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                    .getString("pending_key_$contactOnion", null)
+            }
+            
+            if (recipientPublicKey == null) {
+                val resp = repository.getPublicKey(contactOnion)
+                if (resp.isSuccessful) recipientPublicKey = resp.body()?.publicKey
+            }
+
+            if (recipientPublicKey == null) {
+                Log.e(TAG, "Recipient public key not found for $contactOnion")
+                return Result.retry()
+            }
+
+
             var successCount = 0
             for (chunk in chunks) {
                 if (isStopped) {
@@ -203,8 +217,11 @@ class MediaUploadWorker(
                     return Result.retry()
                 }
 
+                val chunkJson = chunkAdapter.toJson(chunk)
+                val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey, chunkJson)
+                
                 val sent = sendChunk(
-                    repository, contactOnion, senderOnion, senderName, chunk, isContact
+                    repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey, encryptionResult.senderPublicKeyBase64
                 )
                 if (sent) {
                     successCount++
@@ -225,9 +242,6 @@ class MediaUploadWorker(
                 if (chunk.index < chunks.size - 1) delay(80)
             }
 
-            // ── Stage 4: Complete ─────────────────────────────────────────────
-            // For VIDEO: keep compressed file path (it's in filesDir-equivalent cacheDir,
-// may be evicted — copy it to permanent storage)
             val finalLocalPath = if (mimeType == "VIDEO") {
                 try {
                     val compressed = java.io.File(uploadFilePath.removePrefix("file://"))
@@ -242,7 +256,6 @@ class MediaUploadWorker(
                     uploadFilePath.removePrefix("file://")
                 }
             } else {
-                // For IMAGE/AUDIO: filePath is already durable (copied by MediaSender)
                 filePath.removePrefix("file://")
             }
 
@@ -266,19 +279,29 @@ class MediaUploadWorker(
         senderOnion: String,
         senderName: String,
         chunk: MediaChunkDto,
-        isContact: Boolean
+        isContact: Boolean,
+        recipientPublicKey: String,
+        myPublicKey: String?
     ): Boolean {
         return try {
             val chunkJson = chunkAdapter.toJson(chunk)
+            
+            // Encrypt chunk
+            val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey, chunkJson)
+
             val transport = PrivateMessageTransportDto(
                 messageId = UUID.randomUUID().toString(),
-                msg = "",
+                msg = encryptionResult.encryptedPayload,
                 senderOnion = senderOnion,
                 senderName = senderName,
                 timestamp = System.currentTimeMillis().toString(),
                 type = "CHUNK",
-                uri = chunkJson,
-                isRequest = !isContact
+                uri = null, // In the new system, we put the encrypted payload in 'msg'
+                isRequest = !isContact,
+                iv = encryptionResult.iv,
+                senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
+                recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
+                senderPublicKey = myPublicKey
             )
             val transportJson = transportAdapter.toJson(transport)
             val payload = Base64.encodeToString(

@@ -1,8 +1,10 @@
 package app.secure.kyber.fragments
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,6 +22,7 @@ import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.roomViewModel.ContactsViewModel
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,6 +34,7 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
 
     @Inject
     lateinit var repository: KyberRepository
+    private var verificationStatus: String = "pending"
 
     private val vm: ContactsViewModel by viewModels {
         val db = AppDb.get(requireContext())
@@ -78,7 +82,7 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             if (query.isNullOrEmpty()) {
                 scanLauncher.launch(Intent(requireContext(), ScannerActivity::class.java))
             } else {
-                if (query.endsWith(".onion")) {
+                if (query.endsWith(".onion") || query.startsWith("union_")) {
                     verifyOnion(query)
                 }
             }
@@ -101,26 +105,51 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         btnSave.setOnClickListener {
             if (validate()) {
                 val id = etId.text!!.toString().trim()
-                
+
                 lifecycleScope.launch {
-                    // Check if they are already a contact to get their name
-                    val contact = vm.getContact(id)
-                    val name = contact?.name ?: ""
-                    
-                    val args = bundleOf(
-                        "contact_onion" to id,
-                        "contact_name" to name,
-                        "coming_from" to "chat_list"
-                    )
-                    
                     try {
-                        // Directly open the chat screen
-                        requireActivity().findNavController(R.id.main_fragment).navigate(R.id.chatFragment, args)
+                        // 1. Fetch user info (including public key) before starting chat
+                        // This ensures we ALWAYS have the latest public key.
+                        val response = repository.getPublicKey(id)
+                        if (response.isSuccessful && response.body() != null) {
+                            val publicKey = response.body()!!.publicKey
+                            Log.d(TAG, "Fetched public key for $id: $publicKey")
+                            
+                            // 2. Cache the public key for the upcoming message request flow
+                            requireContext().getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                .edit()
+                                .putString("pending_key_$id", publicKey)
+                                .apply()
+
+                            // If they are already a contact, update their public key in the DB too
+                            val existingContact = vm.getContact(id)
+                            if (existingContact != null && existingContact.publicKey != publicKey) {
+                                val db = AppDb.get(requireContext())
+                                val contactRepo = ContactRepository(db.contactDao())
+                                contactRepo.saveContact(id, existingContact.name, publicKey)
+                            }
+
+                            val name = existingContact?.name ?: ""
+                            val args = bundleOf(
+                                "contact_onion" to id,
+                                "contact_name" to name,
+                                "coming_from" to "chat_list"
+                            )
+
+                            requireActivity().findNavController(R.id.main_fragment).navigate(R.id.chatFragment, args)
+                            dismiss()
+                        } else {
+                            verificationStatus = "not found"
+                            Toast.makeText(requireContext(), "User not found or has no public key", Toast.LENGTH_SHORT).show()
+                        }
                     } catch (e: Exception) {
-                        Toast.makeText(requireContext(), "Navigation failed", Toast.LENGTH_SHORT).show()
+                        verificationStatus = "failed"
+                        Log.e(TAG, "Error fetching public key", e)
+                        Toast.makeText(requireContext(), "Error connecting to discovery service", Toast.LENGTH_SHORT).show()
                     }
-                    dismiss()
                 }
+            } else {
+                Snackbar.make(view.rootView, "Please enter onion address", Snackbar.LENGTH_SHORT).show()
             }
         }
     }
@@ -130,11 +159,14 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             try {
                 val pkResponse = repository.getPublicKey(onionAddress)
                 if (pkResponse.isSuccessful) {
+                    verificationStatus = "verified"
                     Toast.makeText(requireContext(), "Onion address verified", Toast.LENGTH_SHORT).show()
                 } else {
+                    verificationStatus = "not found"
                     Toast.makeText(requireContext(), "Address not found", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                verificationStatus = "failed"
                 Toast.makeText(requireContext(), "Verification failed", Toast.LENGTH_SHORT).show()
             }
         }

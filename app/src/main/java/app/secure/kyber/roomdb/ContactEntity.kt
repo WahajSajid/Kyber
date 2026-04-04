@@ -7,4 +7,7 @@ import androidx.room.PrimaryKey
 data class ContactEntity(
     @PrimaryKey val onionAddress: String,
     val name: String,
+    val publicKey: String? = null,
+    val keyVersion: String? = null,
+    val lastKeyUpdate: Long = 0L
 )

@@ -3,7 +3,7 @@ package app.secure.kyber.roomdb
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
-import app.secure.kyber.Utils.EncryptionUtils
+import app.secure.kyber.Utils.MessageEncryptionManager
 
 @Entity(
     tableName = "messages",
@@ -31,7 +31,9 @@ data class MessageEntity(
     val remoteMediaId: String? = null,     // chunk group id for reassembly
     val mediaDurationMs: Long = 0L,
     val mediaSizeBytes: Long = 0L,
-    val thumbnailPath: String? = null   // local path to thumbnail image
+    val thumbnailPath: String? = null,   // local path to thumbnail image
+    val keyFingerprint: String? = null,  // Fingerprint of the key used to encrypt/decrypt
+    val iv: String? = null               // IV for AES-GCM decryption
 )
 
 /**
@@ -60,9 +62,9 @@ data class MessageUiModel(
     val localFilePath: String? get() = entity.localFilePath
     val remoteMediaId: String? get() = entity.remoteMediaId
     val mediaDurationMs: Long get() = entity.mediaDurationMs
-
-    // Add to MessageUiModel:
     val thumbnailPath: String? get() = entity.thumbnailPath
+    val keyFingerprint: String? get() = entity.keyFingerprint
+    val iv: String? get() = entity.iv
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson
@@ -75,36 +77,22 @@ data class MessageUiModel(
     val apiMessageId: String? get() = entity.apiMessageId
 }
 
-fun MessageEntity.toUiModel(): MessageUiModel {
-    // Safely decrypt the message text / caption
-    val decryptedMsg = try {
-        val rawMsg = EncryptionUtils.decrypt(this.msg)
-        if (rawMsg.isNotBlank()) rawMsg else this.msg
-    } catch (e: Exception) {
-        this.msg
-    }
+suspend fun MessageEntity.toUiModel(context: android.content.Context): MessageUiModel {
+    val decryptedMsg = MessageEncryptionManager.decryptSmart(
+        context, this.msg, this.senderOnion, this.keyFingerprint, this.iv
+    )
 
-    val decryptedUri: String? = if (!this.uri.isNullOrBlank()) {
-        try {
-            val rawUri = EncryptionUtils.decrypt(this.uri)
-            if (rawUri.isNotBlank()) rawUri else this.uri
-        } catch (e: Exception) {
-            this.uri
-        }
-    } else {
-        null
-    }
+    val decryptedUri = if (!this.uri.isNullOrBlank()) {
+        MessageEncryptionManager.decryptSmart(
+            context, this.uri!!, this.senderOnion, this.keyFingerprint, this.iv
+        )
+    } else null
 
-    val decryptedAmps: String = if (!this.ampsJson.isNullOrBlank()) {
-        try {
-            val rawAmps = EncryptionUtils.decrypt(this.ampsJson)
-            if (rawAmps.isNotBlank()) rawAmps else this.ampsJson
-        } catch (e: Exception) {
-            this.ampsJson
-        }
-    } else {
-        ""
-    }
+    val decryptedAmps = if (!this.ampsJson.isNullOrBlank()) {
+        MessageEncryptionManager.decryptSmart(
+            context, this.ampsJson, this.senderOnion, this.keyFingerprint, this.iv
+        )
+    } else ""
 
     return MessageUiModel(
         entity = this,

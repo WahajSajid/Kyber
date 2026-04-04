@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import androidx.work.*
+import app.secure.kyber.Utils.MessageEncryptionManager
+import app.secure.kyber.Utils.SecureKeyManager
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.roomdb.AppDb
@@ -72,7 +74,7 @@ class TextUploadWorker(
 
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
-        val groupMessageDao = db.groupsMessagesDao()
+        val contactDao = db.contactDao()
 
         // Set state to uploading visually
         messageDao.updateUploadProgress(messageId, "uploading", 0)
@@ -89,13 +91,47 @@ class TextUploadWorker(
         }
 
         try {
+            // 1. Get recipient public key
+            var contact = contactDao.get(contactOnion)
+            var recipientPublicKey = contact?.publicKey
+
+            if (recipientPublicKey == null) {
+                // Fetch from backend if missing
+                val resp = repository.getPublicKey(contactOnion)
+                if (resp.isSuccessful && resp.body() != null) {
+                    recipientPublicKey = resp.body()!!.publicKey
+                } else {
+                    Log.e(TAG, "Could not fetch public key for $contactOnion")
+                    return@withContext Result.retry()
+                }
+            }
+
+            // 2. Encrypt the message
+            val encryptionResult = MessageEncryptionManager.encryptMessage(
+                context, recipientPublicKey, text
+            )
+
+            // 3. Update local message with fingerprint
+            val localMsg = messageDao.getMessageByMessageId(messageId)
+            localMsg?.let {
+                val updated = it.copy(keyFingerprint = encryptionResult.senderKeyFingerprint)
+                messageDao.update(updated)
+            }
+
             val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
             val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
 
             val transport = PrivateMessageTransportDto(
-                messageId = messageId, msg = text,
-                senderOnion = senderOnion, senderName = senderName,
-                timestamp = timestamp, isRequest = isRequest
+                messageId = messageId, 
+                msg = encryptionResult.encryptedPayload,
+                senderOnion = senderOnion, 
+                senderName = senderName,
+                timestamp = timestamp, 
+                isRequest = isRequest,
+                iv = encryptionResult.iv,
+                senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
+                recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
+                senderPublicKey = encryptionResult.senderPublicKeyBase64
             )
 
             val jsonPayload = transportAdapter.toJson(transport)

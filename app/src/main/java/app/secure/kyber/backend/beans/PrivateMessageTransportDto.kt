@@ -14,23 +14,12 @@ data class PrivateMessageTransportDto(
     @Json(name = "ampsJson") val ampsJson: String = "",
     @Json(name = "reaction") val reaction: String = "",
     @Json(name = "isRequest") val isRequest: Boolean = false,
-    /**
-     * The human-readable display name of the sender.
-     * Populated on every outgoing message so the receiver can learn the
-     * sender's name without a separate profile-exchange round-trip.
-     * Used specifically to:
-     *   (a) cache the request sender's name on the receiver side so it can
-     *       be shown in MessageRequestsFragment and saved on acceptance, and
-     *   (b) carry the receiver's name back to the sender in the acceptance
-     *       acknowledgement message.
-     */
     @Json(name = "senderName") val senderName: String = "",
-    /**
-     * True on the single acknowledgement message the receiver sends back when
-     * they accept a message request.  The sender's side uses this flag to
-     * automatically save the receiver as a contact (completing the two-sided
-     * contact creation) and to suppress the message from appearing in the
-     * conversation thread.
-     */
-    @Json(name = "isAcceptance") val isAcceptance: Boolean = false
+    @Json(name = "isAcceptance") val isAcceptance: Boolean = false,
+    
+    // Encryption metadata
+    @Json(name = "iv") val iv: String? = null,
+    @Json(name = "senderKeyFingerprint") val senderKeyFingerprint: String? = null,
+    @Json(name = "recipientKeyFingerprint") val recipientKeyFingerprint: String? = null,
+    @Json(name = "senderPublicKey") val senderPublicKey: String? = null
 )

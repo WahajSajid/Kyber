@@ -6,8 +6,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import app.secure.kyber.Utils.EncryptionUtils
-import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.onionrouting.UnionService
@@ -19,8 +18,6 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.UUID
-import kotlin.jvm.java
 
 /**
  * Periodic WorkManager worker that runs even when the app process is dead.
@@ -99,8 +96,6 @@ class SyncWorker(
                     } catch (e: Exception) { null }
 
                     if (transport == null || transport.isAcceptance || transport.type == "CHUNK") {
-                        // Skip acceptance acks and chunks in worker
-                        // (chunks need assembly logic, handled by service on next launch)
                         return@forEach
                     }
 
@@ -108,36 +103,80 @@ class SyncWorker(
                     val existing = messageDao.getMessageByMessageId(transport.messageId)
                     if (existing != null) return@forEach
 
-                    // Check apiMessageId duplicate
-                    if (!apiMsg.id.isNullOrBlank()) {
-                        val existingApi = messageDao.getAll().firstOrNull {
-                            it.apiMessageId == apiMsg.id
+                    // --- DECRYPTION LOGIC ---
+                    val contact = contactRepo.getContact(transport.senderOnion)
+                    var decryptedPayloadText = transport.msg
+                    var isDecryptionSuccessful = true
+                    
+                    if (!transport.iv.isNullOrBlank() && !transport.recipientKeyFingerprint.isNullOrBlank()) {
+                        try {
+                            var senderPublicKey = transport.senderPublicKey ?: contact?.publicKey
+                            
+                            if (senderPublicKey == null) {
+                                senderPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                    .getString("pending_key_${transport.senderOnion}", null)
+                            }
+
+                            if (senderPublicKey == null) {
+                                val resp = repository.getPublicKey(transport.senderOnion)
+                                if (resp.isSuccessful && resp.body() != null) {
+                                    senderPublicKey = resp.body()!!.publicKey
+                                }
+                            }
+                            
+                            if (transport.senderPublicKey != null) {
+                                if (contact != null && transport.senderPublicKey != contact.publicKey) {
+                                    contactRepo.saveContact(contact.onionAddress, contact.name, transport.senderPublicKey)
+                                } else if (contact == null) {
+                                    context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putString("pending_name_${transport.senderOnion}", transport.senderName)
+                                        .putString("pending_key_${transport.senderOnion}", transport.senderPublicKey)
+                                        .apply()
+                                }
+                            }
+
+                            if (senderPublicKey != null) {
+                                decryptedPayloadText = MessageEncryptionManager.decryptMessage(
+                                    context,
+                                    senderPublicKey,
+                                    transport.recipientKeyFingerprint,
+                                    transport.msg,
+                                    transport.iv
+                                )
+                            } else {
+                                isDecryptionSuccessful = false
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Decryption failed in SyncWorker for message ${transport.messageId}", e)
+                            isDecryptionSuccessful = false
                         }
-                        if (existingApi != null) return@forEach
                     }
 
                     val encryptedUri = if (!transport.uri.isNullOrBlank())
-                        EncryptionUtils.encrypt(transport.uri) else null
+                        MessageEncryptionManager.encryptLocal(context, transport.uri).encryptedBlob else null
 
                     val entity = MessageEntity(
                         messageId = transport.messageId,
                         apiMessageId = apiMsg.id,
-                        msg = EncryptionUtils.encrypt(transport.msg),
+                        msg = if (isDecryptionSuccessful) MessageEncryptionManager.encryptLocal(context, decryptedPayloadText).encryptedBlob else transport.msg,
                         senderOnion = transport.senderOnion,
                         time = System.currentTimeMillis().toString(),
                         isSent = false,
                         type = transport.type,
                         uri = encryptedUri,
                         ampsJson = if (transport.ampsJson.isNotBlank())
-                            EncryptionUtils.encrypt(transport.ampsJson) else "",
+                            MessageEncryptionManager.encryptLocal(context, transport.ampsJson).encryptedBlob else "",
                         reaction = transport.reaction,
-                        isRequest = transport.isRequest
+                        isRequest = transport.isRequest,
+                        keyFingerprint = transport.recipientKeyFingerprint,
+                        iv = transport.iv
                     )
                     messageDao.insert(entity)
                     newMessageCount++
 
                     // Cache sender name for requests
-                    if (transport.isRequest && transport.senderName.isNotBlank()) {
+                    if (contact == null && transport.senderName.isNotBlank()) {
                         context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
                             .edit()
                             .putString("pending_name_${transport.senderOnion}", transport.senderName)
@@ -145,13 +184,14 @@ class SyncWorker(
                     }
 
                     // Show notification
-                    val isAccepted = contactRepo.getContact(transport.senderOnion) != null
-                    if (isAccepted && !transport.isRequest) {
-                        val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
-                        showNotification(transport.senderOnion, name, transport.msg, transport.type)
-                    } else if (transport.isRequest) {
-                        val name = transport.senderName.ifBlank { "Unknown User" }
-                        showNotification(transport.senderOnion, name, "New message request", "TEXT")
+                    val currentContact = contactRepo.getContact(transport.senderOnion)
+                    if (currentContact != null) {
+                        showNotification(transport.senderOnion, currentContact.name, decryptedPayloadText, transport.type)
+                    } else {
+                        val msgCount = messageDao.getBySender(transport.senderOnion).size
+                        if (msgCount == 1) {
+                            showNotification(transport.senderOnion, "Someone", "New message request", "TEXT")
+                        }
                     }
 
                 } catch (e: Exception) {

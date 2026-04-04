@@ -41,9 +41,6 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE senderOnion = :senderOnion ORDER BY CAST(time AS INTEGER) ASC")
     fun observeAll(senderOnion: String): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
 
-
-
-
     @Query("UPDATE messages SET uploadState = :state, uploadProgress = :progress WHERE messageId = :messageId")
     suspend fun updateUploadProgress(messageId: String, state: String, progress: Int)
 
@@ -65,23 +62,14 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE messageId = :messageId LIMIT 1")
     suspend fun getByMessageId(messageId: String): MessageEntity?
 
-
     @Query("UPDATE messages SET thumbnailPath = :path WHERE messageId = :messageId")
     suspend fun setThumbnailPath(messageId: String, path: String)
 
+    @Query("DELETE FROM messages WHERE keyFingerprint = :fingerprint")
+    suspend fun deleteByFingerprint(fingerprint: String)
 
     /**
      * Normal accepted chat list.
-     *
-     * A conversation belongs here when:
-     *   (a) the sender IS a known contact (accepted), OR
-     *   (b) we have sent at least one message to that onion (we initiated).
-     *
-     * Additionally, the latest message for that conversation must NOT be an
-     * un-accepted inbound request — i.e. the latest row must not have
-     * isRequest = 1 while the sender is still unknown and we never replied.
-     * We achieve this by requiring the same contact/outgoing conditions on
-     * the final SELECT rather than only on the CTE filter.
      */
     @Query("""
         WITH latest_time AS (
@@ -108,7 +96,9 @@ interface MessageDao {
                lr.msg  AS lastMessage,
                CASE WHEN lr.updatedAt != '' THEN lr.updatedAt ELSE lr.time END AS time,
                lr.reaction AS reaction,
-               lr.type AS type
+               lr.type AS type,
+               lr.keyFingerprint AS keyFingerprint,
+               lr.iv AS iv
         FROM latest_row lr
         LEFT JOIN contacts c
           ON c.onionAddress = lr.senderOnion
@@ -122,16 +112,6 @@ interface MessageDao {
 
     /**
      * Incoming pending message requests.
-     *
-     * A conversation is a "request" when ALL of the following are true:
-     *   1. Every message from that sender has isSent = 0 (we never replied).
-     *   2. The sender is NOT in the contacts table (not yet accepted).
-     *   3. At least one of the inbound messages carries isRequest = 1
-     *      (the sender flagged it as a first-contact message).
-     *
-     * Condition 3 is the key fix: it means purely structural coincidences
-     * (e.g. messages from an unknown onion that happen to pass condition 1+2
-     * but were not flagged as requests) do not pollute the requests list.
      */
     @Query("""
         WITH latest_time AS (
@@ -160,7 +140,9 @@ interface MessageDao {
                lr.msg AS lastMessage,
                lr.time AS time,
                lr.reaction AS reaction,
-               lr.type AS type
+               lr.type AS type,
+               lr.keyFingerprint AS keyFingerprint,
+               lr.iv AS iv
         FROM latest_row lr
         WHERE lr.senderOnion NOT IN (SELECT onionAddress FROM contacts)
           AND lr.senderOnion NOT IN (SELECT senderOnion FROM messages WHERE isSent = 1)

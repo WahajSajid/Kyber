@@ -23,7 +23,7 @@ import app.secure.kyber.activities.MainActivity
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
-import app.secure.kyber.Utils.EncryptionUtils
+import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.databinding.FragmentMessageRequestBinding
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -48,10 +48,6 @@ import javax.inject.Inject
 /**
  * Shows all incoming pending message requests — conversations from unknown senders
  * (senderOnion not in the contacts table and never replied to).
- *
- * When the user taps a request, we resolve the sender's real name from the
- * SharedPreferences cache that ChatListFragment populates whenever a transport
- * with isRequest=true and a non-blank senderName arrives.
  */
 @AndroidEntryPoint
 class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
@@ -106,12 +102,7 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
 
         chatListAdapter = ChatListAdapter(requireContext()) { chatModel ->
             val onion = chatModel.onionAddress ?: ""
-
-            // Resolve the sender's real name:
-            //   1. Try the name cache populated by ChatListFragment on transport receipt.
-            //   2. Fall back to whatever name the DB query returned (usually null/blank).
-            //   3. Last resort: empty string (ChatFragment shows "Unknown User" for blank).
-            val resolvedName = ""
+            val resolvedName = nameCache.getString("pending_name_$onion", "") ?: ""
 
             val args = bundleOf(
                 "contact_onion" to onion,
@@ -130,8 +121,6 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
             setHasFixedSize(false)
         }
 
-        // REPLACE the entire viewLifecycleOwner.lifecycleScope.launch { ... } block in setupAdapter()
-
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 vm.incomingRequestsFlow.collectLatest { requests ->
@@ -145,12 +134,14 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                         val rawReaction = chat.reaction ?: ""
                         val msgType = chat.type ?: "TEXT"
 
-                        val decrypted = try {
-                            val d = EncryptionUtils.decrypt(rawMsg)
-                            if (d.isNotBlank()) d else rawMsg
-                        } catch (e: Exception) { rawMsg }
+                        val decrypted = MessageEncryptionManager.decryptSmart(
+                            requireContext(),
+                            rawMsg,
+                            chat.onionAddress ?: "",
+                            chat.keyFingerprint,
+                            chat.iv
+                        )
 
-                        // ── Reaction formatting (mirrors ChatListFragment) ────────────
                         var actualEmoji = ""
                         var isMyReaction = false
                         if (rawReaction.isNotEmpty()) {
@@ -163,7 +154,6 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                             }
                         }
 
-                        // ── Message preview text (mirrors ChatListFragment) ───────────
                         var formattedMessage = when {
                             decrypted == "photo" -> "📷 Photo"
                             decrypted == "video" -> "🎥 Video"
@@ -182,15 +172,11 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                             formattedMessage = "$prefix $suffix"
                         }
 
-                        // ── Unread count (mirrors ChatListFragment) ───────────────────
                         val onion = chat.onionAddress ?: ""
                         val lastSeenId = sharedPrefs.getLong("last_seen_id_$onion", 0L)
                         val unread = dao.getUnreadCount(onion, lastSeenId)
 
-                        // ── Name masking (requests always show "Unknown User") ─────────
-                        val displayName = nameCache.getString("pending_name_$onion", null)
-                            ?.let { "Unknown User" }  // cache exists but still mask
-                            ?: "Unknown User"
+                        val displayName = "Unknown User"
 
                         chat.copy(
                             name = displayName,

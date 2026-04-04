@@ -33,7 +33,7 @@ import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.MessageRepository
 import app.secure.kyber.roomdb.roomViewModel.MessagesViewModel
-import app.secure.kyber.Utils.EncryptionUtils
+import app.secure.kyber.Utils.MessageEncryptionManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
@@ -97,10 +97,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
         }
     }
 
-
-
-    // ── Adapter ───────────────────────────────────────────────────────────────
-
     private fun setListAdapter() {
         val recyclerview = binding.rv
         recyclerview.setHasFixedSize(false)
@@ -129,12 +125,13 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                             val rawReaction = chat.reaction ?: ""
                             val msgType = chat.type ?: "TEXT"
 
-                            val decrypted = try {
-                                val d = app.secure.kyber.Utils.EncryptionUtils.decrypt(rawMsg)
-                                if (d.isNotBlank()) d else rawMsg
-                            } catch (e: Exception) {
-                                rawMsg
-                            }
+                            val decrypted = MessageEncryptionManager.decryptSmart(
+                                requireContext(),
+                                rawMsg,
+                                chat.onionAddress ?: "",
+                                chat.keyFingerprint,
+                                chat.iv
+                            )
 
                             var actualEmoji = ""
                             var isMyReaction = false
@@ -175,7 +172,6 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                             val lastSeenId = sharedPrefs.getLong("last_seen_id_$onion", 0L)
                             val unread = dao.getUnreadCount(onion, lastSeenId)
 
-                            /// REPLACE only the chat.copy line at the bottom of the displayList map in setListAdapter():
                             val maskedName = chat.name?.let {
                                 if (it.endsWith(".onion")) "Unknown User" else it
                             } ?: "Unknown User"

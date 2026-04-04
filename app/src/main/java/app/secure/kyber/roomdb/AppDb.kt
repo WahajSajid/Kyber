@@ -12,9 +12,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MessageEntity::class,
         ContactEntity::class,
         GroupMessageEntity::class,
-        GroupsEntity::class
+        GroupsEntity::class,
+        KeyEntity::class
     ],
-    version = 15,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDb : RoomDatabase() {
     abstract fun contactDao(): ContactDao
     abstract fun groupsMessagesDao(): GroupMessageDao
     abstract fun groupsDao(): GroupDao
+    abstract fun keyDao(): KeyDao
 
     companion object {
         @Volatile
@@ -37,7 +39,8 @@ abstract class AppDb : RoomDatabase() {
                     .addMigrations(
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
-                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
+                        MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
+                        MIGRATION_15_16, MIGRATION_16_17
                     )
                     .build()
                     .also { INSTANCE = it }
@@ -243,6 +246,32 @@ abstract class AppDb : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `user_keys` (
+                        `keyId` TEXT NOT NULL, 
+                        `publicKey` TEXT NOT NULL, 
+                        `createdAt` INTEGER NOT NULL, 
+                        `activatedAt` INTEGER NOT NULL, 
+                        `expiresAt` INTEGER NOT NULL, 
+                        `status` TEXT NOT NULL, 
+                        PRIMARY KEY(`keyId`)
+                    )
+                """.trimIndent())
+                database.execSQL("ALTER TABLE `contacts` ADD COLUMN `publicKey` TEXT")
+                database.execSQL("ALTER TABLE `contacts` ADD COLUMN `keyVersion` TEXT")
+                database.execSQL("ALTER TABLE `contacts` ADD COLUMN `lastKeyUpdate` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `keyFingerprint` TEXT")
+            }
+        }
+
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `user_keys` ADD COLUMN `privateKeyEncrypted` TEXT NOT NULL DEFAULT ''")
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `iv` TEXT")
+            }
+        }
 
     }
 }

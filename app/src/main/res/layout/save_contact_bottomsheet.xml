@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="@dimen/_323sdp"
     android:background="@drawable/dialog_bg"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical"
@@ -11,11 +11,10 @@
         android:id="@+id/appname"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
         android:layout_marginTop="@dimen/_10sdp"
         android:fontFamily="@font/roboto_medium"
-        android:text="New Message"
-        android:textColor="@color/primary_text_color"
+        android:text="New Contact"
+        android:textColor="@color/white"
         android:textSize="@dimen/_20sdp" />
 
     <TextView
@@ -26,8 +25,7 @@
         android:layout_marginTop="@dimen/_3sdp"
         android:fontFamily="@font/roboto_medium"
         android:text="Enter or Scan the Kyber Chat ID of the person you'd like to connect with."
-        android:textColor="#DADADA"
-        android:gravity="center"
+        android:textColor="@color/opacity_70_white_color"
         android:textSize="@dimen/_14sdp" />
 
     <TextView
@@ -37,7 +35,7 @@
         android:layout_marginTop="@dimen/_15sdp"
         android:fontFamily="@font/roboto_medium"
         android:text="Kyber ID"
-        android:textColor="@color/opacity_70_white_color"
+        android:textColor="@color/white"
         android:textSize="@dimen/_14sdp" />
 
     <com.google.android.material.textfield.TextInputLayout
@@ -110,10 +108,11 @@
             android:layout_weight="1.5"
             android:layout_height="@dimen/_46sdp"
             app:backgroundTint="#5F99F6"
+            android:background="@drawable/add_contact_btn_bg"
             android:fontFamily="@font/roboto_semibold"
             android:textColor="@color/white"
             android:textSize="@dimen/_16sdp"
             app:cornerRadius="@dimen/_6sdp"
-            android:text="Message"/>
+            android:text="Add Contact"/>
     </LinearLayout>
 </LinearLayout>

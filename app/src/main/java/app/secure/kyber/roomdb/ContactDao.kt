@@ -15,6 +15,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE onionAddress = :onionAddress LIMIT 1")
     suspend fun get(onionAddress: String): ContactEntity?
 
+    @Query("SELECT * FROM contacts WHERE onionAddress = :onionAddress LIMIT 1")
+    fun observeContact(onionAddress: String): Flow<ContactEntity?>
+
     @Query("SELECT * FROM contacts ORDER BY name ASC")
     suspend fun getAll(): List<ContactEntity>
 

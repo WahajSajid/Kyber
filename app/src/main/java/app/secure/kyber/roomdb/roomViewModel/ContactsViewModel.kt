@@ -13,17 +13,17 @@ class ContactsViewModel(private val repo: ContactRepository) : ViewModel() {
     val contactsFlow = repo.observeAll()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    // or, if you need a one-shot load:
-    // suspend fun loadAllOnce() = repo.getAllOnce()
-
-    fun saveContact(id: String, name: String) {
+    fun saveContact(id: String, name: String, publicKey: String? = null) {
         viewModelScope.launch {
-            repo.saveContact(id,name)
+            repo.saveContact(id, name, publicKey)
         }
     }
 
-
     suspend fun getContact(id: String): ContactEntity? {
         return repo.getContact(id)
+    }
+
+    fun observeContact(id: String): kotlinx.coroutines.flow.Flow<ContactEntity?> {
+        return repo.observeContact(id)
     }
 }
