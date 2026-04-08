@@ -13,7 +13,9 @@
         android:layout_height="wrap_content"
         android:fillViewport="true"
         android:scrollbars="none"
-        tools:ignore="MissingConstraints">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -41,12 +43,10 @@
                 app:strokeWidth="@dimen/_1sdp" />
 
             <com.google.android.material.button.MaterialButton
-
                 android:id="@+id/btnGroupChat"
                 android:layout_width="wrap_content"
                 android:layout_height="@dimen/_40sdp"
                 android:layout_marginTop="@dimen/_10sdp"
-                android:layout_toEndOf="@id/btnIndividualChat"
                 android:backgroundTint="@color/btn_unselected_color"
                 android:gravity="center"
                 android:paddingStart="@dimen/_16sdp"
@@ -67,7 +67,6 @@
                 android:layout_height="@dimen/_40sdp"
                 android:layout_marginHorizontal="@dimen/_14sdp"
                 android:layout_marginTop="@dimen/_10sdp"
-                android:layout_toEndOf="@id/btnGroupChat"
                 android:backgroundTint="@color/btn_unselected_color"
                 android:gravity="center"
                 android:paddingStart="@dimen/_16sdp"
@@ -84,14 +83,16 @@
         </LinearLayout>
     </HorizontalScrollView>
 
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rv"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         android:padding="@dimen/_14sdp"
+        android:clipToPadding="false"
         app:layout_constraintTop_toBottomOf="@id/scroll_view"
-        tools:layout_editor_absoluteX="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
         tools:listitem="@layout/item_chat_card" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

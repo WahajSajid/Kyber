@@ -23,7 +23,7 @@ class DocumentSectionAdapter(private val sectionsDocument: List<SectionDocument>
 
         val lm = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.VERTICAL, false)
         holder.rvFiles.layoutManager = lm
-        holder.rvFiles.setHasFixedSize(true)
+//        holder.rvFiles.setHasFixedSize(true)
         holder.rvFiles.adapter = DocumentAdapter(section.items) { file ->
             // Handle click (open, preview, show details). Example:
             // Toast.makeText(holder.itemView.context, "Clicked ${file.name}", Toast.LENGTH_SHORT).show()

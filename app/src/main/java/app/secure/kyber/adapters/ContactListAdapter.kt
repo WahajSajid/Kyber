@@ -18,7 +18,9 @@ class ContactListAdapter(
 
     companion object {
         val DIFF = object : DiffUtil.ItemCallback<ContactEntity>() {
-            override fun areItemsTheSame(old: ContactEntity, new: ContactEntity) = old.onionAddress == new.onionAddress
+            override fun areItemsTheSame(old: ContactEntity, new: ContactEntity) =
+                old.onionAddress == new.onionAddress
+
             override fun areContentsTheSame(old: ContactEntity, new: ContactEntity) = old == new
         }
     }
@@ -37,7 +39,7 @@ class ContactListAdapter(
 
         fun bind(item: ContactEntity) {
             titleTextView.text = item.name ?: ""
-            userId.text = item.onionAddress ?: "" // keep the id visible if needed
+            userId.text = "" // keep the id visible if needed
         }
     }
 

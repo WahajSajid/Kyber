@@ -44,9 +44,6 @@
             android:name=".activities.MediaPreviewActivity"
             android:exported="false" />
         <activity
-            android:name=".activities.FullScreenMediaActivity"
-            android:exported="false" />
-        <activity
             android:name=".activities.ScannerActivity"
             android:exported="false"
             android:screenOrientation="portrait"

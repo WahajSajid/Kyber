@@ -133,8 +133,8 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         val timerMs = Prefs.getEncryptionTimerMs(requireContext())
         val isCooldownActive = timerMs > 0L && lastManual != 0L && diffManual < timerMs
         
-//        binding.generateButton.isEnabled = !isCooldownActive
-        binding.generateButton.isEnabled = true
+        binding.generateButton.isEnabled = !isCooldownActive
+//        binding.generateButton.isEnabled = true
         binding.generateButton.alpha = if (isCooldownActive) 0.5f else 1.0f
     }
 

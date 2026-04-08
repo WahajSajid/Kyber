@@ -252,7 +252,7 @@ class GroupMessagesAdapter(
             // ─────────────────────────────────────────────────────────────
             val displayName = getDisplayNameForSender(item.senderOnion, item.senderName)
             holder.senderName.text = displayName
-            holder.senderId.text = item.senderOnion
+            holder.senderId.text = ""
             holder.tvRcvTime.text = convertDatetime(item.time)
         }
 

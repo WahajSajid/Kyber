@@ -23,7 +23,7 @@ class LinkSectionAdapter(private val sections: List<SectionLink>) :
 
         val lm = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.VERTICAL, false)
         holder.rvLinks.layoutManager = lm
-        holder.rvLinks.setHasFixedSize(true)
+//        holder.rvLinks.setHasFixedSize(true)
         holder.rvLinks.adapter = LinkAdapter(section.items) { item ->
             // handle item click e.g. open URL
             // val intent = Intent(Intent.ACTION_VIEW, Uri.parse(item.displayPathOrUrl))

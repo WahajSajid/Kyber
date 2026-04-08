@@ -5,17 +5,17 @@
     android:id="@+id/cameraRootLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".activities.CameraActivity"
-    android:background="@android:color/black">
+    android:background="@android:color/black"
+    tools:context=".activities.CameraActivity">
 
     <androidx.camera.view.PreviewView
         android:id="@+id/cameraPreviewView"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
         app:scaleType="fillCenter" />
 
     <ImageButton
@@ -27,62 +27,73 @@
         android:background="@drawable/button_close"
         android:contentDescription="Close"
         android:padding="@dimen/_8sdp"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <LinearLayout
         android:id="@+id/bottomControlsContainer"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
         android:layout_marginBottom="@dimen/_24sdp"
+        android:orientation="vertical"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
+        <!--  Camera Actions Row  -->
         <androidx.constraintlayout.widget.ConstraintLayout
             android:id="@+id/cameraActionsRow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
             android:paddingStart="@dimen/_24sdp"
             android:paddingEnd="@dimen/_24sdp"
             android:paddingBottom="@dimen/_16sdp">
 
+            <!--
+                All five views are placed in a packed horizontal chain
+                centered on the parent. The capture button is the anchor
+                at the centre; the two pairs (gallery+flash) and
+                (zoom+flip) sit symmetrically on each side.
+                Using 0dp width where allowed keeps things from ever
+                going off-screen on narrow devices.
+            -->
+
+            <!-- LEFT side: Gallery -->
             <ImageButton
                 android:id="@+id/btnGallery"
                 android:layout_width="@dimen/_45sdp"
                 android:layout_height="@dimen/_45sdp"
-                android:src="@drawable/gallery_button_ic"
                 android:background="@drawable/gallery_button_img"
                 android:contentDescription="Gallery"
-                android:layout_marginEnd="@dimen/_20sdp"
-                app:layout_constraintEnd_toStartOf="@id/btnFlash"
-                app:layout_constraintTop_toTopOf="@id/capture_button_container"
+                android:scaleType="centerCrop"
+                android:src="@drawable/gallery_button_ic"
                 app:layout_constraintBottom_toBottomOf="@id/capture_button_container"
+                app:layout_constraintEnd_toStartOf="@id/btnFlash"
+                app:layout_constraintHorizontal_chainStyle="spread_inside"
                 app:layout_constraintStart_toStartOf="parent"
-                android:scaleType="centerCrop" />
+                app:layout_constraintTop_toTopOf="@id/capture_button_container" />
 
+            <!-- LEFT side: Flash -->
             <ImageButton
                 android:id="@+id/btnFlash"
                 android:layout_width="@dimen/_33sdp"
                 android:layout_height="@dimen/_33sdp"
-                android:layout_marginEnd="@dimen/_20sdp"
-                android:background="@drawable/flash_ic"
                 android:alpha="0.5"
-                app:layout_constraintEnd_toStartOf="@id/capture_button_container"
-                app:layout_constraintTop_toTopOf="@id/capture_button_container"
+                android:background="@drawable/flash_ic"
+                android:contentDescription="Flash"
+                android:layout_marginEnd="@dimen/_12sdp"
                 app:layout_constraintBottom_toBottomOf="@id/capture_button_container"
-                android:contentDescription="Flash" />
+                app:layout_constraintEnd_toStartOf="@id/capture_button_container"
+                app:layout_constraintTop_toTopOf="@id/capture_button_container" />
 
+            <!-- CENTRE: Capture button + pause overlay -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/capture_button_container"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintBottom_toBottomOf="parent">
+                app:layout_constraintStart_toStartOf="parent">
 
                 <ImageButton
                     android:id="@+id/btnCapture"
@@ -91,82 +102,75 @@
                     android:layout_gravity="center"
                     android:background="@drawable/button_camera"
                     android:contentDescription="Capture photo"
-                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintBottom_toBottomOf="parent"/>
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
 
                 <ImageView
                     android:id="@+id/pause_Image"
                     android:layout_width="@dimen/_28sdp"
                     android:layout_height="@dimen/_28sdp"
-                    android:visibility="gone"
                     android:layout_marginBottom="@dimen/_10sdp"
                     android:src="@drawable/pause_icon_0"
-                    app:layout_constraintStart_toStartOf="@id/btnCapture"
-                    app:layout_constraintEnd_toEndOf="@id/btnCapture"
-                    app:layout_constraintTop_toTopOf="@id/btnCapture"
+                    android:visibility="gone"
                     app:layout_constraintBottom_toBottomOf="@id/btnCapture"
+                    app:layout_constraintEnd_toEndOf="@id/btnCapture"
+                    app:layout_constraintStart_toStartOf="@id/btnCapture"
+                    app:layout_constraintTop_toTopOf="@id/btnCapture"
                     app:tint="#FFFFFF" />
-
-
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 
+            <!-- RIGHT side: Zoom label -->
             <TextView
                 android:id="@+id/tvZoom"
                 android:layout_width="@dimen/_33sdp"
                 android:layout_height="@dimen/_33sdp"
+                android:layout_marginStart="@dimen/_12sdp"
+                android:background="@drawable/zoom_text_bg"
+                android:gravity="center"
                 android:text="1×"
                 android:textColor="@android:color/white"
                 android:textSize="@dimen/_14sdp"
                 android:textStyle="bold"
-                android:gravity="center"
-                android:layout_marginStart="@dimen/_20sdp"
-                app:layout_constraintStart_toEndOf="@id/capture_button_container"
-                app:layout_constraintTop_toTopOf="@id/capture_button_container"
                 app:layout_constraintBottom_toBottomOf="@id/capture_button_container"
-                android:background="@drawable/zoom_text_bg" />
+                app:layout_constraintStart_toEndOf="@id/capture_button_container"
+                app:layout_constraintTop_toTopOf="@id/capture_button_container" />
 
+            <!-- RIGHT side: Flip camera -->
             <ImageButton
                 android:id="@+id/btnFlipCamera"
                 android:layout_width="@dimen/_45sdp"
                 android:layout_height="@dimen/_45sdp"
-                android:layout_marginStart="@dimen/_20sdp"
-                app:layout_constraintTop_toTopOf="@id/capture_button_container"
-                app:layout_constraintBottom_toBottomOf="@id/capture_button_container"
                 android:background="@drawable/gallery_button_img"
+                android:contentDescription="Flip camera"
                 android:src="@drawable/camera_flip"
+                app:layout_constraintBottom_toBottomOf="@id/capture_button_container"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toEndOf="@id/tvZoom"
-                android:contentDescription="Flip camera" />
+                app:layout_constraintTop_toTopOf="@id/capture_button_container" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
 
-        <!--
-            fillViewport="false" + wrap_content container:
-            Padding equal to half the screen width is added to both sides
-            in code. This gives every pill — including the first and last —
-            enough room to scroll to the exact horizontal centre.
-            clipToPadding="false" keeps pills visible while in the padding zone.
-        -->
+        <!-- Mode Scroll (Video / Photo / Video note) -->
         <app.secure.kyber.activities.SwipeableModeScrollView
             android:id="@+id/modeScrollView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:scrollbars="none"
-            android:overScrollMode="never"
+            android:clipToPadding="false"
             android:fillViewport="false"
-            android:clipToPadding="false">
+            android:overScrollMode="never"
+            android:scrollbars="none">
 
             <LinearLayout
                 android:id="@+id/modeContainer"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
                 android:gravity="center_vertical"
-                android:paddingTop="@dimen/_4sdp"
-                android:paddingBottom="@dimen/_4sdp">
+                android:orientation="horizontal"
+                android:paddingBottom="@dimen/_4sdp"
+                android:paddingTop="@dimen/_4sdp">
 
                 <TextView
                     android:id="@+id/mode0"

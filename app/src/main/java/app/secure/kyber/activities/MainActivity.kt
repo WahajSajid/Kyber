@@ -160,7 +160,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 "request_chat" -> {
-
+                    bottomBar.selectedItemId = R.id.messageRequestsFragment
                 }
 
             }
@@ -390,12 +390,6 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    public fun addButtonClick() {
-        binding.ivAddContact.setOnClickListener {
-            //navigate to create group screen
-        }
-    }
-
     public fun viewVisibility() {
         ivAddContact.visibility = View.GONE
         ivDotsContact.visibility = View.GONE
@@ -429,6 +423,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         controller.addOnDestinationChangedListener(listener)
+        bottomBar.selectedItemId = R.id.chatListFragment
 
         // Every time the app comes to foreground, trigger an immediate
         // one-time sync to catch any messages missed since last open.

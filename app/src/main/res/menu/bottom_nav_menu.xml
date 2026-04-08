@@ -7,17 +7,21 @@
         android:title="Chat"
         android:icon="@drawable/chat_bottom"/>
 
-    <item
-        android:id="@+id/netwokFragment"
-        android:enabled="true"
-        android:title="Network"
-        android:icon="@drawable/network_bottom"/>
+
 
     <item
         android:id="@+id/contactsFragment"
         android:enabled="true"
         android:title="Contacts"
         android:icon="@drawable/contact_bottom"/>
+
+
+    <item
+        android:id="@+id/netwokFragment"
+        android:enabled="true"
+        android:title="Network"
+        android:icon="@drawable/network_bottom"/>
+
 
     <item
         android:id="@+id/settingFragment"

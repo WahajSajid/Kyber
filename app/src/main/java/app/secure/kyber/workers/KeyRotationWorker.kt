@@ -75,11 +75,11 @@ class KeyRotationWorker @AssistedInject constructor(
                 if(response.isSuccessful && response.body()?.success == true){
                     Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
                 } else{
-                    Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
+//                    Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
                     Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.")
                 }
             } catch (e: Exception) {
-                Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
+//                Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
                 Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.", e)
                 throw e // Surface to WorkManager for retry
             }
