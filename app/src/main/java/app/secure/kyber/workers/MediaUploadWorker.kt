@@ -41,6 +41,7 @@ class MediaUploadWorker(
         const val KEY_SENDER_NAME = "sender_name"
         const val KEY_IS_CONTACT = "is_contact"
         const val KEY_DURATION_MS = "duration_ms"
+        const val KEY_DISAPPEAR_TTL = "disappear_ttl"
 
         fun buildRequest(
             messageId: String,
@@ -53,7 +54,8 @@ class MediaUploadWorker(
             senderOnion: String,
             senderName: String,
             isContact: Boolean,
-            durationMs: Long
+            durationMs: Long,
+            disappearTtl: Long = 0L
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
@@ -66,7 +68,8 @@ class MediaUploadWorker(
                 KEY_SENDER_ONION to senderOnion,
                 KEY_SENDER_NAME to senderName,
                 KEY_IS_CONTACT to isContact,
-                KEY_DURATION_MS to durationMs
+                KEY_DURATION_MS to durationMs,
+                KEY_DISAPPEAR_TTL to disappearTtl
             )
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -102,6 +105,7 @@ class MediaUploadWorker(
         val senderName = inputData.getString(KEY_SENDER_NAME) ?: ""
         val isContact = inputData.getBoolean(KEY_IS_CONTACT, true)
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
+        val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
 
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
@@ -117,57 +121,78 @@ class MediaUploadWorker(
             val fgInfo = notifier.buildUploadForegroundInfo(messageId, mimeType, 0)
             setForeground(fgInfo)
 
+            // Fetch saved state to support resumption
+            val savedMsg = messageDao.getMessageByMessageId(messageId)
+            val savedProgress = savedMsg?.uploadProgress ?: 0
+            val isUploading = savedMsg?.uploadState == "uploading"
+
             val uploadFilePath: String
             val thumbnailPath: String?
 
             if (mimeType == "VIDEO") {
-                messageDao.updateUploadProgress(messageId, "compressing", 0)
-                setForeground(
-                    notifier.buildUploadForegroundInfo(
-                        messageId, mimeType, 0, stateLabel = "Compressing…"
-                    )
-                )
+                val existingLocalPath = savedMsg?.localFilePath ?: filePath
+                val hasCompressed = existingLocalPath.contains("sent_media") && isUploading
 
-                val result = VideoCompressor.compress(
-                    context = context,
-                    inputPath = filePath,
-                    onProgress = { pct ->
-                        if (pct % 5 == 0) {
-                            notifier.showCompressionProgress(messageId, pct)
-                            serviceScope?.launch {
-                                messageDao.updateUploadProgress(messageId, "compressing", pct)
+                if (hasCompressed) {
+                    // Skip compression, resume from where we left off
+                    uploadFilePath = existingLocalPath
+                    thumbnailPath = savedMsg?.thumbnailPath
+                    messageDao.updateUploadProgress(messageId, "uploading", savedProgress)
+                    setForeground(
+                        notifier.buildUploadForegroundInfo(
+                            messageId, mimeType, savedProgress, stateLabel = "Uploading…"
+                        )
+                    )
+                } else {
+                    messageDao.updateUploadProgress(messageId, "compressing", 0)
+                    setForeground(
+                        notifier.buildUploadForegroundInfo(
+                            messageId, mimeType, 0, stateLabel = "Compressing…"
+                        )
+                    )
+
+                    val result = VideoCompressor.compress(
+                        context = context,
+                        inputPath = filePath,
+                        onProgress = { pct ->
+                            if (pct % 5 == 0) {
+                                notifier.showCompressionProgress(messageId, pct)
+                                serviceScope?.launch {
+                                    messageDao.updateUploadProgress(messageId, "compressing", pct)
+                                }
                             }
                         }
-                    }
-                )
-
-                if (result == null) {
-                    messageDao.updateUploadProgress(messageId, "failed", 0)
-                    notifier.showUploadFailed(messageId, mimeType)
-                    serviceScope?.cancel()
-                    return Result.failure()
-                }
-
-                uploadFilePath = result.outputPath
-                thumbnailPath = result.thumbnailPath
-
-                if (thumbnailPath != null) {
-                    messageDao.setThumbnailPath(messageId, thumbnailPath)
-                }
-
-                messageDao.updateUploadProgress(messageId, "uploading", 0)
-                setForeground(
-                    notifier.buildUploadForegroundInfo(
-                        messageId, mimeType, 0, stateLabel = "Uploading…"
                     )
-                )
+
+                    if (result == null) {
+                        messageDao.updateUploadProgress(messageId, "failed", 0)
+                        notifier.showUploadFailed(messageId, mimeType)
+                        serviceScope?.cancel()
+                        return Result.failure()
+                    }
+
+                    uploadFilePath = result.outputPath
+                    thumbnailPath = result.thumbnailPath
+
+                    messageDao.setLocalFilePath(messageId, uploadFilePath)
+                    if (thumbnailPath != null) {
+                        messageDao.setThumbnailPath(messageId, thumbnailPath)
+                    }
+
+                    messageDao.updateUploadProgress(messageId, "uploading", 0)
+                    setForeground(
+                        notifier.buildUploadForegroundInfo(
+                            messageId, mimeType, 0, stateLabel = "Uploading…"
+                        )
+                    )
+                }
 
             } else {
                 uploadFilePath = filePath
                 thumbnailPath = null
+                messageDao.setLocalFilePath(messageId, uploadFilePath)
+                messageDao.updateUploadProgress(messageId, "uploading", savedProgress)
             }
-
-            messageDao.updateUploadProgress(messageId, "uploading", 0)
 
             val chunks = MediaChunkManager.buildChunks(
                 context = context,
@@ -188,59 +213,75 @@ class MediaUploadWorker(
             }
 
             // Get recipient public key
-            val contact = db.contactDao().get(contactOnion)
-            var recipientPublicKey = contact?.publicKey
-            if (recipientPublicKey == null) {
-                recipientPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-                    .getString("pending_key_$contactOnion", null)
-            }
+//            val contact = db.contactDao().get(contactOnion)
+//            var recipientPublicKey = contact?.publicKey
+//            if (recipientPublicKey == null) {
+//                recipientPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+//                    .getString("pending_key_$contactOnion", null)
+//            }
             
-            if (recipientPublicKey == null) {
+
                 val resp = repository.getPublicKey(contactOnion)
-                if (resp.isSuccessful) recipientPublicKey = resp.body()?.publicKey
-            }
+                if (resp.isSuccessful) {
+                    val recipientPublicKey = resp.body()?.publicKey
 
-            if (recipientPublicKey == null) {
-                Log.e(TAG, "Recipient public key not found for $contactOnion")
-                return Result.retry()
-            }
+                    val startIndex = if (savedProgress > 0 && isUploading) {
+                        (savedProgress * chunks.size) / 100
+                    } else 0
 
 
-            var successCount = 0
-            for (chunk in chunks) {
-                if (isStopped) {
-                    messageDao.updateUploadProgress(
-                        messageId, "failed", (successCount * 100) / chunks.size
-                    )
-                    notifier.showUploadFailed(messageId, mimeType)
-                    serviceScope?.cancel()
-                    return Result.retry()
+                    var successCount = startIndex
+
+                    val chunksToSend = if (startIndex > 0 && startIndex < chunks.size) {
+                        chunks.subList(startIndex, chunks.size)
+                    } else chunks
+
+
+
+                    for (chunk in chunksToSend) {
+                        if (isStopped) {
+                            messageDao.updateUploadProgress(
+                                messageId, "failed", (successCount * 100) / chunks.size
+                            )
+                            notifier.showUploadFailed(messageId, mimeType)
+                            serviceScope?.cancel()
+                            return Result.retry()
+                        }
+
+                        val chunkJson = chunkAdapter.toJson(chunk)
+                        val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey!!, chunkJson)
+
+                        val sent = sendChunk(
+                            repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey!!, encryptionResult.senderPublicKeyBase64, disappearTtl
+                        )
+                        if (sent) {
+                            successCount++
+                            val progress = (successCount * 100) / chunks.size
+                            messageDao.updateUploadProgress(messageId, "uploading", progress)
+                            setForeground(
+                                notifier.buildUploadForegroundInfo(messageId, mimeType, progress)
+                            )
+                        } else {
+                            messageDao.updateUploadProgress(
+                                messageId, "failed", (successCount * 100) / chunks.size
+                            )
+                            notifier.showUploadFailed(messageId, mimeType)
+                            serviceScope?.cancel()
+                            return Result.retry()
+                        }
+
+                        if (chunk.index < chunks.size - 1) delay(80)
+                    }
+
+
                 }
 
-                val chunkJson = chunkAdapter.toJson(chunk)
-                val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey, chunkJson)
-                
-                val sent = sendChunk(
-                    repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey, encryptionResult.senderPublicKeyBase64
-                )
-                if (sent) {
-                    successCount++
-                    val progress = (successCount * 100) / chunks.size
-                    messageDao.updateUploadProgress(messageId, "uploading", progress)
-                    setForeground(
-                        notifier.buildUploadForegroundInfo(messageId, mimeType, progress)
-                    )
-                } else {
-                    messageDao.updateUploadProgress(
-                        messageId, "failed", (successCount * 100) / chunks.size
-                    )
-                    notifier.showUploadFailed(messageId, mimeType)
-                    serviceScope?.cancel()
-                    return Result.retry()
-                }
+//            if (recipientPublicKey == null) {
+//                Log.e(TAG, "Recipient public key not found for $contactOnion")
+//                return Result.retry()
+//            }
 
-                if (chunk.index < chunks.size - 1) delay(80)
-            }
+
 
             val finalLocalPath = if (mimeType == "VIDEO") {
                 try {
@@ -281,7 +322,8 @@ class MediaUploadWorker(
         chunk: MediaChunkDto,
         isContact: Boolean,
         recipientPublicKey: String,
-        myPublicKey: String?
+        myPublicKey: String?,
+        disappearTtl: Long
     ): Boolean {
         return try {
             val chunkJson = chunkAdapter.toJson(chunk)
@@ -301,7 +343,8 @@ class MediaUploadWorker(
                 iv = encryptionResult.iv,
                 senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
                 recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
-                senderPublicKey = myPublicKey
+                senderPublicKey = myPublicKey,
+                disappear_ttl = disappearTtl
             )
             val transportJson = transportAdapter.toJson(transport)
             val payload = Base64.encodeToString(

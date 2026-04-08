@@ -55,4 +55,12 @@ class GroupsViewModel(private val repo: GroupRepository) : ViewModel() {
     suspend fun getGroupById(groupId: String): GroupsEntity? {
         return repo.getGroupById(groupId)
     }
+
+    fun incrementUnread(groupId: String) {
+        viewModelScope.launch { repo.incrementUnread(groupId) }
+    }
+
+    fun resetUnread(groupId: String) {
+        viewModelScope.launch { repo.resetUnread(groupId) }
+    }
 }

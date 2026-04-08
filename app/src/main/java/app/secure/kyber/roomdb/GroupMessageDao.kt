@@ -1,7 +1,12 @@
 package app.secure.kyber.roomdb
 
 import androidx.lifecycle.LiveData
-import androidx.room.*
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Update
 import app.secure.kyber.backend.models.ChatModel
 
 @Dao
@@ -22,8 +27,29 @@ interface GroupMessageDao {
     @Delete
     suspend fun deleteGroupMessage(groupMessage: GroupMessageEntity)
 
+    @Query("SELECT * FROM group_messages WHERE messageId = :messageId LIMIT 1")
+    suspend fun getMessageById(messageId: String): GroupMessageEntity?
+
+    @Query("UPDATE group_messages SET uri = :newUri, downloadState = :newState, downloadProgress = :newProgress WHERE messageId = :messageId")
+    suspend fun updateMessageFields(messageId: String, newUri: String?, newState: String, newProgress: Int)
+
+    @Query("UPDATE group_messages SET reaction = :reaction WHERE messageId = :messageId")
+    suspend fun updateReaction(messageId: String, reaction: String)
+
+    @Query("UPDATE group_messages SET localFilePath = :path WHERE messageId = :messageId")
+    suspend fun setLocalFilePath(messageId: String, path: String)
+
+    @Query("UPDATE group_messages SET uploadState = :newState, uploadProgress = :newProgress WHERE messageId = :messageId")
+    suspend fun updateUploadState(messageId: String, newState: String, newProgress: Int)
+
     @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY CAST(time AS INTEGER) DESC LIMIT 1")
     suspend fun getLatestMessage(groupId: String): GroupMessageEntity?
+
+    @Query("SELECT * FROM group_messages WHERE expiresAt > 0 AND expiresAt < :currentTimeMillis")
+    suspend fun getExpiredGroupMessages(currentTimeMillis: Long): List<GroupMessageEntity>
+
+    @Query("DELETE FROM group_messages WHERE expiresAt > 0 AND expiresAt < :currentTimeMillis")
+    suspend fun deleteExpiredGroupMessages(currentTimeMillis: Long)
 
     @Query(
         "WITH latest_time AS (\n" +
@@ -56,5 +82,14 @@ interface GroupMessageDao {
                 "ORDER BY CAST(lr.time AS INTEGER) DESC, lr.group_id DESC;"
     )
     fun observeAllLastMsgs(): kotlinx.coroutines.flow.Flow<List<ChatModel>>
+
+    @Query("DELETE FROM group_messages WHERE group_id = :groupId")
+    suspend fun deleteByGroupId(groupId: String)
+
+    @Query("DELETE FROM group_messages WHERE group_id NOT IN (:groupIds)")
+    suspend fun deleteByGroupIdsNotIn(groupIds: List<String>)
+
+    @Query("UPDATE group_messages SET thumbnailPath = :path WHERE messageId = :messageId")
+    suspend fun setThumbnailPath(messageId: String, path: String)
 
 }

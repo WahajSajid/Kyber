@@ -466,35 +466,6 @@
                 </LinearLayout>
 
                 <LinearLayout
-                    android:id="@+id/llContact"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    app:layout_constraintEnd_toStartOf="@+id/llDocument"
-                    app:layout_constraintHorizontal_bias="0.5"
-                    app:layout_constraintStart_toEndOf="@+id/llCamera">
-
-                    <ImageView
-                        android:id="@+id/ivContact"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:padding="@dimen/xXXSmallPadding"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/contact_ic"
-                        app:tint="@null" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:fontFamily="@font/roboto_medium"
-                        android:text="Contact"
-                        android:textColor="@color/white"
-                        android:textSize="@dimen/_12sdp" />
-                </LinearLayout>
-
-                <LinearLayout
                     android:id="@+id/llDocument"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -502,7 +473,7 @@
                     android:orientation="vertical"
                     app:layout_constraintEnd_toStartOf="@+id/llAudio"
                     app:layout_constraintHorizontal_bias="0.5"
-                    app:layout_constraintStart_toEndOf="@+id/llContact">
+                    app:layout_constraintStart_toEndOf="@+id/llCamera">
 
                     <ImageView
                         android:id="@+id/ivDocument"

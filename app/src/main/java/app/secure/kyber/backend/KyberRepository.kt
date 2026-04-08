@@ -18,9 +18,6 @@ class KyberRepository @Inject constructor(
 
     // --- Authentication ---
 
-    suspend fun register(licenseKey: String, publicKey: String, usernameHash: String? = null, usernameEncrypted: String? = null): Response<RegisterResponse> =
-        apiService.register(RegisterRequest(licenseKey, publicKey, usernameHash, usernameEncrypted))
-
     suspend fun registerDiscovery(licenseKey: String, publicKey: String, usernameHash: String, usernameEncrypted: String): Response<RegisterResponse> =
         apiService.registerDiscovery(RegisterRequest(licenseKey, publicKey, usernameHash, usernameEncrypted))
 
@@ -38,7 +35,7 @@ class KyberRepository @Inject constructor(
         apiService.createHiddenService()
 
     suspend fun getMessages(onionAddress: String, circuitId: String? = null, since: Long? = null): Response<HiddenServiceMessageResponse> =
-        apiService.getMessages(onionAddress, circuitId)
+        apiService.getMessages(onionAddress, circuitId, since)
 
     // --- Messaging ---
 

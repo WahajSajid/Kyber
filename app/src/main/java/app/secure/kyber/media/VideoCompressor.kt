@@ -21,9 +21,11 @@ import java.util.concurrent.atomic.AtomicInteger
 object VideoCompressor {
 
     private const val TAG = "VideoCompressor"
-    private const val MAX_DIMENSION         = 1280
-    private const val TARGET_VIDEO_BPS      = 1_200_000
-    private const val SKIP_THRESHOLD_BYTES  = 5 * 1024 * 1024L
+    private const val MAX_DIMENSION_720P    = 1280
+    private const val MAX_DIMENSION_1080P   = 1920
+    private const val TARGET_VIDEO_BPS_HIGH = 2_500_000
+    private const val TARGET_VIDEO_BPS_MED  = 1_200_000
+    private const val SKIP_THRESHOLD_BYTES  = 0L // Always compress as per user request
     private const val TIMEOUT_US            = 10_000L
 
     data class CompressionResult(
@@ -68,7 +70,8 @@ object VideoCompressor {
 
         // ── Skip if already small ─────────────────────────────────────────────
         val longerSide = maxOf(origWidth, origHeight)
-        if (inputFile.length() < SKIP_THRESHOLD_BYTES && longerSide <= MAX_DIMENSION) {
+        // Fixed: Use MAX_DIMENSION_1080P since MAX_DIMENSION was undefined
+        if (inputFile.length() < SKIP_THRESHOLD_BYTES && longerSide <= MAX_DIMENSION_1080P) {
             onProgress?.invoke(100)
             return CompressionResult(
                 outputPath    = "file://${inputFile.absolutePath}",
@@ -77,8 +80,13 @@ object VideoCompressor {
             )
         }
 
-        val (outWidth, outHeight) = scaleToMax(origWidth, origHeight, MAX_DIMENSION, rotation)
-        Log.d(TAG, "Compressing ${origWidth}x${origHeight} → ${outWidth}x${outHeight}")
+        // ── Decide Target Resolution & Bitrate base on origin ─────────────────
+        val isHighRes = maxOf(origWidth, origHeight) >= 1920
+        val targetDimension = if (isHighRes) MAX_DIMENSION_1080P else MAX_DIMENSION_720P
+        val targetBitrate = if (isHighRes) TARGET_VIDEO_BPS_HIGH else TARGET_VIDEO_BPS_MED
+
+        val (outWidth, outHeight) = scaleToMax(origWidth, origHeight, targetDimension, rotation)
+        Log.d(TAG, "Compressing ${origWidth}x${origHeight} → ${outWidth}x${outHeight} @ $targetBitrate bps")
 
         val outputFile = File(
             context.filesDir,
@@ -91,6 +99,7 @@ object VideoCompressor {
                 outputFile = outputFile,
                 outWidth   = outWidth,
                 outHeight  = outHeight,
+                bitrate    = targetBitrate,
                 durationMs = durationMs,
                 onProgress = onProgress
             )
@@ -119,6 +128,7 @@ object VideoCompressor {
         outputFile: File,
         outWidth: Int,
         outHeight: Int,
+        bitrate: Int,
         durationMs: Long,
         onProgress: ((Int) -> Unit)?
     ) {
@@ -129,7 +139,7 @@ object VideoCompressor {
 
         handler.post {
             try {
-                doTranscode(inputFile, outputFile, outWidth, outHeight, durationMs, onProgress)
+                doTranscode(inputFile, outputFile, outWidth, outHeight, bitrate, durationMs, onProgress)
             } catch (e: Throwable) {
                 transcodeError = e
             } finally {
@@ -149,6 +159,7 @@ object VideoCompressor {
         outputFile: File,
         outWidth: Int,
         outHeight: Int,
+        bitrate: Int,
         durationMs: Long,
         onProgress: ((Int) -> Unit)?
     ) {
@@ -179,7 +190,7 @@ object VideoCompressor {
         // ── Encoder ───────────────────────────────────────────────────────────
         val encoder = MediaCodec.createEncoderByType("video/avc")
         val encFmt = MediaFormat.createVideoFormat("video/avc", outWidth, outHeight).apply {
-            setInteger(MediaFormat.KEY_BIT_RATE, TARGET_VIDEO_BPS)
+            setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, 30)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
             setInteger(
@@ -251,7 +262,10 @@ object VideoCompressor {
                 // Drain decoder → encoder surface
                 val decIdx = decoder.dequeueOutputBuffer(bufInfo, TIMEOUT_US)
                 if (decIdx >= 0) {
-                    decoder.releaseOutputBuffer(decIdx, bufInfo.size > 0)
+                    // For Surface-output decoders, bufInfo.size might be 0 but it's a valid frame.
+                    // We explicitly pass the presentationTimeUs * 1000 to convert to nanoseconds as required by releaseOutputBuffer(index, time)
+                    decoder.releaseOutputBuffer(decIdx, bufInfo.presentationTimeUs * 1000) 
+                    
                     if (bufInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                         encoder.signalEndOfInputStream()
                     }
@@ -371,15 +385,37 @@ object VideoCompressor {
 
     private fun makeEven(v: Int) = if (v % 2 != 0) v - 1 else v
 
+    /**
+     * Public helper: generate a thumbnail JPEG for any local video path.
+     * Returns the absolute path of the saved thumbnail, or null on failure.
+     * Safe to call from any thread (does its own IO).
+     */
+    fun generateThumbnailForPath(context: Context, videoPath: String): String? {
+        val cleanPath = videoPath.removePrefix("file://")
+        val file = java.io.File(cleanPath)
+        if (!file.exists()) return null
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(cleanPath)
+            generateThumbnail(context, retriever, file.nameWithoutExtension)
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "generateThumbnailForPath failed for $videoPath", e)
+            null
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
     private fun generateThumbnail(
         context: Context,
         retriever: MediaMetadataRetriever,
         baseName: String
     ): String? {
         return try {
-            val bmp = retriever.getFrameAtTime(
-                1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-            ) ?: retriever.getFrameAtTime(0) ?: return null
+            // Use the first available sync frame (time=0) so short clips always succeed.
+            val bmp = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.getFrameAtTime(0L)
+                ?: return null
 
             val maxDim = 320
             val scale  = minOf(maxDim.toFloat() / bmp.width, maxDim.toFloat() / bmp.height, 1f)

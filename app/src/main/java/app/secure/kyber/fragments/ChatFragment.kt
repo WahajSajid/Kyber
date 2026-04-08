@@ -78,6 +78,7 @@ import app.secure.kyber.roomdb.MessageUiModel
 import app.secure.kyber.roomdb.toUiModel
 import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.media.MediaSender
+import app.secure.kyber.roomdb.roomViewModel.MSG_PAGE_SIZE
 import com.google.android.material.textfield.TextInputEditText
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -93,6 +94,7 @@ import java.util.UUID
 import javax.inject.Inject
 import androidx.work.WorkManager
 import androidx.work.ExistingWorkPolicy
+import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.workers.TextUploadWorker
 
 @Suppress("UNCHECKED_CAST")
@@ -241,10 +243,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         if (item.caption.isBlank()) (if (item.type == "VIDEO") "video" else "photo") else item.caption
                     if (comingFrom == "group_chat_list") {
                         lifecycleScope.launch {
+                            val ext = if (item.type == "VIDEO") "mp4" else "jpg"
+
+                            // 1. Process media entry immediately in Room (placeholder)
+                            // We pass firebasePayload = null here, GroupManager.sendMessage 
+                            // will now trigger GroupMediaUploadWorker instead of blocking.
                             groupManager.sendMessage(
                                 groupId = groupId, senderId = onionAddr,
                                 senderName = name, messageText = caption,
-                                groupMessagesViewModel = vm1, type = item.type, uri = item.uriString
+                                groupMessagesViewModel = vm1, type = item.type,
+                                uri = item.uriString,         // Local URI
+                                firebasePayload = null,       // Chunked upload starts in worker
+                                context = requireContext()
                             )
                         }
                     } else {
@@ -253,21 +263,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                             val isContact = contactRepo.getContact(contactOnion) != null
 
-                            if (item.type == "VIDEO") {
-                                val fileSize = try {
-                                    val uri = android.net.Uri.parse(item.uriString)
-                                    requireContext().contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: 0L
-                                } catch (e: Exception) { 0L }
-
-                                if (fileSize > 50 * 1024 * 1024) { // 50 MB limit
-                                    android.widget.Toast.makeText(
-                                        requireContext(),
-                                        "Video too large (max 50 MB). Please trim or compress it first.",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                    return@launch
-                                }
-                            }
+                            // Removed hardcoded size limits to allow universal compression & chunking
                             mediaSender.sendMedia(
                                 contactOnion = contactOnion,
                                 senderOnion = onionAddr,
@@ -540,7 +536,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                     onionAddr,
                                     name,
                                     text,
-                                    vm1
+                                    vm1,
+                                    context = requireContext()
                                 ); binding.etMsg.setText("")
                             }
                         } else {
@@ -577,7 +574,27 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }
 
             "group_chat_list" -> {
-                groupManager.listenForMessages(groupId, onionAddr, vm1)
+                // Fetch group metadata to get isAnonymous + creatorId before attaching listener
+                lifecycleScope.launch {
+                    // Sync group metadata from Firebase (updates anonymousAliases in local DB)
+                    groupManager.syncGroupMetadataFromFirebase(groupId, vm2)
+                    
+                    val groupEntity = vm2.getGroupById(groupId)
+                    val isAnonymous   = groupEntity?.isAnonymous ?: false
+                    val creatorId     = groupEntity?.createdBy ?: ""
+                    groupManager.listenForMessages(
+                        groupId = groupId,
+                        mySenderId = onionAddr,
+                        groupMessageViewModel = vm1,
+                        groupsViewModel = vm2,
+                        isGroupAnonymous = isAnonymous,
+                        groupCreatorId = creatorId,
+                        context = requireContext()   // needed to decode incoming Base64 to local file
+                    )
+                    
+                    // Initialize adapter AFTER metadata is synced (ensures anonymousAliases are available)
+                    setupGroupMessageAdapter(onionAddr, isAnonymous, creatorId, groupEntity?.anonymousAliases ?: "{}")
+                }
                 (requireActivity() as MainActivity).setAppChatUser(groupName)
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
@@ -587,11 +604,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             onionAddr,
                             name,
                             text,
-                            vm1
+                            vm1,
+                            context = requireContext()
                         ); binding.etMsg.setText("")
                     }
                 }
-                setListGroupMessageAdapter(onionAddr)
+                (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = groupId
+                vm2.resetUnread(groupId)
             }
 
             "message_request" -> {
@@ -624,12 +643,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private fun sendTextMessage(text: String, onionAddr: String, name: String) {
         val messageId = UUID.randomUUID().toString()
-        val timestamp = System.currentTimeMillis().toString()
+        val sentTimeMs = System.currentTimeMillis()
+        val timestamp = sentTimeMs.toString()
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
-            val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
+            val contactRepo = ContactRepository(db.contactDao())
             val isContact = contactRepo.getContact(contactOnion) != null
             val isRequest = !isContact
+            val disappearTimerMs = Prefs.getDisappearingTimerMs(requireContext())
+            var localExpiresAt = 0L
+            if (disappearTimerMs > 0L) {
+                localExpiresAt = sentTimeMs + disappearTimerMs
+            }
             
             db.messageDao().insert(
                 MessageEntity(
@@ -640,7 +665,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     isSent = true,
                     type = "TEXT",
                     uploadState = "pending",
-                    uploadProgress = 0
+                    uploadProgress = 0,
+                    expiresAt = localExpiresAt
                 )
             )
 
@@ -651,7 +677,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 senderOnion = onionAddr,
                 senderName = name,
                 timestamp = timestamp,
-                isRequest = isRequest
+                isRequest = isRequest,
+                disappearTtl = disappearTimerMs
             )
             WorkManager.getInstance(requireContext())
                 .enqueueUniqueWork(
@@ -975,36 +1002,140 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         )
         adapterMsg.messageDecryptor = { MessageEncryptionManager.decryptLocal(requireContext(), it) }
 
+        // ── Pagination state ─────────────────────────────────────────────────
+        // Tracks all messages currently displayed (recent + older batches prepended).
+        var displayedList = mutableListOf<MessageUiModel>()
+        var isLoadingOlder = false
+        var hasMoreOlder = true  // assume there may be older until a batch returns empty
+
+        val llm = object : LinearLayoutManager(requireContext()) {
+            override fun supportsPredictiveItemAnimations() = false
+        }.apply { stackFromEnd = false }
+
         recyclerview.apply {
-            viewLifecycleOwner.lifecycleScope.launch {
-                vm.messagesFlow.collect { list ->
-                    val uiModels = list.map { it.toUiModel(requireContext()) }
-                    adapterMsg.submitList(uiModels) {
-                        scrollToPosition(adapterMsg.itemCount - 1)
-                        val maxId = uiModels.maxOfOrNull { it.id } ?: 0L
-                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) sharedPrefs.edit()
-                            .putLong(lastSeenIdKey, maxId).apply()
+            layoutManager = llm
+            adapter = adapterMsg
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        // ── Collect the recent window (live-updates on new messages) ─────────
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                vm.recentMessagesFlow.collect { recent ->
+                    // Decrypt on IO so Main thread is never blocked
+                    val newModels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        recent.map { it.toUiModel(requireContext()) }
+                    }
+
+                    // Merge: keep any older pages that were prepended, replace the tail (recent window)
+                    val merged = if (displayedList.isEmpty()) {
+                        newModels.toMutableList()
+                    } else {
+                        // The recent window always covers the newest MSG_PAGE_SIZE messages.
+                        // Remove items already in the recent window from displayedList, then append the fresh window.
+                        val recentIds = newModels.map { it.id }.toSet()
+                        val olderOnly = displayedList.filter { it.id !in recentIds }.toMutableList()
+                        (olderOnly + newModels).toMutableList()
+                    }
+                    displayedList = merged
+
+                    adapterMsg.submitList(displayedList.toList()) {
+                        // Only auto-scroll to bottom if user is near bottom (new message) or first load
+                        val lastVisible = llm.findLastVisibleItemPosition()
+                        val total = adapterMsg.itemCount
+                        if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
+                            recyclerview.scrollToPosition(total - 1)
+                        }
+                        // Update last-seen bookmark
+                        val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
+                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
+                            sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
+                        }
                     }
                 }
             }
-            layoutManager = object : LinearLayoutManager(requireContext()) {
-                override fun supportsPredictiveItemAnimations() = false
-            }.apply { stackFromEnd = false }
-            adapter = adapterMsg; clipChildren = false; clipToPadding = false
         }
+
+        // ── Scroll-up listener: load older messages ──────────────────────────
+        recyclerview.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: RecyclerView, dx: Int, dy: Int) {
+                if (!hasMoreOlder || isLoadingOlder) return
+                // Trigger when top 4 items are visible
+                if (llm.findFirstVisibleItemPosition() <= 3 && displayedList.isNotEmpty()) {
+                    isLoadingOlder = true
+                    val oldestTime = displayedList.first().time.toLongOrNull() ?: return
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val olderEntities = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            vm.loadOlderMessages(oldestTime)
+                        }
+                        if (olderEntities.isEmpty()) {
+                            hasMoreOlder = false
+                            isLoadingOlder = false
+                            return@launch
+                        }
+                        val olderModels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            olderEntities.map { it.toUiModel(requireContext()) }
+                        }
+                        // Prepend older messages, preserving scroll position
+                        val firstVisiblePos = llm.findFirstVisibleItemPosition()
+                        val firstVisibleView = llm.findViewByPosition(firstVisiblePos)
+                        val topOffset = firstVisibleView?.top ?: 0
+
+                        displayedList = (olderModels + displayedList).toMutableList()
+                        adapterMsg.submitList(displayedList.toList()) {
+                            // Restore scroll so user doesn't jump to top
+                            llm.scrollToPositionWithOffset(
+                                firstVisiblePos + olderModels.size, topOffset
+                            )
+                            isLoadingOlder = false
+                        }
+                    }
+                }
+            }
+        })
     }
 
-    private fun setListGroupMessageAdapter(onionAddr: String) {
+    private fun setupGroupMessageAdapter(onionAddr: String, isAnonymous: Boolean, groupCreatorId: String, anonymousAliasesJson: String) {
         recyclerview = binding.rvMsg
         groupMessageAdapter = GroupMessagesAdapter(
             onClick = { msg ->
-                if (msg.type.uppercase(Locale.getDefault()) != "AUDIO") {
-                    val uriStr = msg.uri ?: msg.msg
-                    if (uriStr.isNotBlank()) startActivity(
-                        Intent(
-                            requireContext(),
-                            FullscreenMediaActivity::class.java
-                        ).apply { putExtra("uri", uriStr); putExtra("type", msg.type) })
+                val type = msg.type.uppercase(Locale.getDefault())
+                if (type != "AUDIO") {
+                    val raw = msg.uri ?: msg.msg
+                    if (raw.isNotBlank()) {
+                        // Resolve the URI: if it is a raw Base64 payload (not a file:// path),
+                        // decode it to a local file first so FullscreenMediaActivity can render it.
+                        lifecycleScope.launch {
+                            val resolvedUri: String? = when {
+                                raw.startsWith("file://") || raw.startsWith("/") -> raw
+                                raw.startsWith("http") -> raw
+                                else -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val ext = when (type) { "VIDEO" -> "mp4"; else -> "jpg" }
+                                    groupManager.decodeBase64ToFile(requireContext(), raw, ext)
+                                }
+                            }
+                            if (!resolvedUri.isNullOrBlank()) {
+                                val file = if (resolvedUri.startsWith("file://")) {
+                                    java.io.File(resolvedUri.removePrefix("file://"))
+                                } else null
+                                val finalUri = if (file != null && file.exists()) {
+                                    try {
+                                        androidx.core.content.FileProvider.getUriForFile(
+                                            requireContext(), "${requireContext().packageName}.provider", file
+                                        ).toString()
+                                    } catch (e: Exception) { resolvedUri }
+                                } else resolvedUri
+                                startActivity(
+                                    Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
+                                        putExtra("uri", finalUri)
+                                        putExtra("type", type)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             },
             onLongClick = { view, msg ->
@@ -1037,24 +1168,41 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     hideKeyboard(messageEdit); messageEdit.postDelayed({ showEmojiPicker() }, 150)
                 }
             },
-            myId = onionAddr, recentEmojis = recentEmojisList
+            myId = onionAddr, 
+            recentEmojis = recentEmojisList,
+            isAnonymous = isAnonymous,
+            groupCreatorId = groupCreatorId,
+            anonymousAliasesJson = anonymousAliasesJson
         )
-        groupMessageAdapter.messageDecryptor =
-            { encryptedText -> kotlinx.coroutines.delay((300L..700L).random()); encryptedText }
-        recyclerview.layoutManager = object : LinearLayoutManager(requireContext()) {
+        val groupLlm = object : LinearLayoutManager(requireContext()) {
             override fun supportsPredictiveItemAnimations() = false
         }.apply { stackFromEnd = false }
-        recyclerview.adapter = groupMessageAdapter; recyclerview.clipChildren =
-            false; recyclerview.clipToPadding = false
-        vm1.getMessagesForGroupChat(groupId) { liveData ->
-            liveData.observe(viewLifecycleOwner) { messages ->
-                groupMessageAdapter.submitList(messages) {
-                    recyclerview.scrollToPosition(
-                        groupMessageAdapter.itemCount - 1
-                    )
+        recyclerview.layoutManager = groupLlm
+        recyclerview.adapter = groupMessageAdapter
+        recyclerview.clipChildren = false
+        recyclerview.clipToPadding = false
+
+        // ── Collect group messages via Flow on IO, submit on Main ─────────────
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // GroupMessageEntity is plaintext — no crypto overhead, but still move DB
+                // collection off Main to avoid jank on large histories.
+                val repo = app.secure.kyber.roomdb.GroupMessageRepository(
+                    AppDb.get(requireContext()).groupsMessagesDao()
+                )
+                repo.observeFlow(groupId).collect { messages ->
+                    groupMessageAdapter.submitList(messages) {
+                        val lastVisible = groupLlm.findLastVisibleItemPosition()
+                        val total = groupMessageAdapter.itemCount
+                        if (total > 0 && (lastVisible >= total - 3 || total <= 30)) {
+                            recyclerview.scrollToPosition(total - 1)
+                        }
+                    }
                 }
             }
         }
+        // Reset unread count when user opens the group chat
+        vm2.resetUnread(groupId)
     }
 
     private fun hasAudioPermission() =
@@ -1117,15 +1265,23 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             "Voice Message (${formatDuration(getTotalDuration(requireContext(), fileUri))})"
         if (comingFrom == "group_chat_list") {
             lifecycleScope.launch {
+                // fileUri is already a local file:// path from AudioRecordingManager —
+                // copy to group_media_cache for a stable path that survives the temp dir
+                val localPath = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    groupManager.saveMediaToLocalCache(requireContext(), fileUri, "m4a")
+                } ?: fileUri  // fallback to original path if copy fails
+
                 groupManager.sendMessage(
-                    groupId,
-                    onionAddr,
-                    senderName,
-                    messageText,
-                    vm1,
-                    "AUDIO",
-                    fileUri,
-                    ampsJson
+                    groupId = groupId,
+                    senderId = onionAddr,
+                    senderName = senderName,
+                    messageText = messageText,
+                    groupMessagesViewModel = vm1,
+                    type = "AUDIO",
+                    uri = localPath,              // file:// path → Room 
+                    ampsJson = ampsJson,
+                    firebasePayload = null,       // Will be encoded async in GroupManager
+                    context = requireContext()
                 )
             }
         } else {
@@ -1250,17 +1406,24 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         super.onResume()
         try {
             val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
-            val targetOnion = if (comingFrom == "group_chat_list") groupId else contactOnion
-            myApp.activeChatOnion = targetOnion
+            val targetId = if (comingFrom == "group_chat_list") groupId else contactOnion
+            
+            if (comingFrom == "group_chat_list") {
+                myApp.activeGroupId = targetId
+                myApp.activeChatOnion = null
+            } else {
+                myApp.activeChatOnion = targetId
+                myApp.activeGroupId = null
+            }
             
             val clearIntent = android.content.Intent(requireContext(), app.secure.kyber.onionrouting.UnionService::class.java).apply {
                 action = "CLEAR_NOTIFICATIONS"
-                putExtra("sender_onion", targetOnion)
+                putExtra("sender_onion", targetId)
             }
             requireContext().startService(clearIntent)
             
             val notificationManager = requireContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            notificationManager.cancel(targetOnion.hashCode())
+            notificationManager.cancel(targetId.hashCode())
         } catch(e: Exception) {}
     }
 
@@ -1268,6 +1431,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         try {
             val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
             myApp.activeChatOnion = null
+            myApp.activeGroupId = null
         } catch(e: Exception) {}
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer(); if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer(); super.onPause()
     }
@@ -1275,7 +1439,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     override fun onDestroyView() {
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
         if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
-
+        (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = null
         super.onDestroyView()
     }
 
@@ -1368,7 +1532,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         caption!!,
                         vm1,
                         m.type,
-                        m.uri.toString()
+                        m.uri.toString(),
+                        null,
+                        null,
+                        requireContext()
                     )
                 }
             } else {

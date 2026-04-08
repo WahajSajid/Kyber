@@ -75,6 +75,7 @@ dependencies {
     implementation libs.androidx.work.runtime.ktx
     implementation libs.androidx.hilt.work
     implementation libs.androidx.media3.ui
+    implementation libs.androidx.lifecycle.service
     ksp libs.androidx.hilt.compiler
 
     testImplementation libs.junit
@@ -102,6 +103,7 @@ dependencies {
     implementation("io.coil-kt:coil:2.4.0")
 
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+    implementation("androidx.lifecycle:lifecycle-process:2.7.0")
     implementation("androidx.activity:activity-compose:1.8.2")
 
     // Compose UI

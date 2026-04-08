@@ -11,11 +11,6 @@ interface KyberApiService {
 
     // --- Authentication ---
 
-    @POST("api/v1/auth/register")
-    suspend fun register(
-        @Body request: RegisterRequest
-    ): Response<RegisterResponse>
-
     @POST("api/v1/auth/register-discovery")
     suspend fun registerDiscovery(
         @Body request: RegisterRequest

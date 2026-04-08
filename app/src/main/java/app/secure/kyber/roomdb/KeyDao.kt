@@ -1,6 +1,7 @@
 package app.secure.kyber.roomdb
 
 import androidx.room.*
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface KeyDao {
@@ -12,6 +13,14 @@ interface KeyDao {
 
     @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' LIMIT 1")
     suspend fun getActiveKey(): KeyEntity?
+
+    // ────────────────────────────────────────────────────────────────────
+    // NEW: Real-time observer for active key changes
+    // Emits whenever the active key is inserted, updated, or deleted
+    // Enables UI to reflect periodic rotations immediately, even in background
+    // ────────────────────────────────────────────────────────────────────
+    @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' LIMIT 1")
+    fun observeActiveKey(): Flow<KeyEntity?>
 
     @Query("SELECT * FROM user_keys WHERE status = 'OLD_RETENTION' ORDER BY activatedAt DESC")
     suspend fun getRetentionKeys(): List<KeyEntity>

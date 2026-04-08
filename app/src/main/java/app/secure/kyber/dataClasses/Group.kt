@@ -6,9 +6,12 @@ data class Group(
     val groupImage: String = "",
     val createdBy: String = "",
     val createdAt: Long = System.currentTimeMillis(),
-    val members: Map<String, Map<String, String>> = emptyMap(), // userId to true mapping
+    val members: Map<String, Map<String, String>> = emptyMap(),
     val lastMessage: String = "",
-    val lastMessageTime:  Long = 0,
+    val lastMessageTime: String = "0",
     val lastMessageSenderId: String = "",
     val newMessagesCount: Int = 0,
+    val anonymous: Boolean = false,
+    val anonymousAliases: Map<String, String> = emptyMap(),
+    val groupExpiresAt: Long = 0L,
 )

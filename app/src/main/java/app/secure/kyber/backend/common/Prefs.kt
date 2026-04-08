@@ -15,13 +15,20 @@ object Prefs {
     private const val KEY_SESSION_TOKEN = "session_token"
     private const val KEY_CIRCUIT_ID = "circuit_id"
     private const val KEY_NAME = "name"
+
+    private const val SHORT_ID = "short_id"
+
+    private const val NAME_HASH = "name_hash"
+
     private const val KEY_PASSWORD = "password"
 
     private const val KEY_LICENSE = "license"
     private const val KEY_RECENT_EMOJIS = "recent_emojis"
 
-    private const val DISAPPEARING_MESSAGES_STATUS = "Off"
-    private const val MUTE_NOTIFICATION_STATUS = "Always"
+    private const val KEY_DISAPPEARING_MESSAGES_STATUS = "disappearing_messages_status"
+    private const val KEY_MUTE_NOTIFICATION_STATUS = "mute_notification_status"
+    private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
+    private const val KEY_ENCRYPTION_TIMER = "encryption_timer"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -30,6 +37,22 @@ object Prefs {
     fun setOnionAddress(ctx: Context, value: String?) {
         prefs(ctx).edit().apply {
             if (value == null) remove(KEY_ONION_ADDRESS) else putString(KEY_ONION_ADDRESS, value)
+            apply()
+        }
+    }
+
+
+    fun setShortId(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(SHORT_ID) else putString(SHORT_ID, value)
+            apply()
+        }
+    }
+
+
+    fun setHashName(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(NAME_HASH) else putString(NAME_HASH, value)
             apply()
         }
     }
@@ -50,14 +73,28 @@ object Prefs {
 
     fun setDisappearingMessagesStatus(ctx: Context, value: String?){
         prefs(ctx).edit().apply{
-            if (value == null) remove(DISAPPEARING_MESSAGES_STATUS) else putString(DISAPPEARING_MESSAGES_STATUS, value)
+            if (value == null) remove(KEY_DISAPPEARING_MESSAGES_STATUS) else putString(KEY_DISAPPEARING_MESSAGES_STATUS, value)
             apply()
         }
     }
 
     fun setMuteNotificationStatus(ctx: Context, value: String?){
         prefs(ctx).edit().apply{
-            if (value == null) remove(MUTE_NOTIFICATION_STATUS) else putString(MUTE_NOTIFICATION_STATUS, value)
+            if (value == null) remove(KEY_MUTE_NOTIFICATION_STATUS) else putString(KEY_MUTE_NOTIFICATION_STATUS, value)
+            apply()
+        }
+    }
+
+    fun setAutoLockTimeout(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_AUTO_LOCK_TIMEOUT) else putString(KEY_AUTO_LOCK_TIMEOUT, value)
+            apply()
+        }
+    }
+
+    fun setEncryptionTimer(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_ENCRYPTION_TIMER) else putString(KEY_ENCRYPTION_TIMER, value)
             apply()
         }
     }
@@ -97,14 +134,50 @@ object Prefs {
 
     // Getters
     fun getOnionAddress(ctx: Context): String? = prefs(ctx).getString(KEY_ONION_ADDRESS, null)
+    fun getNameHash(ctx: Context): String? = prefs(ctx).getString(NAME_HASH, null)
+
+    fun getShortId(ctx: Context): String? = prefs(ctx).getString(SHORT_ID, null)
+
+
+
     fun getSessionToken(ctx: Context): String? = prefs(ctx).getString(KEY_SESSION_TOKEN, null)
     fun getCircuitId(ctx: Context): String? = prefs(ctx).getString(KEY_CIRCUIT_ID, null)
     fun getPublicKey(ctx: Context): String? = prefs(ctx).getString(KEY_PUBLIC_KEY, null)
     fun getName(ctx: Context): String? = prefs(ctx).getString(KEY_NAME, null)
     fun getPassword(ctx: Context): String? = prefs(ctx).getString(KEY_PASSWORD, null)
     fun getLicense(ctx: Context): String? = prefs(ctx).getString(KEY_LICENSE, null)
-    fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(DISAPPEARING_MESSAGES_STATUS, null)
-    fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(MUTE_NOTIFICATION_STATUS, null)
+    fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(KEY_DISAPPEARING_MESSAGES_STATUS, null)
+    fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(KEY_MUTE_NOTIFICATION_STATUS, null)
+    fun getAutoLockTimeout(ctx: Context): String? = prefs(ctx).getString(KEY_AUTO_LOCK_TIMEOUT, "Never")
+    fun getEncryptionTimer(ctx: Context): String? = prefs(ctx).getString(KEY_ENCRYPTION_TIMER, "24 Hours")
+
+    fun getDisappearingTimerMs(ctx: Context): Long {
+        return when (getDisappearingMessageStatus(ctx)) {
+            "24 Hours" -> 24L * 60 * 60 * 1000
+            "7 Days" -> 7L * 24 * 60 * 60 * 1000
+            "30 Days" -> 30L * 24 * 60 * 60 * 1000
+            "Always" -> 60L * 60 * 1000 // 1h — feature always on without the old 1ms instant-delete bug
+            else -> 0L
+        }
+    }
+
+    fun getAutoLockTimeoutMs(ctx: Context): Long {
+        return when (getAutoLockTimeout(ctx)) {
+            "1 Minute" -> 60L * 1000
+            "5 Minutes" -> 5L * 60 * 1000
+            "15 Minutes" -> 15L * 60 * 1000
+            else -> 0L // Never
+        }
+    }
+
+    fun getEncryptionTimerMs(ctx: Context): Long {
+        return when (getEncryptionTimer(ctx)) {
+            "24 Hours" -> 24L * 60 * 60 * 1000
+            "48 Hours" -> 48L * 60 * 60 * 1000
+            "7 Days" -> 7L * 24 * 60 * 60 * 1000
+            else -> 0L // Never
+        }
+    }
 
     fun getRecentEmojis(ctx: Context): List<String>? {
         val json = prefs(ctx).getString(KEY_RECENT_EMOJIS, null) ?: return null

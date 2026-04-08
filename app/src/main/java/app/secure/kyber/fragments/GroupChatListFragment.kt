@@ -9,11 +9,15 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.core.os.bundleOf
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import kotlinx.coroutines.launch
 import app.secure.kyber.GroupCreationBackend.LoadGroups
 import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
@@ -75,7 +79,7 @@ class GroupChatListFragment : Fragment() {
         val unionId = Prefs.getOnionAddress(requireContext()).toString()
 
         //Retrieve the groups from the database
-        LoadGroups.loadGroup(unionId, database, vm)
+        LoadGroups.loadGroup(requireContext(), unionId, database, vm)
 
 
         setListAdapter()
@@ -96,20 +100,20 @@ class GroupChatListFragment : Fragment() {
             )
             controller.navigate(R.id.action_groupChatListFragment_to_chatFragment, args)
         })
+        recyclerview.adapter = groupChatListAdapter
 
-        vm.getGroupList { groupsList ->
-            groupsList.observe(viewLifecycleOwner) { groups ->
-                Log.d("### Groups ###", groups.size.toString())
-                groupChatListAdapter.submitList(groups)
-                recyclerview.adapter = groupChatListAdapter
-                groupChatListAdapter.notifyDataSetChanged()
-
+        // Observe the reactive StateFlow — any change to newMessagesCount in Room
+        // (incremented when a new message arrives, reset when the chat is opened)
+        // will automatically flow here and update the badge without extra wiring.
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                vm.groupChatFlow.collect { groups ->
+                    Log.d("### Groups ###", groups.size.toString())
+                    groupChatListAdapter.submitList(groups)
+                }
             }
         }
-
-
-//        val emptyDataObserver = EmptyDataObserver(recyclerview, empty_data_parent)
-//        chatListAdapter.registerAdapterDataObserver(emptyDataObserver)
     }
+
 
 }

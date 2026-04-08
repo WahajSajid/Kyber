@@ -1,0 +1,25 @@
+
+<!-- drawable/overlay_bor.xml -->
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="226.67dp"
+    android:height="50dp"
+    android:viewportWidth="226.67"
+    android:viewportHeight="50"
+    >
+    <group>
+        <clip-path
+            android:pathData="M25 0H201.667C215.474 0 226.667 11.1929 226.667 25C226.667 38.8071 215.474 50 201.667 50H25C11.1929 50 0 38.8071 0 25C0 11.1929 11.1929 0 25 0Z"
+            />
+        <path
+            android:pathData="M0 0V50H226.667V0"
+            android:fillColor="#3300AA5B"
+            />
+        <path
+            android:pathData="M25 0H201.667C215.474 0 226.667 11.1929 226.667 25C226.667 38.8071 215.474 50 201.667 50H25C11.1929 50 0 38.8071 0 25C0 11.1929 11.1929 0 25 0Z"
+            android:strokeWidth="2"
+            android:strokeColor="#00AA5B"
+            />
+    </group>
+</vector>

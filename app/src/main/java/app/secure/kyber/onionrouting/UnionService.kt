@@ -20,6 +20,7 @@ import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.beans.ApiMessage
 import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
+import app.secure.kyber.backend.common.DisappearTime
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.media.MediaChunkManager
 import app.secure.kyber.media.MediaTransferNotifier
@@ -110,10 +111,20 @@ class UnionService : Service() {
     private fun startGlobalPolling() {
         pollingJob?.cancel()
         pollingJob = serviceScope.launch {
+            val myOnion = Prefs.getOnionAddress(applicationContext) ?: ""
+            if (myOnion.isNotEmpty()) {
+                app.secure.kyber.GroupCreationBackend.GlobalGroupSync.startGlobalSync(applicationContext, myOnion)
+            }
+            
             refreshCircuitOnStart()
             var pollCount = 0
             while (isActive && isServiceRunning) {
                 fetchGlobalMessages()
+                
+                if (pollCount % 20 == 0) {
+                    fetchContactPublicKeysGlobally()
+                }
+                
                 val delayMs = if (pollCount < 10) 1000L else 3000L
                 pollCount++
                 delay(delayMs)
@@ -149,6 +160,32 @@ class UnionService : Service() {
             }
         }
         return circuitId
+    }
+
+    private suspend fun fetchContactPublicKeysGlobally() {
+        try {
+            val allContacts = contactRepo.getAllOnce()
+            for (contact in allContacts) {
+                try {
+                    val resp = repository.getPublicKey(contact.onionAddress)
+                    if (resp.isSuccessful) {
+                        val freshKey = resp.body()?.publicKey
+                        if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                            contactRepo.saveContact(
+                                onionAddress = contact.onionAddress,
+                                name = contact.name,
+                                publicKey = freshKey
+                            )
+                            Log.d(TAG, "UnionService globally refreshed public key for contact ${contact.onionAddress}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "UnionService could not refresh key for ${contact.onionAddress}: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Global contact key polling error", e)
+        }
     }
 
     private suspend fun fetchGlobalMessages() {
@@ -290,11 +327,14 @@ class UnionService : Service() {
                 MessageEncryptionManager.encryptLocal(applicationContext, transport.uri).encryptedBlob
             else null
 
+            val sentMs = DisappearTime.parseMessageTimestampMs(transport.timestamp)
+            val localExpiresAt = DisappearTime.expiresAtFromSent(sentMs, transport.disappear_ttl)
+
             val entity = MessageEntity(
                 messageId = transport.messageId,
                 msg = if (isDecryptionSuccessful) MessageEncryptionManager.encryptLocal(applicationContext, decryptedPayloadText).encryptedBlob else transport.msg,
                 senderOnion = transport.senderOnion,
-                time = System.currentTimeMillis().toString(),
+                time = sentMs.toString(),
                 isSent = false,
                 type = transport.type ?: "TEXT",
                 uri = encryptedUri,
@@ -304,7 +344,8 @@ class UnionService : Service() {
                 reaction = transport.reaction ?: "",
                 isRequest = transport.isRequest,
                 keyFingerprint = transport.recipientKeyFingerprint, // Targeted my key
-                iv = transport.iv
+                iv = transport.iv,
+                expiresAt = localExpiresAt
             )
             messageDao.insert(entity)
 
@@ -316,8 +357,7 @@ class UnionService : Service() {
                 }
             } else {
                 val displayMsg = generateDisplayMessage(decryptedPayloadText, transport.type ?: "TEXT")
-                val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown User"
-                showPushNotification(transport.senderOnion, name, displayMsg)
+                showPushNotification(transport.senderOnion, "contact", displayMsg)
             }
 
         } else {
@@ -343,7 +383,7 @@ class UnionService : Service() {
                             "Reacted $actualEmoji to: \"$preview\""
                         }
                     }
-                    showPushNotification(transport.senderOnion, senderName, notificationMsg)
+                    showPushNotification(transport.senderOnion, "reaction", "Someone reacted to your message")
                 }
             }
         }
@@ -428,9 +468,7 @@ class UnionService : Service() {
         try {
             messageDao.insert(entity)
             val displayMsg = generateDisplayMessage(msgText, msgType)
-            val contact = contactRepo.getContact(senderOnion)
-            val name = contact?.name ?: "Unknown User"
-            showPushNotification(senderOnion, name, displayMsg)
+            showPushNotification(senderOnion, "legacy", displayMsg)
         } catch (e: Exception) {}
     }
 
@@ -475,15 +513,15 @@ class UnionService : Service() {
         messageDao.insert(entity)
         val contact = contactRepo.getContact(message.from)
         val name = contact?.name ?: "Unknown User"
-        showPushNotification(message.from, name, decodedPayload)
+        showPushNotification(message.from, name, generateDisplayMessage(decodedPayload, "TEXT"))
     }
 
     private fun generateDisplayMessage(text: String, type: String): String {
-        return when (type) {
-            "IMAGE" -> "📷 Photo"
-            "VIDEO" -> "🎥 Video"
-            "AUDIO" -> "🎵 Voice Message"
-            else -> if (text.startsWith("Voice Message")) "🎵 Voice Message" else text
+        return when (type.uppercase()) {
+            "IMAGE" -> "Photo"
+            "VIDEO" -> "Video"
+            "AUDIO" -> "Voice message"
+            else -> "Text message"
         }
     }
 
@@ -505,8 +543,11 @@ class UnionService : Service() {
             this, 0, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val secureTitle = "You have a new message"
+        val secureBody = if (unreadList.size > 1) "${unreadList.size} new messages" else messageText
+
         val inboxStyle = NotificationCompat.InboxStyle()
-            .setBigContentTitle(title)
+            .setBigContentTitle(secureTitle)
 
         unreadList.takeLast(6).forEach { msg ->
             inboxStyle.addLine(msg)
@@ -518,8 +559,8 @@ class UnionService : Service() {
         }
 
         val notification = NotificationCompat.Builder(this, MSG_CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(if (unreadList.size > 1) "${unreadList.size} new messages" else messageText)
+            .setContentTitle(secureTitle)
+            .setContentText(secureBody)
             .setStyle(inboxStyle)
             .setSmallIcon(R.drawable.notification)
             .setContentIntent(pendingIntent)
@@ -736,11 +777,11 @@ class UnionService : Service() {
                 if (isAccepted) {
                     val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
                     val displayMsg = when (chunk.mimeType) {
-                        "AUDIO" -> "🎵 Voice Message"
-                        "VIDEO" -> "🎥 Video"
-                        else -> "📷 Photo"
+                        "AUDIO" -> "Voice message"
+                        "VIDEO" -> "Video"
+                        else -> "Photo"
                     }
-                    showPushNotification(transport.senderOnion, name, displayMsg)
+                    showPushNotification(transport.senderOnion, "media", displayMsg)
                 } else {
                     val msgCount = messageDao.getBySender(transport.senderOnion).size
                     if (msgCount == 1) {

@@ -29,11 +29,12 @@ class TextUploadWorker(
         const val KEY_SENDER_NAME = "sender_name"
         const val KEY_TIMESTAMP = "timestamp"
         const val KEY_IS_REQUEST = "is_request"
+        const val KEY_DISAPPEAR_TTL = "disappear_ttl"
 
         fun buildRequest(
             messageId: String, text: String, contactOnion: String,
             senderOnion: String, senderName: String, timestamp: String,
-            isRequest: Boolean
+            isRequest: Boolean, disappearTtl: Long = 0L
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
@@ -42,7 +43,8 @@ class TextUploadWorker(
                 KEY_SENDER_ONION to senderOnion,
                 KEY_SENDER_NAME to senderName,
                 KEY_TIMESTAMP to timestamp,
-                KEY_IS_REQUEST to isRequest
+                KEY_IS_REQUEST to isRequest,
+                KEY_DISAPPEAR_TTL to disappearTtl
             )
 
             val constraints = Constraints.Builder()
@@ -71,6 +73,7 @@ class TextUploadWorker(
         val senderName = inputData.getString(KEY_SENDER_NAME) ?: return@withContext Result.failure()
         val timestamp = inputData.getString(KEY_TIMESTAMP) ?: return@withContext Result.failure()
         val isRequest = inputData.getBoolean(KEY_IS_REQUEST, false)
+        val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
 
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
@@ -92,78 +95,84 @@ class TextUploadWorker(
 
         try {
             // 1. Get recipient public key
-            var contact = contactDao.get(contactOnion)
-            var recipientPublicKey = contact?.publicKey
-
-            if (recipientPublicKey == null) {
-                // Fetch from backend if missing
+                // Fetch from backend
                 val resp = repository.getPublicKey(contactOnion)
                 if (resp.isSuccessful && resp.body() != null) {
-                    recipientPublicKey = resp.body()!!.publicKey
+                   val recipientPublicKey = resp.body()!!.publicKey
+
+                    // 2. Encrypt the message
+                    val encryptionResult = MessageEncryptionManager.encryptMessage(
+                        context, recipientPublicKey, text
+                    )
+
+                    // 3. Update local message with fingerprint
+                    val localMsg = messageDao.getMessageByMessageId(messageId)
+                    localMsg?.let {
+                        val updated = it.copy(keyFingerprint = encryptionResult.senderKeyFingerprint)
+                        messageDao.update(updated)
+                    }
+
+
+                    val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+                    val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+
+
+
+                    val transport = PrivateMessageTransportDto(
+                        messageId = messageId,
+                        msg = encryptionResult.encryptedPayload,
+                        senderOnion = senderOnion,
+                        senderName = senderName,
+                        timestamp = timestamp,
+                        isRequest = isRequest,
+                        iv = encryptionResult.iv,
+                        senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
+                        recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
+                        senderPublicKey = encryptionResult.senderPublicKeyBase64,
+                        ampsJson = localMsg?.ampsJson ?: "",
+                        disappear_ttl = disappearTtl
+                    )
+
+
+                    val jsonPayload = transportAdapter.toJson(transport)
+                    val base64Payload = Base64.encodeToString(jsonPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+
+                    var circuitId = Prefs.getCircuitId(context) ?: ""
+                    if (circuitId.isEmpty()) {
+                        val r = repository.createCircuit()
+                        if (r.isSuccessful) {
+                            circuitId = r.body()?.circuitId ?: ""
+                            Prefs.setCircuitId(context, circuitId)
+                        }
+                    }
+
+
+                    if (circuitId.isNotEmpty()) {
+                        var response = repository.sendMessage(contactOnion, base64Payload, circuitId)
+                        if (!response.isSuccessful && (response.code() == 404 || response.code() == 400)) {
+                            val retry = repository.createCircuit()
+                            if (retry.isSuccessful) {
+                                circuitId = retry.body()?.circuitId ?: ""
+                                Prefs.setCircuitId(context, circuitId)
+                                response = repository.sendMessage(contactOnion, base64Payload, circuitId)
+                            }
+                        }
+
+                        if (response.isSuccessful) {
+                            // Sent successfully
+                            messageDao.setUploadDone(messageId, "done", "")
+                            return@withContext Result.success()
+                        }
+                    }
+
+
+
                 } else {
                     Log.e(TAG, "Could not fetch public key for $contactOnion")
                     return@withContext Result.retry()
                 }
-            }
 
-            // 2. Encrypt the message
-            val encryptionResult = MessageEncryptionManager.encryptMessage(
-                context, recipientPublicKey, text
-            )
 
-            // 3. Update local message with fingerprint
-            val localMsg = messageDao.getMessageByMessageId(messageId)
-            localMsg?.let {
-                val updated = it.copy(keyFingerprint = encryptionResult.senderKeyFingerprint)
-                messageDao.update(updated)
-            }
-
-            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
-
-            val transport = PrivateMessageTransportDto(
-                messageId = messageId, 
-                msg = encryptionResult.encryptedPayload,
-                senderOnion = senderOnion, 
-                senderName = senderName,
-                timestamp = timestamp, 
-                isRequest = isRequest,
-                iv = encryptionResult.iv,
-                senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
-                recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
-                senderPublicKey = encryptionResult.senderPublicKeyBase64
-            )
-
-            val jsonPayload = transportAdapter.toJson(transport)
-            val base64Payload = Base64.encodeToString(jsonPayload.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-
-            var circuitId = Prefs.getCircuitId(context) ?: ""
-            if (circuitId.isEmpty()) {
-                val r = repository.createCircuit()
-                if (r.isSuccessful) {
-                    circuitId = r.body()?.circuitId ?: ""
-                    Prefs.setCircuitId(context, circuitId)
-                }
-            }
-
-            if (circuitId.isNotEmpty()) {
-                var response = repository.sendMessage(contactOnion, base64Payload, circuitId)
-                if (!response.isSuccessful && (response.code() == 404 || response.code() == 400)) {
-                    val retry = repository.createCircuit()
-                    if (retry.isSuccessful) {
-                        circuitId = retry.body()?.circuitId ?: ""
-                        Prefs.setCircuitId(context, circuitId)
-                        response = repository.sendMessage(contactOnion, base64Payload, circuitId)
-                    }
-                }
-
-                if (response.isSuccessful) {
-                    // Sent successfully
-                    messageDao.setUploadDone(messageId, "done", "")
-                    return@withContext Result.success()
-                }
-            }
-            
             // Check if we reached 24 hour timeout
             val currentMillis = System.currentTimeMillis()
             val startMillis = timestamp.toLongOrNull() ?: currentMillis

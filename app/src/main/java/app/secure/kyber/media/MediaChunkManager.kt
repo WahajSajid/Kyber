@@ -10,7 +10,7 @@ import java.io.RandomAccessFile
 object MediaChunkManager {
 
     private const val TAG = "MediaChunkManager"
-    const val CHUNK_SIZE_BYTES = 32 * 1024 // 64 KB raw → ~88 KB per message payload
+    const val CHUNK_SIZE_BYTES = 128 * 1024 // 128 KB raw → ~175 KB per message payload
 
     fun buildChunks(
         context: Context,
@@ -142,7 +142,7 @@ object MediaChunkManager {
     private fun getChunkDir(context: Context, mediaId: String): File =
         File(context.cacheDir, "chunks_$mediaId")
 
-    private fun resolveFile(context: Context, path: String): File? {
+    fun resolveFile(context: Context, path: String): File? {
         val cleaned = path
             .removePrefix("file://")
             .removePrefix("content://")

@@ -17,6 +17,7 @@ class MediaPreviewActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_ITEMS = "extra_items"
         const val EXTRA_RESULT_ITEMS = "extra_result_items"
+
     }
 
     private lateinit var viewPager: ViewPager2

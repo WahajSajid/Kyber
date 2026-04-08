@@ -50,6 +50,9 @@ interface MessageDao {
     @Query("UPDATE messages SET uploadState = :state, localFilePath = :path, uploadProgress = 100 WHERE messageId = :messageId")
     suspend fun setUploadDone(messageId: String, state: String, path: String?)
 
+    @Query("UPDATE messages SET localFilePath = :path WHERE messageId = :messageId")
+    suspend fun setLocalFilePath(messageId: String, path: String)
+
     @Query("UPDATE messages SET downloadState = :state, localFilePath = :path, downloadProgress = 100 WHERE messageId = :messageId")
     suspend fun setDownloadDone(messageId: String, state: String, path: String?)
 
@@ -58,6 +61,12 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE remoteMediaId = :mediaId AND isSent = 0 LIMIT 1")
     suspend fun getByRemoteMediaId(mediaId: String): MessageEntity?
+
+    @Query("SELECT * FROM messages WHERE expiresAt > 0 AND expiresAt < :currentTimeMillis")
+    suspend fun getExpiredMessages(currentTimeMillis: Long): List<MessageEntity>
+
+    @Query("DELETE FROM messages WHERE expiresAt > 0 AND expiresAt < :currentTimeMillis")
+    suspend fun deleteExpiredMessages(currentTimeMillis: Long)
 
     @Query("SELECT * FROM messages WHERE messageId = :messageId LIMIT 1")
     suspend fun getByMessageId(messageId: String): MessageEntity?
@@ -152,4 +161,31 @@ interface MessageDao {
         ORDER BY CAST(lr.time AS INTEGER) DESC
     """)
     fun observeIncomingRequests(): kotlinx.coroutines.flow.Flow<List<ChatModel>>
+
+    /**
+     * Paginated query: returns the [limit] most-recent messages for a conversation,
+     * in ascending order (oldest first within the batch so RecyclerView shows newest at bottom).
+     * Used for the initial render — shows messages quickly without decrypting the full history.
+     */
+    @Query("""
+        SELECT * FROM messages
+        WHERE senderOnion = :senderOnion
+        ORDER BY CAST(time AS INTEGER) DESC
+        LIMIT :limit
+    """)
+    fun observeRecent(senderOnion: String, limit: Int): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
+
+    /**
+     * One-shot fetch of messages older than [beforeTime], newest-first, page-limited.
+     * Caller reverses the results so they can be prepended to the top of the list.
+     */
+    @Query("""
+        SELECT * FROM messages
+        WHERE senderOnion = :senderOnion
+          AND CAST(time AS INTEGER) < :beforeTime
+        ORDER BY CAST(time AS INTEGER) DESC
+        LIMIT :limit
+    """)
+    suspend fun getOlderMessages(senderOnion: String, beforeTime: Long, limit: Int): List<MessageEntity>
 }
+

@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GroupsEntity::class,
         KeyEntity::class
     ],
-    version = 17,
+    version = 23,
     exportSchema = false
 )
 abstract class AppDb : RoomDatabase() {
@@ -40,7 +40,8 @@ abstract class AppDb : RoomDatabase() {
                         MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5,
                         MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
                         MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
-                        MIGRATION_15_16, MIGRATION_16_17
+                        MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19,
+                        MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23
                     )
                     .build()
                     .also { INSTANCE = it }
@@ -270,6 +271,50 @@ abstract class AppDb : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE `user_keys` ADD COLUMN `privateKeyEncrypted` TEXT NOT NULL DEFAULT ''")
                 database.execSQL("ALTER TABLE `messages` ADD COLUMN `iv` TEXT")
+            }
+        }
+
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `groups` ADD COLUMN `isAnonymous` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `uploadState` TEXT NOT NULL DEFAULT 'done'")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `downloadState` TEXT NOT NULL DEFAULT 'done'")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `uploadProgress` INTEGER NOT NULL DEFAULT 100")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `downloadProgress` INTEGER NOT NULL DEFAULT 100")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `localFilePath` TEXT")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `remoteMediaId` TEXT")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `mediaDurationMs` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `mediaSizeBytes` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `messages` ADD COLUMN `expiresAt` INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `expiresAt` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `groups` ADD COLUMN `groupExpiresAt` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `group_messages` ADD COLUMN `thumbnailPath` TEXT")
+            }
+        }
+
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `groups` ADD COLUMN `anonymousAliases` TEXT NOT NULL DEFAULT '{}'")
             }
         }
 

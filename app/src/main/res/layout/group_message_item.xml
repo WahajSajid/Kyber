@@ -88,6 +88,34 @@
                 android:src="@drawable/pause_icon_1"
                 android:visibility="gone"
                 app:tint="#FFFFFF" />
+
+            <FrameLayout
+                android:id="@+id/flRcvProgress"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#88000000"
+                android:visibility="gone">
+
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:id="@+id/progressRcv"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:indeterminate="true"
+                    app:indicatorColor="#FFFFFF"
+                    app:trackColor="#40FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvDownloadProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="32dp"
+                    android:text="0%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </FrameLayout>
         </FrameLayout>
 
         <LinearLayout
@@ -489,6 +517,34 @@
                 android:src="@android:drawable/ic_media_play"
                 android:visibility="gone"
                 app:tint="#FFFFFF" />
+
+            <FrameLayout
+                android:id="@+id/flSentProgress"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#88000000"
+                android:visibility="gone">
+
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:id="@+id/progressSent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:indeterminate="true"
+                    app:indicatorColor="#FFFFFF"
+                    app:trackColor="#40FFFFFF" />
+
+                <TextView
+                    android:id="@+id/tvUploadProgress"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:layout_marginTop="32dp"
+                    android:text="0%"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </FrameLayout>
         </FrameLayout>
 
         <LinearLayout

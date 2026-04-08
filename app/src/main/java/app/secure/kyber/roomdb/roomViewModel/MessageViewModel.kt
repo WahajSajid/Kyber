@@ -5,13 +5,26 @@ import androidx.lifecycle.viewModelScope
 import app.secure.kyber.roomdb.MessageEntity
 import app.secure.kyber.roomdb.MessageRepository
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** Page size: initial visible batch + each "load older" batch. */
+const val MSG_PAGE_SIZE = 30
+
 class MessagesViewModel(private val repo: MessageRepository, private val onionAddress: String) : ViewModel() {
 
-    /** Messages for a specific private chat (used in ChatFragment). */
+    /** Full message stream — kept for backwards-compat (SyncWorker, tests, etc.). */
     val messagesFlow = repo.observeAll(onionAddress)
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Paginated stream: emits only the [MSG_PAGE_SIZE] most-recent messages,
+     * sorted ascending (oldest-first in batch) so RecyclerView renders bottom-up.
+     * Real-time new messages still appear immediately because Room re-emits on insert.
+     */
+    val recentMessagesFlow = repo.observeRecent(onionAddress, MSG_PAGE_SIZE)
+        .map { list -> list.reversed() }   // DB returns DESC; we want ASC for display
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     /** Last message per conversation — for the normal accepted chat list. */
@@ -20,15 +33,16 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
 
     /**
      * Incoming pending message requests.
-     * Conversations where:
-     *   - all messages are inbound (isSent = 0),
-     *   - sender is not in the contacts table, AND
-     *   - at least one message carries isRequest = 1.
-     *
-     * Used by MessageRequestsFragment.
      */
     val incomingRequestsFlow = repo.observeIncomingRequests()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    /**
+     * Fetches one page of messages older than [beforeTime] (exclusive).
+     * Returns them sorted ascending so they can be prepended to current list.
+     */
+    suspend fun loadOlderMessages(beforeTime: Long): List<MessageEntity> =
+        repo.getOlderMessages(onionAddress, beforeTime, MSG_PAGE_SIZE).reversed()
 
     fun saveMessage(
         messageId: String,
@@ -62,7 +76,6 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
 
     /**
      * Bulk-delete all messages from/to a given onion address.
-     * Used by rejectRequest() to remove an entire pending conversation in one query.
      */
     fun deleteAllBySender(senderOnion: String) {
         viewModelScope.launch {
@@ -71,4 +84,4 @@ class MessagesViewModel(private val repo: MessageRepository, private val onionAd
     }
 
     suspend fun getMessageByMessageId(messageId: String) = repo.getMessageByMessageId(messageId)
-}
+}

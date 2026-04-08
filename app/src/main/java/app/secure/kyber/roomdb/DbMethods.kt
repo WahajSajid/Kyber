@@ -55,6 +55,19 @@ class MessageRepository(private val dao: MessageDao) {
     fun observeAll(senderOnion: String): Flow<List<MessageEntity>> =
         dao.observeAll(senderOnion)
 
+    /**
+     * Observes only the [limit] most-recent messages (DESC from DB, caller reverses to ASC).
+     * Emits on every insert/update so real-time messages still appear instantly.
+     */
+    fun observeRecent(senderOnion: String, limit: Int): Flow<List<MessageEntity>> =
+        dao.observeRecent(senderOnion, limit)
+
+    /**
+     * One-shot load of messages older than [beforeTime], newest-first, page-limited.
+     */
+    suspend fun getOlderMessages(senderOnion: String, beforeTime: Long, limit: Int): List<MessageEntity> =
+        dao.getOlderMessages(senderOnion, beforeTime, limit)
+
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
 
@@ -115,6 +128,12 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
     fun observeAll(groupId: String): Flow<MutableList<GroupMessageEntity>> =
         dao.observeAllGroupMessages(groupId = groupId)
 
+    /**
+     * Observes all group messages as a Flow (for paginated Fragment use).
+     */
+    fun observeFlow(groupId: String): Flow<List<GroupMessageEntity>> =
+        dao.observeAllGroupMessages(groupId = groupId)
+
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()
 }
@@ -164,4 +183,8 @@ class GroupRepository(private val dao: GroupDao) {
     suspend fun getNoOfMembers(groupId: String): Int = dao.getNoOfMembers(groupId)
 
     suspend fun getCreationDate(groupId: String): Long = dao.getCreationDate(groupId)
+
+    suspend fun incrementUnread(groupId: String) = dao.incrementUnread(groupId)
+
+    suspend fun resetUnread(groupId: String) = dao.resetUnread(groupId)
 }

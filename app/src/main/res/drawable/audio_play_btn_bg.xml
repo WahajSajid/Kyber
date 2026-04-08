@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- drawable/buttons.xml -->
-<vector
-xmlns:android="http://schemas.android.com/apk/res/android"
-xmlns:aapt="http://schemas.android.com/aapt"
-android:width="40dp"
-android:height="40dp"
-android:viewportWidth="40"
-android:viewportHeight="40"
-    >
-<group>
-    <clip-path
-        android:pathData="M20 0C31.0457 0 40 8.95431 40 20C40 31.0457 31.0457 40 20 40C8.95431 40 0 31.0457 0 20C0 8.95431 8.95431 0 20 0Z"
-        />
-    <path
-        android:pathData="M0 0V40H40V0"
-        android:fillColor="#1A8BCE"
-        />
-</group>
-</vector>
+    <!-- Gradient border ring -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:startColor="#0047AF"
+                android:centerColor="#486284"
+                android:endColor="#3362AB"
+                android:angle="0"
+                android:type="linear" />
+        </shape>
+    </item>
+
+    <!-- Inner fill circle (creates the border effect) -->
+    <item
+        android:top="2dp"
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp">
+        <shape android:shape="oval">
+            <solid android:color="#C0E7FF" />
+        </shape>
+    </item>
+
+</layer-list>

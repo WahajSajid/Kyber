@@ -13,10 +13,10 @@ import org.json.JSONObject
 object QrCodeGenerator {
 
     @SuppressLint("UseKtx")
-    fun generateQrCode(onionAddress: String, name: String, width: Int, height: Int): Bitmap? {
+    fun generateQrCode(shortId: String, name: String, width: Int, height: Int): Bitmap? {
         // Pack both values into a JSON string so scanners can parse reliably
         val payload = JSONObject().apply {
-            put("onionAddress", onionAddress)
+            put("short_id", shortId)
             put("name", name)
         }.toString()
 

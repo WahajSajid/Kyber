@@ -15,5 +15,9 @@ data class GroupsEntity(
     val chatTime: String = "",
     val createdBy: String = "",
     val createdAt: Long = 0,
-    val noOfMembers: Int = 0
+    val noOfMembers: Int = 0,
+    val isAnonymous: Boolean = false,   // new: persisted from Firebase on group create/load
+    val groupExpiresAt: Long = 0L,
+    val anonymousAliases: String = "{}",  // JSON map: sanitized member ID -> alias (e.g., "user,example,com" -> "BK1")
 )
+

@@ -21,5 +21,8 @@ data class PrivateMessageTransportDto(
     @Json(name = "iv") val iv: String? = null,
     @Json(name = "senderKeyFingerprint") val senderKeyFingerprint: String? = null,
     @Json(name = "recipientKeyFingerprint") val recipientKeyFingerprint: String? = null,
-    @Json(name = "senderPublicKey") val senderPublicKey: String? = null
+    @Json(name = "senderPublicKey") val senderPublicKey: String? = null,
+    
+    // Settings metadata
+    @Json(name = "disappear_ttl") val disappear_ttl: Long? = 0L
 )

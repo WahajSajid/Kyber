@@ -32,6 +32,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 import kotlin.random.Random
 
@@ -42,7 +43,10 @@ class GroupMessagesAdapter(
     private val onMoreEmojisClicked: (GroupMessageEntity) -> Unit = {},
     private val myId: String,
     private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮"),
-    private val recyclerView: RecyclerView? = null
+    private val recyclerView: RecyclerView? = null,
+    private val isAnonymous: Boolean = false,
+    private val groupCreatorId: String = "",
+    private val anonymousAliasesJson: String = "{}"
 ) : ListAdapter<GroupMessageEntity, GroupMessagesAdapter.VH>(DIFF) {
 
     companion object {
@@ -141,6 +145,14 @@ class GroupMessagesAdapter(
         val flMediaRcv: FrameLayout = view.findViewById(R.id.flMediaRcv)
         val ivMediaRcv: ShapeableImageView = view.findViewById(R.id.ivMediaRcv)
         val ivPlayRcv: ImageView = view.findViewById(R.id.ivPlayRcv)
+        
+        val flRcvProgress: FrameLayout? = view.findViewById(R.id.flRcvProgress)
+        val progressRcv: com.google.android.material.progressindicator.CircularProgressIndicator? = view.findViewById(R.id.progressRcv)
+        val tvDownloadProgress: TextView? = view.findViewById(R.id.tvDownloadProgress)
+        
+        val flSentProgress: FrameLayout? = view.findViewById(R.id.flSentProgress)
+        val progressSent: com.google.android.material.progressindicator.CircularProgressIndicator? = view.findViewById(R.id.progressSent)
+        val tvUploadProgress: TextView? = view.findViewById(R.id.tvUploadProgress)
 
         val sentAudio: LinearLayout = view.findViewById(R.id.sentAudioContainer)
         val ivSentPlayPause: FrameLayout = view.findViewById(R.id.ivSentPlayPause)
@@ -234,7 +246,15 @@ class GroupMessagesAdapter(
         when { isAudio -> bindAudio(holder, item, isSent); isMedia -> bindMedia(holder, item, isSent, type); else -> bindText(holder, item, isSent) }
 
         if (isSent) holder.tvSendTime.text = convertDatetime(item.time)
-        else { holder.senderName.text = item.senderName; holder.senderId.text = item.senderOnion; holder.tvRcvTime.text = convertDatetime(item.time) }
+        else {
+            // ─────────────────────────────────────────────────────────────
+            // ANONYMOUS GROUP HANDLING
+            // ─────────────────────────────────────────────────────────────
+            val displayName = getDisplayNameForSender(item.senderOnion, item.senderName)
+            holder.senderName.text = displayName
+            holder.senderId.text = item.senderOnion
+            holder.tvRcvTime.text = convertDatetime(item.time)
+        }
 
         val rv = holder.reaction(isSent)
         if (item.reaction.isNotEmpty()) { rv.text = item.reaction; rv.visibility = View.VISIBLE } else rv.visibility = View.GONE
@@ -304,7 +324,14 @@ class GroupMessagesAdapter(
         }
 
         if (animatingIds.contains(msgId)) {
-            h.tvDecryptingRcv?.visibility = View.VISIBLE; return
+            h.tvDecryptingRcv?.visibility = View.GONE
+            h.tvMsgRcv.cancelAndShowFinal()
+            h.tvMsgRcv.text = item.msg
+            decryptedTextCache[msgId] = item.msg
+            animatingIds.remove(msgId)
+            decryptJobs[msgId]?.cancel()
+            decryptJobs.remove(msgId)
+            return
         }
 
         // ── Brand new message — strict 2-phase animation ─────────────────────
@@ -320,7 +347,10 @@ class GroupMessagesAdapter(
         decryptJobs[msgId]?.cancel()
         decryptJobs[msgId] = adapterScope.launch {
             try {
-                val decrypted = withContext(Dispatchers.IO) { messageDecryptor(item.msg) }
+                // We use messageDecryptor for the pure visual delay effect if needed,
+                // but item.msg is already the fully decrypted message locally.
+                delay(500)
+                val decrypted = item.msg
                 decryptedTextCache[msgId] = decrypted
                 withContext(Dispatchers.Main) {
                     val liveVH = findVHForMessage(msgId) ?: run { animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext }
@@ -364,17 +394,160 @@ class GroupMessagesAdapter(
         h.tvSentMsg.isVisible = false; h.tvMsgRcv.isVisible = false
         h.tvMsgRcv.cancelAndShowFinal()
         h.rlSendMsg.setBackgroundResource(R.drawable.sent_msg_bg)
-        val uriStr = item.uri ?: item.msg; val uri = try { uriStr.toUri() } catch (_: Exception) { null }
+
+        val ctx = h.itemView.context
+
+        // ── Load image/video thumbnail using thumbnail-priority strategy ──────
+        // For VIDEO: Glide cannot render frames from .mp4 via normal load().
+        // Use thumbnail-priority → frame-extraction fallback → placeholder.
+        // For IMAGE: decode the uri (may be Base64 payload from Firebase) to a local file.
+        fun loadGroupMediaSource(target: android.widget.ImageView, isThumbnail: Boolean = false) {
+            val raw = item.uri ?: ""
+            val localPath = item.localFilePath
+            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
+
+            // Priority 1: pre-generated thumbnail file  — show this during download too
+            val thumbFile = item.thumbnailPath?.let { java.io.File(it) }
+            if (thumbFile != null && thumbFile.exists()) {
+                Glide.with(ctx)
+                    .load(thumbFile)
+                    .apply(
+                        com.bumptech.glide.request.RequestOptions.centerCropTransform()
+                            .placeholder(if (type == "VIDEO") R.drawable.video_playback_bg else R.drawable.photos)
+                            .error(if (type == "VIDEO") R.drawable.video_playback_bg else R.drawable.photos)
+                    )
+                    .into(target)
+                return
+            }
+
+            // While downloading and no thumbnail: show generic placeholder, don't attempt to load partial file
+            if (isDownloading) {
+                Glide.with(ctx)
+                    .load(if (type == "VIDEO") R.drawable.video_playback_bg else R.drawable.photos)
+                    .apply(com.bumptech.glide.request.RequestOptions.centerCropTransform())
+                    .into(target)
+                return
+            }
+
+            val sourceToLoad: Any = when {
+                // Priority 2: high-res local file
+                !localPath.isNullOrBlank() && localPath.startsWith("content://") -> localPath
+                !localPath.isNullOrBlank() && java.io.File(localPath.removePrefix("file://")).exists() -> java.io.File(localPath.removePrefix("file://"))
+
+                // Priority 3: raw uri fallback if valid path
+                !raw.isNullOrBlank() && raw.startsWith("content://") -> raw
+                !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) && java.io.File(raw.removePrefix("file://")).exists() -> java.io.File(raw.removePrefix("file://"))
+
+                // Priority 4: Base64 payload (legacy)
+                !raw.isNullOrBlank() && !raw.startsWith("http") -> {
+                    val ext = if (type == "VIDEO") "mp4" else "jpg"
+                    app.secure.kyber.GroupCreationBackend.GroupManager().decodeBase64ToFile(ctx, raw, ext)
+                        ?.let { java.io.File(it.removePrefix("file://")) } ?: R.drawable.photos
+                }
+                else -> if (type == "VIDEO") R.drawable.video_playback_bg else R.drawable.photos
+            }
+
+            if (type == "VIDEO") {
+                Glide.with(ctx)
+                    .asBitmap()
+                    .load(sourceToLoad)
+                    .apply(
+                        com.bumptech.glide.request.RequestOptions()
+                            .frame(0L)   // first available frame — works for all clip lengths
+                            .centerCrop()
+                            .placeholder(R.drawable.video_playback_bg)
+                            .error(R.drawable.video_playback_bg)
+                    )
+                    .into(target)
+            } else {
+                Glide.with(ctx)
+                    .load(sourceToLoad)
+                    .apply(
+                        com.bumptech.glide.request.RequestOptions.centerCropTransform()
+                            .placeholder(R.drawable.photos)
+                            .error(R.drawable.photos)
+                    )
+                    .into(target)
+            }
+        }
+
         if (sent) {
-            h.flMediaSent.isVisible = true; h.flMediaRcv.isVisible = false; h.ivMediaSent.isVisible = true; h.ivPlaySent.isVisible = type == "VIDEO"
-            if (uri != null) Glide.with(h.itemView.context).load(uri).into(h.ivMediaSent)
-            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") { h.tvSentMsg.text = item.msg; h.tvSentMsg.isVisible = true }
+            h.flMediaSent.isVisible = true; h.flMediaRcv.isVisible = false
+            h.ivMediaSent.isVisible = true; h.ivPlaySent.isVisible = type == "VIDEO"
+
+            val isUploading = item.uploadState == "uploading" || item.uploadState == "compressing"
+            if (isUploading) {
+                h.flSentProgress?.isVisible = true
+                h.progressSent?.setProgressCompat(item.uploadProgress, true)
+                h.tvUploadProgress?.text = if (item.uploadState == "compressing") "Compressing..." else "${item.uploadProgress}%"
+            } else {
+                h.flSentProgress?.isVisible = false
+            }
+
+            loadGroupMediaSource(h.ivMediaSent)
+            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") {
+                h.tvSentMsg.text = item.msg; h.tvSentMsg.isVisible = true
+            }
+            h.ivMediaSent.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
+            h.ivPlaySent.setOnClickListener  { openGroupMedia(h.itemView.context, item, type) }
         } else {
-            h.flMediaRcv.isVisible = true; h.flMediaSent.isVisible = false; h.ivMediaRcv.isVisible = true; h.ivPlayRcv.isVisible = type == "VIDEO"
-            if (uri != null) Glide.with(h.itemView.context).load(uri).into(h.ivMediaRcv)
-            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") { h.tvMsgRcv.text = item.msg; h.tvMsgRcv.isVisible = true }
+            h.flMediaRcv.isVisible = true; h.flMediaSent.isVisible = false
+            h.ivMediaRcv.isVisible = true; h.ivPlayRcv.isVisible = type == "VIDEO"
+
+            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
+            if (isDownloading) {
+                h.flRcvProgress?.isVisible = true
+                h.progressRcv?.setProgressCompat(item.downloadProgress, true)
+                h.tvDownloadProgress?.text = "${item.downloadProgress}%"
+            } else {
+                h.flRcvProgress?.isVisible = false
+            }
+
+            loadGroupMediaSource(h.ivMediaRcv)
+            if (item.msg.isNotBlank() && item.msg != "photo" && item.msg != "video") {
+                h.tvMsgRcv.text = item.msg; h.tvMsgRcv.isVisible = true
+            }
+            h.ivMediaRcv.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
+            h.ivPlayRcv.setOnClickListener  { openGroupMedia(h.itemView.context, item, type) }
         }
     }
+
+    /**
+     * Resolves the group media URI (which may be a Base64 payload) to a local
+     * playable file URI, then opens FullscreenMediaActivity.
+     */
+    private fun openGroupMedia(ctx: android.content.Context, item: GroupMessageEntity, type: String) {
+        val raw = item.uri ?: ""
+        val localPath = item.localFilePath
+
+        val actualPath: String? = when {
+            !localPath.isNullOrBlank() && java.io.File(localPath).exists() -> localPath
+            !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) -> raw.removePrefix("file://")
+            else -> null
+        }
+
+        if (actualPath.isNullOrBlank()) {
+            // Cannot open if not downloaded/processed yet
+            android.widget.Toast.makeText(ctx, "File still downloading or processing...", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val file = java.io.File(actualPath)
+        val providerUri = try {
+            androidx.core.content.FileProvider.getUriForFile(
+                ctx, "${ctx.packageName}.provider", file
+            ).toString()
+        } catch (e: Exception) { "file://${file.absolutePath}" }
+
+        ctx.startActivity(
+            android.content.Intent(ctx, app.secure.kyber.activities.FullscreenMediaActivity::class.java).apply {
+                putExtra("uri", providerUri)
+                putExtra("type", type)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        )
+    }
+
 
     private fun bindAudio(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.tvSentMsg.isVisible = false; h.tvMsgRcv.isVisible = false
@@ -382,9 +555,25 @@ class GroupMessagesAdapter(
         h.tvMsgRcv.cancelAndShowFinal()
         h.rlSendMsg.setBackgroundResource(R.drawable.sent_msg_bg)
         h.sentAudio.isVisible = sent; h.rcvAudio.isVisible = !sent
-        val uriStr = item.uri ?: return
+
+        val rawUri = item.uri
+        if (rawUri.isNullOrBlank()) return
+
+        // Resolve playable URI: if it's a Base64 payload, decode to local cache file first.
+        val ctx = h.itemView.context
+        val uriStr: String = when {
+            rawUri.startsWith("file://") || rawUri.startsWith("/") -> rawUri
+            else -> {
+                // Base64 audio payload from Firebase — decode to local cache
+                runCatching {
+                    app.secure.kyber.GroupCreationBackend.GroupManager()
+                        .decodeBase64ToFile(ctx, rawUri, "m4a") ?: rawUri
+                }.getOrDefault(rawUri)
+            }
+        }
+
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
-        h.durationLabel(sent).text = formatDuration(getTotalDuration(h.itemView.context, uriStr))
+        h.durationLabel(sent).text = formatDuration(getTotalDuration(ctx, uriStr))
         if (activeUri == uriStr) syncPlayingUi(h, sent)
         else { h.playIcon(sent).setImageResource(R.drawable.play_ic); h.waveform(sent).setProgress(0f); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel() }
 
@@ -469,6 +658,44 @@ class GroupMessagesAdapter(
         val r = MediaMetadataRetriever()
         return try { r.setDataSource(context, uriStr.toUri()); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0 } catch (_: Exception) { 0 } finally { r.release() }
     }
+
+    /**
+     * ═══════════════════════════════════════════════════════════════════
+     * ANONYMOUS GROUP NAME RESOLUTION
+     * ═══════════════════════════════════════════════════════════════════
+     *
+     * Returns the display name for a sender based on group anonymity settings:
+     * - Non-anonymous groups: Always show actual name
+     * - Anonymous groups:
+     *   - If sender is group creator: Show actual name
+     *   - If viewer is group creator: Show actual name
+     *   - Otherwise: Show alias (e.g., "BK1", "BK2")
+     */
+    private fun getDisplayNameForSender(senderId: String, actualName: String): String {
+        // If group is not anonymous, always show actual name
+        if (!isAnonymous) return actualName
+
+        // If sender is the group creator, show actual name
+        if (senderId == groupCreatorId) return actualName
+
+        // If current viewer is the group creator, show actual name
+        if (myId == groupCreatorId) return actualName
+        
+        // Otherwise, look up the alias from anonymousAliasesJson
+        return try {
+            val aliasesMap = JSONObject(anonymousAliasesJson)
+            val sanitizedSenderId = sanitizeKey(senderId)
+            (aliasesMap[sanitizedSenderId] as? String) ?: actualName
+        } catch (e: Exception) {
+            actualName  // Fallback to actual name if JSON parsing fails
+        }
+    }
+
+    /**
+     * Sanitize a key by replacing dots with commas (for Firebase compatibility).
+     * Must match the sanitization logic in GroupManager.
+     */
+    private fun sanitizeKey(key: String): String = key.replace(".", ",")
 
     private fun convertDatetime(time: String): String {
         return try { java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(time.toLong())) } catch (_: Exception) { "" }

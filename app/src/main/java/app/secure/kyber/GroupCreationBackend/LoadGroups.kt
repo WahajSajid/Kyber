@@ -1,61 +1,69 @@
 package app.secure.kyber.GroupCreationBackend
 
 import android.util.Log
+import app.secure.kyber.dataClasses.Group
+import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.GroupsEntity
 import app.secure.kyber.roomdb.roomViewModel.GroupsViewModel
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 
 object LoadGroups {
 
-    fun loadGroup(myId: String, database: FirebaseDatabase, groupViewModel: GroupsViewModel) {
-
-        Log.d("###Check 1", "In the loadGroupsMethod")
-
+    fun loadGroup(context: android.content.Context, myId: String, database: FirebaseDatabase, groupViewModel: GroupsViewModel) {
         val dbRef = database.getReference("groups")
-        dbRef.addValueEventListener(object : ValueEventListener {
+        dbRef.addListenerForSingleValueEvent(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                for (groupSnapshot in snapshot.children) {
-                    val membersRef = groupSnapshot.child("members")
-                    var isMember = false
-                    for (member in membersRef.children) {
-                        val memberId = member.child("id").value ?: ""
-                        if (memberId.toString() == myId) {
-                            isMember = true
-                            break
+                CoroutineScope(Dispatchers.IO).launch {
+                    val db = AppDb.get(context)
+                    val dao = db.groupsDao()
+                    
+                    for (groupSnapshot in snapshot.children) {
+                        val group = groupSnapshot.getValue(Group::class.java) ?: continue
+                        val isMember = group.members.values.any { it["id"] == myId }
+
+                        if (isMember) {
+                            val existing = dao.getGroupById(group.groupId)
+                            if (existing == null) {
+                                val groupEntity = GroupsEntity(
+                                    groupId = group.groupId,
+                                    groupName = group.groupName,
+                                    lastMessage = group.lastMessage,
+                                    newMessagesCount = group.newMessagesCount,
+                                    profileImageResId = 0,
+                                    timeSpan = group.lastMessageTime.toLongOrNull() ?: 0L,
+                                    chatTime = "",
+                                    createdBy = group.createdBy,
+                                    createdAt = group.createdAt,
+                                    noOfMembers = group.members.size,
+                                    isAnonymous = group.anonymous,
+                                    groupExpiresAt = group.groupExpiresAt
+                                )
+                                dao.insert(groupEntity)
+                            } else {
+                                // METADATA ONLY: Preserve local unread count and last message
+                                val updated = existing.copy(
+                                    groupName = group.groupName,
+                                    noOfMembers = group.members.size,
+                                    isAnonymous = group.anonymous,
+                                    createdBy = group.createdBy,
+                                    createdAt = group.createdAt,
+                                    groupExpiresAt = group.groupExpiresAt
+                                )
+                                dao.update(updated)
+                            }
                         }
-                    }
-
-                    if (isMember) {
-                        val createdAt = groupSnapshot.child("createdAt").value ?: 0
-                        val createdBy = groupSnapshot.child("createdBy").value ?: ""
-                        val groupId = groupSnapshot.child("groupId").value ?: ""
-                        val groupName = groupSnapshot.child("groupName").value ?: ""
-                        val lastMessage = groupSnapshot.child("lastMessage").value ?: ""
-                        val lastMessageTime = groupSnapshot.child("lastMessageTime").value ?: 0
-                        val noOfMembers = membersRef.childrenCount.toInt()
-
-                        Log.d("###Check 2", "Group Retrieved: $groupName, members: $noOfMembers")
-                        val groupEntity = GroupsEntity(
-                            groupId = groupId.toString(),
-                            groupName = groupName.toString(),
-                            lastMessage = lastMessage.toString(),
-                            timeSpan = lastMessageTime.toString().toLong(),
-                            createdBy = createdBy.toString(),
-                            createdAt = createdAt.toString().toLong(),
-                            noOfMembers = noOfMembers
-                        )
-                        groupViewModel.saveGroup(groupEntity)
                     }
                 }
             }
-
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("LoadGroups", "Database error: ${error.message}")
-            }
+            override fun onCancelled(error: DatabaseError) {}
         })
     }
+
 }

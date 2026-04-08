@@ -7,6 +7,7 @@ import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import com.google.android.material.button.MaterialButton
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.viewModels
@@ -45,6 +46,7 @@ class CreateGroupFragment : Fragment() {
     private lateinit var groupManager: GroupManager
     private lateinit var currentUserId: String
     private lateinit var navController: NavController
+    private var selectedBurnDurationMs: Long? = null
 
     private lateinit var contactsRecyclerView: RecyclerView
     private lateinit var contactsAdapter: AddMembersAdapter
@@ -110,6 +112,7 @@ class CreateGroupFragment : Fragment() {
         }
 
         setupAnonymousModeSwitch()
+        setupBurnTimeButtons()
         setupCreateButton()
 
         return binding.root
@@ -149,6 +152,13 @@ class CreateGroupFragment : Fragment() {
                 return@setOnClickListener
             }
 
+            // Enforce 15-member limit: selected members + creator = total
+            if (membersList.size > 14) {
+                binding.loading.visibility = View.GONE
+                Toast.makeText(context, "Maximum 15 members allowed (including you)", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
             currentUserId = getCurrentUserId()
 
             if (currentUserId.isEmpty()) {
@@ -165,36 +175,35 @@ class CreateGroupFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 binding.btnCreateGroup.isEnabled = false
-                // binding.loading.visibility = View.VISIBLE // Removed if loading doesn't exist in layout
 
                 val name = Prefs.getName(requireContext()) ?: "Unknown User"
                 val membersList = myApp.addedMembersList.value ?: mutableListOf()
+                val isAnonymous = binding.switchAnonymous.isChecked
 
                 Log.d("CreateGroupFragment", "Current User ID: $currentUserId, Name: $name")
-                Log.d("CreateGroupFragment", "Group Name: $groupName")
+                Log.d("CreateGroupFragment", "Group Name: $groupName, Anonymous: $isAnonymous")
 
                 val groupId = groupManager.createGroup(
                     groupName = groupName,
-                    groupImage = "", 
+                    groupImage = "",
                     members = membersList,
                     currentUserId = currentUserId,
                     currentUserName = name,
-                    groupViewModel = vm
+                    groupViewModel = vm,
+                    isAnonymous = isAnonymous,
+                    burnDurationMs = selectedBurnDurationMs
                 )
 
                 if (groupId != null) {
                     Log.d("CreateGroupFragment", "Group created successfully with ID: $groupId")
                     Toast.makeText(context, "Group created successfully!", Toast.LENGTH_SHORT).show()
-                    
+
                     myApp.addedMembersList.value?.clear()
                     myApp.addedMembersList.value = mutableListOf()
-                    
-                     binding.loading.visibility = View.GONE
 
-                    // Updated navigation to correct destination ID based on action
-                     navController.navigate(R.id.action_createGroupFragment_to_groupChatListFragment)
-                }
-                else {
+                    binding.loading.visibility = View.GONE
+                    navController.navigate(R.id.action_createGroupFragment_to_groupChatListFragment)
+                } else {
                     Log.e("CreateGroupFragment", "Group creation returned null ID.")
                     binding.btnCreateGroup.isEnabled = true
                     binding.loading.visibility = View.GONE
@@ -206,6 +215,35 @@ class CreateGroupFragment : Fragment() {
                 binding.loading.visibility = View.GONE
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun setupBurnTimeButtons() {
+        val options = mapOf(
+            binding.hours24 to 24L * 60L * 60L * 1000L,
+            binding.days2 to 2L * 24L * 60L * 60L * 1000L,
+            binding.days3 to 3L * 24L * 60L * 60L * 1000L,
+            binding.days4 to 4L * 24L * 60L * 60L * 1000L
+        )
+        options.forEach { (button, duration) ->
+            button.setOnClickListener {
+                selectedBurnDurationMs = if (selectedBurnDurationMs == duration) null else duration
+                updateBurnTimeSelection(options.keys)
+            }
+        }
+        updateBurnTimeSelection(options.keys)
+    }
+
+    private fun updateBurnTimeSelection(buttons: Set<MaterialButton>) {
+        buttons.forEach { button ->
+            val isSelected = when (button.id) {
+                binding.hours24.id -> selectedBurnDurationMs == 24L * 60L * 60L * 1000L
+                binding.days2.id -> selectedBurnDurationMs == 2L * 24L * 60L * 60L * 1000L
+                binding.days3.id -> selectedBurnDurationMs == 3L * 24L * 60L * 60L * 1000L
+                binding.days4.id -> selectedBurnDurationMs == 4L * 24L * 60L * 60L * 1000L
+                else -> false
+            }
+            button.alpha = if (isSelected) 1.0f else 0.65f
         }
     }
 

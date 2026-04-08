@@ -15,5 +15,16 @@ data class GroupMessageEntity(
     val type: String = "TEXT",
     val uri: String? = null,
     val ampsJson: String = "",
-    var reaction: String = ""
+    var reaction: String = "",
+    val uploadState: String = "done", // "uploading", "done", "failed"
+    val downloadState: String = "done", // "downloading", "done", "failed"
+    val uploadProgress: Int = 100,
+    val downloadProgress: Int = 100,
+    val localFilePath: String? = null,
+    val remoteMediaId: String? = null,
+    val mediaDurationMs: Long = 0,
+    val mediaSizeBytes: Long = 0,
+    val expiresAt: Long = 0L,
+    val thumbnailPath: String? = null   // local path to thumbnail JPEG
 )
+

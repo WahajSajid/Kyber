@@ -1,7 +1,9 @@
 package app.secure.kyber.workers
 
 import android.content.Context
+import android.util.Base64.encodeToString
 import android.util.Log
+import android.widget.Toast
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import app.secure.kyber.Utils.SecureKeyManager
@@ -11,6 +13,7 @@ import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.KeyEntity
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -44,15 +47,18 @@ class KeyRotationWorker @AssistedInject constructor(
             val activeKey = keyDao.getActiveKey()
             val now = System.currentTimeMillis()
 
-            // --- DUPLICATE ROTATION GUARD (Fix 1) ---
-            // If an active key exists and was activated less than 23 hours ago,
-            // skip rotation to prevent double-rotation race conditions between
-            // manual and auto WorkManager triggers.
+            // --- DUPLICATE ROTATION GUARD ---
+            // Skip rotation if the active key is still within the user-selected timer window
+            // (minus a 30-minute grace period to allow the WorkManager trigger to fire naturally).
             if (!force && activeKey != null) {
-                val ageMs = now - activeKey.activatedAt
-                if (ageMs < TimeUnit.HOURS.toMillis(23)) {
-                    Log.d(TAG, "Skipping rotation — active key is only ${TimeUnit.MILLISECONDS.toHours(ageMs)}h old")
-                    return
+                val timerMs = Prefs.getEncryptionTimerMs(context)
+                if (timerMs > 0L) {
+                    val ageMs = now - activeKey.activatedAt
+                    val graceMs = TimeUnit.MINUTES.toMillis(30)
+                    if (ageMs < timerMs - graceMs) {
+                        Log.d(TAG, "Skipping rotation — active key is only ${TimeUnit.MILLISECONDS.toHours(ageMs)}h old (timer: ${TimeUnit.MILLISECONDS.toHours(timerMs)}h)")
+                        return
+                    }
                 }
             }
 
@@ -60,19 +66,39 @@ class KeyRotationWorker @AssistedInject constructor(
             val keyInfo = SecureKeyManager.generateNewKeyPair()
             val newKeyId = UUID.randomUUID().toString()
 
-            // 2. Archive active key if it exists
-            activeKey?.let {
-                keyDao.updateStatus(it.keyId, "OLD_RETENTION")
+            // 2. Push new public key to backend FIRST to guarantee upload
+            val licenseKey = Prefs.getLicense(context) ?: ""
+            val nameHash = Prefs.getNameHash(context) ?: ""
+            Log.d("### Name Hashh ###", nameHash)
+            try {
+                   val response = repository.registerDiscovery(licenseKey, keyInfo.publicKeyBase64, nameHash, "")
+                if(response.isSuccessful && response.body()?.success == true){
+                    Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
+                } else{
+                    Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
+                    Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.")
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
+                Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.", e)
+                throw e // Surface to WorkManager for retry
             }
 
-            // 3. Save new active key
+            // 3. Archive active key — reset activatedAt to rotation time so retention window starts now
+            activeKey?.let {
+                keyDao.update(it.copy(status = "OLD_RETENTION", activatedAt = now))
+            }
+
+            // 4. Save new active key
+            // expiresAt tracks when this key is due for rotation (informational; WorkManager drives actual rotation)
+            val rotationIntervalMs = Prefs.getEncryptionTimerMs(context)
             val newKey = KeyEntity(
                 keyId = newKeyId,
                 publicKey = keyInfo.publicKeyBase64,
                 privateKeyEncrypted = keyInfo.privateKeyEncrypted,
                 createdAt = now,
                 activatedAt = now,
-                expiresAt = now + TimeUnit.DAYS.toMillis(1),
+                expiresAt = now + if (rotationIntervalMs > 0L) rotationIntervalMs else TimeUnit.DAYS.toMillis(1),
                 status = "ACTIVE"
             )
             keyDao.insert(newKey)
@@ -80,52 +106,18 @@ class KeyRotationWorker @AssistedInject constructor(
             // Save to Prefs for quick access
             Prefs.setPublicKey(context, keyInfo.publicKeyBase64)
 
-            // 4. Push new public key to backend
-            val licenseKey = Prefs.getLicense(context) ?: ""
-            try {
-                 repository.register(licenseKey, keyInfo.publicKeyBase64)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to push new public key to backend", e)
-            }
-
-            // 5. Proactively refresh all saved contacts' public keys (Fix 2)
-            // This ensures that even if a contact rotated their key without messaging us,
-            // we fetch and store their latest key from the backend after our own rotation.
-            try {
-                val allContacts = contactDao.getAll()
-                for (contact in allContacts) {
-                    try {
-                        val resp = repository.getPublicKey(contact.onionAddress)
-                        if (resp.isSuccessful) {
-                            val freshKey = resp.body()?.publicKey
-                            if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
-                                contactDao.insert(
-                                    contact.copy(
-                                        publicKey = freshKey,
-                                        lastKeyUpdate = now
-                                    )
-                                )
-                                Log.d(TAG, "Refreshed public key for contact ${contact.onionAddress}")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Could not refresh key for ${contact.onionAddress}: ${e.message}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Contact key refresh loop failed: ${e.message}")
-            }
-
-            // 6. Cleanup expired keys and messages
+            // 5. Cleanup expired OLD_RETENTION keys and their associated messages.
+            // The retention window mirrors the user-selected rotation interval so contacts
+            // have a full cycle to receive messages encrypted with the previous key.
+            val retentionWindowMs = if (rotationIntervalMs > 0L) rotationIntervalMs else TimeUnit.DAYS.toMillis(1)
             val retentionKeys = keyDao.getRetentionKeys()
             for (oldKey in retentionKeys) {
-                // Retention window is 24 hours after rotation
-                if (oldKey.activatedAt + TimeUnit.DAYS.toMillis(1) < now) {
+                if (oldKey.activatedAt + retentionWindowMs < now) {
                     val fingerprint = SecureKeyManager.getFingerprintFromBase64(oldKey.publicKey)
-                    
+
                     // Delete all local messages that depend on this expired key
                     messageDao.deleteByFingerprint(fingerprint)
-                    
+
                     // Mark key as EXPIRED
                     keyDao.updateStatus(oldKey.keyId, "EXPIRED")
                 }
@@ -136,7 +128,18 @@ class KeyRotationWorker @AssistedInject constructor(
         }
 
         fun schedule(context: Context) {
-            val request = PeriodicWorkRequestBuilder<KeyRotationWorker>(24, TimeUnit.HOURS)
+            val timerMs = Prefs.getEncryptionTimerMs(context)
+
+            if (timerMs <= 0L) {
+                // "Never" selected — cancel any scheduled automatic rotation
+                WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+                Log.d(TAG, "Encryption timer set to Never — automatic key rotation disabled")
+                return
+            }
+
+            // Enforce WorkManager's 15-minute minimum interval floor
+            val intervalMinutes = TimeUnit.MILLISECONDS.toMinutes(timerMs).coerceAtLeast(15L)
+            val request = PeriodicWorkRequestBuilder<KeyRotationWorker>(intervalMinutes, TimeUnit.MINUTES)
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
 
@@ -145,6 +148,7 @@ class KeyRotationWorker @AssistedInject constructor(
                 ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE,
                 request
             )
+            Log.d(TAG, "Key rotation scheduled every ${TimeUnit.MINUTES.toHours(intervalMinutes)}h (${intervalMinutes}min)")
         }
     }
 }

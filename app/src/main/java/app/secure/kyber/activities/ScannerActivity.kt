@@ -123,20 +123,20 @@ class ScannerActivity : AppCompatActivity() {
     }
 
     private fun handleQrContent(content: String) {
-        var onionAddress = content
+        var shortId = content
         var name: String? = null
 
         try {
             val json = JSONObject(content)
-            onionAddress = json.optString("onionAddress", content)
+            shortId = json.optString("short_id", content)
             name = json.optString("name", null)
         } catch (e: Exception) {
             // Not a JSON, treat as raw onion address
         }
 
-        if (onionAddress.isNotBlank()) {
+        if (shortId.isNotBlank()) {
             val resultIntent = Intent().apply {
-                putExtra("onionAddress", onionAddress)
+                putExtra("short_id", shortId)
                 putExtra("name", name)
             }
             setResult(RESULT_OK, resultIntent)

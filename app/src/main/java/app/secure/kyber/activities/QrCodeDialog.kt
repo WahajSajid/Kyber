@@ -11,7 +11,7 @@ import app.secure.kyber.R
 
 object QrCodeDialog {
 
-    fun showQrDialog(context: Context,unionCode:String, name:String) {
+    fun showQrDialog(context: Context,shortId:String, name:String) {
 
         //Set up the dialog view
         val qrCodeDialog =
@@ -34,7 +34,7 @@ object QrCodeDialog {
 
 
         val qrCodeBitmap =
-            QrCodeGenerator.generateQrCode(unionCode, name, 500, 500) //Generate the QR Code
+            QrCodeGenerator.generateQrCode(shortId, name, 500, 500) //Generate the QR Code
         qrCodeImageView.setImageBitmap(qrCodeBitmap) // Assigning the image view the QR Code
 
         //Setup click listener for the close button

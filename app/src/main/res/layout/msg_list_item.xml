@@ -119,33 +119,99 @@
             android:paddingTop="@dimen/_8sdp"
             android:paddingEnd="@dimen/_8sdp"
             android:paddingBottom="@dimen/_4sdp"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical">
 
-                <FrameLayout
-                    android:id="@+id/ivRcvPlayPause"
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/tvRcvAudioDownloadStateLayout"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/_5sdp"
+                    android:visibility="gone"
+                    app:layout_constraintBottom_toTopOf="@id/waveformRcv"
+                    app:layout_constraintStart_toStartOf="@id/waveformRcv">
+
+                    <TextView
+                        android:id="@+id/tvRcvAudioDownloadState"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal"
+                        android:fontFamily="@font/roboto_regular"
+                        android:text="Downloading..."
+                        android:layout_marginStart="@dimen/_5sdp"
+                        app:layout_constraintStart_toEndOf="@id/small_mic_ic_rcv"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        android:textColor="@color/white"
+                        android:textSize="@dimen/_14sdp"
+                        android:visibility="visible" />
+
+                    <ImageView
+                        android:id="@+id/small_mic_ic_rcv"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:src="@drawable/small_mic_ic_sent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintEnd_toStartOf="@id/tvRcvAudioDownloadState"
+                        app:layout_constraintTop_toTopOf="@id/tvRcvAudioDownloadState"
+                        app:layout_constraintBottom_toBottomOf="@id/tvRcvAudioDownloadState"
+                        app:tint="@color/white" />
+
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:id="@+id/ivRcvPlayPauseLayout"
                     android:layout_width="@dimen/_48sdp"
                     android:layout_height="@dimen/_48sdp"
-                    android:background="@drawable/audio_play_btn_bg"
                     android:clickable="true"
                     android:focusable="true"
+                    android:visibility="visible"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toStartOf="@+id/waveformRcv"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
 
+
                     <ImageView
-                        android:id="@+id/ivRcvPlayIcon"
-                        android:layout_width="@dimen/audio_play_ic_dimen"
-                        android:layout_height="@dimen/audio_play_ic_dimen"
-                        android:layout_gravity="center"
-                        android:src="@drawable/play_ic"
-                        app:tint="@color/black" />
-                </FrameLayout>
+                        android:id="@+id/downloading_vm_ic"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="gone"
+                        android:src="@drawable/downloading_vm_ic"/>
+
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:id="@+id/ivRcvPlayPause"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="visible"
+                        android:background="@drawable/audio_play_btn_bg">
+
+                        <ImageView
+                            android:id="@+id/ivRcvPlayIcon"
+                            android:layout_width="@dimen/audio_play_ic_dimen"
+                            android:layout_height="@dimen/audio_play_ic_dimen"
+                            android:layout_gravity="center"
+                            android:src="@drawable/play_ic"
+                            app:tint="@color/black"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintEnd_toEndOf="parent"/>
+
+
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+                </androidx.constraintlayout.widget.ConstraintLayout>
+
 
                 <app.secure.kyber.Other.WaveformView
                     android:id="@+id/waveformRcv"
@@ -155,8 +221,25 @@
                     android:layout_marginEnd="@dimen/_8sdp"
                     app:layout_constraintBottom_toTopOf="@+id/tvRcvAudioDuration"
                     app:layout_constraintEnd_toStartOf="@+id/tvRcvSpeed"
-                    app:layout_constraintStart_toEndOf="@+id/ivRcvPlayPause"
+                    app:layout_constraintStart_toEndOf="@+id/ivRcvPlayPauseLayout"
                     app:layout_constraintTop_toTopOf="parent" />
+
+
+                <ProgressBar
+                    android:id="@+id/rcvAudioProgressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="@dimen/_170sdp"
+                    android:layout_height="@dimen/_4sdp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/progress_gradient"
+                    android:layout_marginTop="@dimen/_7sdp"
+                    app:layout_constraintBottom_toTopOf="@id/tvRcvAudioDuration"
+                    app:layout_constraintTop_toBottomOf="@id/tvRcvSpeed"
+                    app:layout_constraintEnd_toEndOf="@id/tvRcvSpeed"
+                    app:layout_constraintStart_toStartOf="@id/waveformRcv"
+                    android:visibility="gone" />
+
 
                 <TextView
                     android:id="@+id/tvRcvSpeed"
@@ -168,7 +251,7 @@
                     android:fontFamily="@font/roboto_medium"
                     android:gravity="center"
                     android:text="1x"
-                    android:textColor="@color/black"
+                    android:textColor="@color/white"
                     android:textSize="@dimen/_12sdp"
                     app:layout_constraintBottom_toBottomOf="@id/waveformRcv"
                     app:layout_constraintEnd_toEndOf="parent"
@@ -186,7 +269,7 @@
                     android:textSize="@dimen/_12sdp"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintStart_toStartOf="@id/waveformRcv"
-                    app:layout_constraintTop_toBottomOf="@id/waveformRcv" />
+                    app:layout_constraintTop_toBottomOf="@id/rcvAudioProgressBar" />
 
                 <LinearLayout
                     android:id="@+id/received_audio_time_layout"
@@ -219,28 +302,6 @@
                         app:tint="#60FFFFFF" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
-
-            <ProgressBar
-                android:id="@+id/rcvAudioProgressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/_3sdp"
-                android:layout_marginTop="@dimen/_2sdp"
-                android:max="100"
-                android:progress="0"
-                android:progressTint="#FFFFFF"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/tvRcvAudioDownloadState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:fontFamily="@font/roboto_regular"
-                android:text="Downloading..."
-                android:textColor="#99FFFFFF"
-                android:textSize="10sp"
-                android:visibility="gone" />
 
 
             <Button
@@ -280,7 +341,7 @@
             android:gravity="end|center_vertical"
             android:minWidth="@dimen/_30sdp"
             android:orientation="horizontal"
-            android:visibility="visible">
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/tvRcvTime"
@@ -612,11 +673,55 @@
             android:paddingTop="@dimen/_8sdp"
             android:paddingEnd="@dimen/_8sdp"
             android:paddingBottom="@dimen/_4sdp"
-            android:visibility="visible">
+            android:visibility="gone">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:id="@+id/tvSentAudioUploadStateLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:visibility="gone"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:id="@+id/small_mic_ic_sent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="@dimen/_5sdp"
+                    android:src="@drawable/small_mic_ic_sent"
+                    app:layout_constraintBottom_toBottomOf="@id/tvSentAudioUploadState"
+                    app:layout_constraintEnd_toStartOf="@+id/tvSentAudioUploadState"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintHorizontal_chainStyle="packed"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="@id/tvSentAudioUploadState" />
+
+                <TextView
+                    android:id="@+id/tvSentAudioUploadState"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:fontFamily="@font/roboto_regular"
+                    android:layout_marginEnd="@dimen/_40sdp"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    android:text="Sending..."
+                    android:textColor="#97D8FF"
+                    android:textSize="@dimen/_14sdp"
+                    android:visibility="visible"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/small_mic_ic_sent" />
+
+
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
+
+
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
-                android:layout_height="@dimen/_52sdp"
+                android:layout_height="wrap_content"
                 android:gravity="center_vertical">
 
                 <androidx.constraintlayout.widget.ConstraintLayout
@@ -669,6 +774,22 @@
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toEndOf="@+id/tvSentSpeed" />
 
+                <ProgressBar
+                    android:id="@+id/sentAudioProgressBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="@dimen/_155sdp"
+                    android:layout_height="@dimen/_4sdp"
+                    android:max="100"
+                    android:progress="0"
+                    android:progressDrawable="@drawable/progress_gradient"
+                    android:layout_marginTop="@dimen/_7sdp"
+                    app:layout_constraintBottom_toTopOf="@id/tvSentAudioDuration"
+                    app:layout_constraintTop_toBottomOf="@id/tvSentSpeed"
+                    app:layout_constraintEnd_toEndOf="@id/waveformSent"
+                    app:layout_constraintStart_toStartOf="@id/tvSentSpeed"
+                    android:visibility="gone" />
+
+
                 <TextView
                     android:id="@+id/tvSentAudioDuration"
                     android:layout_width="wrap_content"
@@ -680,7 +801,7 @@
                     android:textSize="@dimen/_12sdp"
                     app:layout_constraintEnd_toEndOf="@id/tvSentSpeed"
                     app:layout_constraintStart_toStartOf="@id/tvSentSpeed"
-                    app:layout_constraintTop_toBottomOf="@id/tvSentSpeed" />
+                    app:layout_constraintTop_toBottomOf="@id/sentAudioProgressBar" />
 
                 <LinearLayout
                     android:id="@+id/sent_audio_time_layout"
@@ -713,28 +834,6 @@
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
 
-            <ProgressBar
-                android:id="@+id/sentAudioProgressBar"
-                style="?android:attr/progressBarStyleHorizontal"
-                android:layout_width="match_parent"
-                android:layout_height="@dimen/_3sdp"
-                android:layout_marginTop="@dimen/_2sdp"
-                android:max="100"
-                android:progress="0"
-                android:progressTint="#FFFFFF"
-                android:visibility="gone" />
-
-            <TextView
-                android:id="@+id/tvSentAudioUploadState"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:fontFamily="@font/roboto_regular"
-                android:text="Uploading..."
-                android:textColor="#99FFFFFF"
-                android:textSize="10sp"
-                android:visibility="gone" />
-
 
             <Button
                 android:id="@+id/btnRetrySentAudio"
@@ -761,7 +860,7 @@
             android:textAlignment="textStart"
             android:textColor="#FFFFFF"
             android:textSize="16sp"
-            android:visibility="visible" />
+            android:visibility="gone" />
 
         <LinearLayout
             android:id="@+id/sent_message_time_layout"
@@ -770,7 +869,7 @@
             android:layout_marginEnd="@dimen/_8sdp"
             android:gravity="end|center_vertical"
             android:orientation="horizontal"
-            android:visibility="visible">
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/tvSentTime"

@@ -72,12 +72,12 @@ class GroupChatListAdapter(
                 timeTV.text = formatTimestamp(item.createdAt)
             }
 
-            if (item.newMessagesCount == 0) {
+            if (item.newMessagesCount <= 0) {
                 countTV.visibility = View.GONE
             } else {
-                countTV.visibility = View.GONE
+                countTV.visibility = View.VISIBLE
+                countTV.text = item.newMessagesCount.toString()
             }
-            countTV.text = item.newMessagesCount.toString()
 
             Glide.with(context)
                 .load(item.profileImageResId)

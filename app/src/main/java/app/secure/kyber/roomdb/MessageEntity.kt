@@ -33,7 +33,8 @@ data class MessageEntity(
     val mediaSizeBytes: Long = 0L,
     val thumbnailPath: String? = null,   // local path to thumbnail image
     val keyFingerprint: String? = null,  // Fingerprint of the key used to encrypt/decrypt
-    val iv: String? = null               // IV for AES-GCM decryption
+    val iv: String? = null,              // IV for AES-GCM decryption
+    val expiresAt: Long = 0L             // Timestamp when the message expires (0 = no expiry)
 )
 
 /**
@@ -65,6 +66,7 @@ data class MessageUiModel(
     val thumbnailPath: String? get() = entity.thumbnailPath
     val keyFingerprint: String? get() = entity.keyFingerprint
     val iv: String? get() = entity.iv
+    val expiresAt: Long get() = entity.expiresAt
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson

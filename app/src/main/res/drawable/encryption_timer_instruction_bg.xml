@@ -1,0 +1,21 @@
+
+
+    <!-- drawable/overlay.xml -->
+<vector
+xmlns:android="http://schemas.android.com/apk/res/android"
+xmlns:aapt="http://schemas.android.com/aapt"
+android:width="222dp"
+android:height="91dp"
+android:viewportWidth="222"
+android:viewportHeight="91"
+    >
+<group>
+    <clip-path
+        android:pathData="M16 0H206C214.837 0 222 7.16344 222 16V75C222 83.8366 214.837 91 206 91H16C7.16344 91 0 83.8366 0 75V16C0 7.16344 7.16344 0 16 0Z"
+        />
+    <path
+        android:pathData="M0 0V91H222V0"
+        android:fillColor="#0D91FEEF"
+        />
+</group>
+</vector>

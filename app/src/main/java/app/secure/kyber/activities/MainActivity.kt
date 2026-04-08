@@ -26,17 +26,27 @@ import androidx.navigation.ui.setupWithNavController
 import app.secure.kyber.ApplicationClass
 import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
+import app.secure.kyber.Utils.NetworkMonitor
 import app.secure.kyber.databinding.ActivityMainBinding
 import app.secure.kyber.databinding.FragmentGroupChatListBinding
 import app.secure.kyber.fragments.ContactBottomSheet
 import app.secure.kyber.fragments.GroupChatListFragment
 import app.secure.kyber.onionrouting.UnionClient
+import app.secure.kyber.services.GlobalSyncService
 import app.secure.kyber.workers.SyncWorker
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.view.MotionEvent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -59,11 +69,50 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var myApp: MyApp
     private lateinit var controller: NavController
+
+    var lastInteractionTime: Long = System.currentTimeMillis()
+    private val lockHandler = Handler(Looper.getMainLooper())
+    private val lockRunnable = object : Runnable {
+        override fun run() {
+            checkAppLock()
+            lockHandler.postDelayed(this, 10000L)
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        lastInteractionTime = System.currentTimeMillis()
+        return super.dispatchTouchEvent(ev)
+    }
+
+
+    private fun checkAppLock() {
+        val timeout = app.secure.kyber.backend.common.Prefs.getAutoLockTimeoutMs(this)
+        if (myApp.isAppLocked) {
+            startActivity(Intent(this, ValidatePasswordActivity::class.java))
+            finish()
+        } else if (timeout > 0 && System.currentTimeMillis() - lastInteractionTime > timeout) {
+            myApp.isAppLocked = true
+            startActivity(Intent(this, ValidatePasswordActivity::class.java))
+            finish()
+        }
+    }
+
+    private var networkObserverJob: Job? = null
+    private var networkDialogVisible = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // ═══════════════════════════════════════════════════════════════
+        // START GLOBAL SYNC SERVICE - Runs 24/7 Even When App is Closed
+        // ═══════════════════════════════════════════════════════════════
+        startGlobalSyncService()
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        observeInternetDisconnect()
+
 
 
         myApp = application as MyApp
@@ -282,6 +331,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         controller.removeOnDestinationChangedListener(listener)
+        lockHandler.removeCallbacks(lockRunnable)
         super.onPause()
     }
 
@@ -395,6 +445,56 @@ class MainActivity : AppCompatActivity() {
                 androidx.work.ExistingWorkPolicy.REPLACE,
                 immediateSync
             )
+
+        checkAppLock()
+        lockHandler.postDelayed(lockRunnable, 10000L)
     }
 
+    private fun observeInternetDisconnect() {
+        networkObserverJob?.cancel()
+        networkObserverJob = lifecycleScope.launch {
+            NetworkMonitor.isConnected.collectLatest { connected ->
+                if (connected) {
+                    networkDialogVisible = false
+                    return@collectLatest
+                }
+                if (networkDialogVisible || isFinishing || isDestroyed) return@collectLatest
+                networkDialogVisible = true
+                androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                    .setMessage("You are not connected to the network")
+                    .setPositiveButton("OK") { _, _ ->
+                        myApp.isAppLocked = true
+                        val intent = Intent(this@MainActivity, ValidatePasswordActivity::class.java)
+                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        startActivity(intent)
+                        finish()
+                    }
+                    .setCancelable(false)
+                    .show()
+            }
+        }
+    }
+
+    /**
+     * Start GlobalSyncService for 24/7 background operation.
+     * Service runs even when app is closed.
+     */
+    private fun startGlobalSyncService() {
+        try {
+            val serviceIntent = Intent(this, GlobalSyncService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                @Suppress("DEPRECATION")
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onDestroy() {
+        networkObserverJob?.cancel()
+        super.onDestroy()
+    }
 }

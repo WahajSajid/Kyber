@@ -178,7 +178,7 @@ class MessageAdapter(
         val tvSentDuration: TextView = view.findViewById(R.id.tvSentAudioDuration)
 
         val rcvAudio: LinearLayout = view.findViewById(R.id.rcvAudioContainer)
-        val ivRcvPlayPause: FrameLayout = view.findViewById(R.id.ivRcvPlayPause)
+        val ivRcvPlayPause: ConstraintLayout = view.findViewById(R.id.ivRcvPlayPause)
         val ivRcvPlayIcon: ImageView = view.findViewById(R.id.ivRcvPlayIcon)
         val waveformRcv: WaveformView = view.findViewById(R.id.waveformRcv)
         val tvRcvSpeed: TextView = view.findViewById(R.id.tvRcvSpeed)
@@ -229,9 +229,14 @@ class MessageAdapter(
 
         val sentAudioProgressBar: ProgressBar = view.findViewById(R.id.sentAudioProgressBar)
         val tvSentAudioUploadState: TextView = view.findViewById(R.id.tvSentAudioUploadState)
+        val tvSentAudioUploadStateLayout: ConstraintLayout =
+            view.findViewById(R.id.tvSentAudioUploadStateLayout)
+
 
         val rcvAudioProgressBar: ProgressBar = view.findViewById(R.id.rcvAudioProgressBar)
         val tvRcvAudioDownloadState: TextView = view.findViewById(R.id.tvRcvAudioDownloadState)
+        val tvRcvAudioDownloadStateLayout: ConstraintLayout = view.findViewById(R.id.tvRcvAudioDownloadStateLayout)
+
 
 
         val btnRetrySentMedia: android.widget.Button = view.findViewById(R.id.btnRetrySentMedia)
@@ -445,7 +450,7 @@ class MessageAdapter(
             h.tvRcv.cancelAndShowFinal()
             h.tvSent.text = item.decryptedMsg
             h.tvDecryptingRcv?.visibility = View.GONE
-            
+
             // Text retry and pending logic
             h.btnRetrySentText?.isVisible = false
             if (item.uploadState == "pending" || item.uploadState == "uploading") {
@@ -473,15 +478,22 @@ class MessageAdapter(
         val msgId = item.id
         val cached = decryptedTextCache[msgId]
 
-        if (cached != null) {
+        if (cached != null || msgId <= lastSeenMessageId) {
             h.tvRcv.cancelAndShowFinal()
-            h.tvRcv.text = cached
+            h.tvRcv.text = item.decryptedMsg
             h.tvDecryptingRcv?.visibility = View.GONE
+            decryptedTextCache[msgId] = item.decryptedMsg
             return
         }
 
         if (animatingIds.contains(msgId)) {
-            h.tvDecryptingRcv?.visibility = View.VISIBLE
+            h.tvDecryptingRcv?.visibility = View.GONE
+            h.tvRcv.cancelAndShowFinal()
+            h.tvRcv.text = item.decryptedMsg
+            decryptedTextCache[msgId] = item.decryptedMsg
+            animatingIds.remove(msgId)
+            decryptJobs[msgId]?.cancel()
+            decryptJobs.remove(msgId)
             return
         }
 
@@ -561,55 +573,138 @@ class MessageAdapter(
         h.tvRcv.cancelAndShowFinal()
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
 
-        // FIX: Route the raw decrypted source through the Base64 file resolver
-        val uriStr: String = when {
-            // Prefer a real file:// local path
-            !item.localFilePath.isNullOrBlank() && !item.localFilePath!!.startsWith("content://") -> {
-                val f = java.io.File(item.localFilePath!!)
-                if (f.exists()) "file://${item.localFilePath}" else ""
+        val ctx = h.itemView.context
+
+        // ── Resolve the best available source for image display ──────────────────
+        // For VIDEO: we NEVER try to render a .mp4 directly — Glide can't extract
+        // frames from it without an explicit frame/transformer. We use thumbnailPath
+        // or Glide's built-in .frame() option instead.
+        // For IMAGE: use localFilePath → decryptedUri → placeholder
+        fun loadVideoThumbnail(target: ImageView) {
+            when {
+                // 1. Prefer the pre-generated thumbnail (set by VideoCompressor)
+                !item.thumbnailPath.isNullOrBlank() -> {
+                    val thumbFile = java.io.File(item.thumbnailPath!!)
+                    if (thumbFile.exists()) {
+                        Glide.with(ctx)
+                            .load(thumbFile)
+                            .apply(
+                                RequestOptions.centerCropTransform()
+                                    .placeholder(R.drawable.video_playback_bg)
+                                    .error(R.drawable.video_playback_bg)
+                            )
+                            .into(target)
+                        return
+                    }
+                }
+                // 2. Fall back to frame extraction from the local video file
+                !item.localFilePath.isNullOrBlank() -> {
+                    val videoFile = java.io.File(item.localFilePath!!)
+                    if (videoFile.exists()) {
+                        Glide.with(ctx)
+                            .asBitmap()
+                            .load(videoFile)
+                            .apply(
+                                com.bumptech.glide.request.RequestOptions()
+                                    .frame(0L)  // first available frame — works for short clips too
+                                    .centerCrop()
+                                    .placeholder(R.drawable.video_playback_bg)
+                                    .error(R.drawable.video_playback_bg)
+                            )
+                            .into(target)
+                        return
+                    }
+                }
             }
-            // Fallback: decrypt uri field (may be content:// or base64)
-            else -> {
-                val rawSource = item.decryptedUri ?: item.decryptedMsg
-                resolveMediaSource(h.itemView.context, rawSource, type)
-            }
+            // 3. Nothing available — show placeholder (downloading or no thumbnail)
+            Glide.with(ctx)
+                .load(R.drawable.video_playback_bg)
+                .apply(RequestOptions.centerCropTransform())
+                .into(target)
         }
-        val uri = try {
-            uriStr.toUri()
-        } catch (_: Exception) {
-            null
+
+        fun loadImageSource(target: ImageView) {
+            val uriStr: String = when {
+                !item.localFilePath.isNullOrBlank() && !item.localFilePath!!.startsWith("content://") -> {
+                    val f = java.io.File(item.localFilePath!!)
+                    if (f.exists()) "file://${item.localFilePath}" else ""
+                }
+
+                else -> {
+                    val rawSource = item.decryptedUri ?: item.decryptedMsg
+                    resolveMediaSource(ctx, rawSource, type)
+                }
+            }
+            // While downloading, try to show a real thumbnail if available
+            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
+            if (isDownloading) {
+                val thumbFile = item.thumbnailPath?.let { java.io.File(it) }
+                if (thumbFile != null && thumbFile.exists()) {
+                    // Real thumbnail available — show it during download
+                    Glide.with(ctx)
+                        .load(thumbFile)
+                        .apply(
+                            RequestOptions.centerCropTransform()
+                                .placeholder(R.drawable.photos)
+                                .error(R.drawable.photos)
+                        )
+                        .into(target)
+                } else {
+                    // No thumbnail yet — generic placeholder
+                    Glide.with(ctx)
+                        .load(R.drawable.photos)
+                        .apply(RequestOptions.centerCropTransform())
+                        .into(target)
+                }
+                return
+            }
+            if (uriStr.isBlank()) {
+                Glide.with(ctx)
+                    .load(R.drawable.photos)
+                    .apply(RequestOptions.centerCropTransform())
+                    .into(target)
+            } else {
+                val uri = try {
+                    uriStr.toUri()
+                } catch (_: Exception) {
+                    null
+                }
+                if (uri != null) {
+                    Glide.with(ctx)
+                        .load(uri)
+                        .apply(
+                            RequestOptions.centerCropTransform()
+                                .placeholder(R.drawable.photos)
+                                .error(R.drawable.photos)
+                        )
+                        .into(target)
+                }
+            }
         }
 
         if (sent) {
             h.sentMedia.isVisible = true; h.rcvdMedia.isVisible = false
             h.ivSentMedia.isVisible = true; h.ivSentPlay.isVisible = type == "VIDEO"
-            if (uri != null) Glide.with(h.itemView.context).load(uri)
-                .apply(RequestOptions.centerCropTransform()).into(h.ivSentMedia)
+            if (type == "VIDEO") loadVideoThumbnail(h.ivSentMedia)
+            else loadImageSource(h.ivSentMedia)
             if (item.decryptedMsg.isNotBlank() && item.decryptedMsg != "photo" && item.decryptedMsg != "video") {
                 h.tvSent.text = item.decryptedMsg; h.tvSent.isVisible = true
             }
-            h.ivSentMedia.setOnClickListener { onClick(item) }; h.ivSentPlay.setOnClickListener {
-                onClick(
-                    item
-                )
-            }
+            h.ivSentMedia.setOnClickListener { onClick(item) }
+            h.ivSentPlay.setOnClickListener { onClick(item) }
         } else {
             h.rcvdMedia.isVisible = true; h.sentMedia.isVisible = false
             h.ivRcvMedia.isVisible = true; h.ivRcvPlay.isVisible = type == "VIDEO"
-            if (uri != null) Glide.with(h.itemView.context).load(uri)
-                .apply(RequestOptions.centerCropTransform()).into(h.ivRcvMedia)
+            if (type == "VIDEO") loadVideoThumbnail(h.ivRcvMedia)
+            else loadImageSource(h.ivRcvMedia)
             if (item.decryptedMsg.isNotBlank() && item.decryptedMsg != "photo" && item.decryptedMsg != "video") {
                 h.tvRcv.text = item.decryptedMsg; h.tvRcv.isVisible = true
             }
-            h.ivRcvMedia.setOnClickListener { onClick(item) }; h.ivRcvPlay.setOnClickListener {
-                onClick(
-                    item
-                )
-            }
+            h.ivRcvMedia.setOnClickListener { onClick(item) }
+            h.ivRcvPlay.setOnClickListener { onClick(item) }
         }
 
-
-        // After existing Glide load and click listener setup, add:
+        // ── Upload/download progress overlays ────────────────────────────────────
         if (sent) {
             when (item.uploadState) {
                 "pending" -> {
@@ -673,30 +768,7 @@ class MessageAdapter(
             }
         }
 
-
-        if (item.type.uppercase() == "VIDEO") {
-            val thumbSource: Any? = when {
-                !item.thumbnailPath.isNullOrBlank() -> java.io.File(item.thumbnailPath)
-                !item.localFilePath.isNullOrBlank() -> java.io.File(item.localFilePath!!)
-                else -> null
-            }
-            if (thumbSource != null) {
-                if (sent) {
-                    Glide.with(h.itemView.context)
-                        .load(thumbSource)
-                        .apply(RequestOptions.centerCropTransform())
-                        .into(h.ivSentMedia)
-                } else {
-                    Glide.with(h.itemView.context)
-                        .load(thumbSource)
-                        .apply(RequestOptions.centerCropTransform())
-                        .into(h.ivRcvMedia)
-                }
-            }
-        }
-
-
-        // Add at the end of bindMedia(), after the existing progress overlay block:
+        // ── Click guard: only allow opening completed media ───────────────────────
         if (sent) {
             val sentReady = item.uploadState == "done"
             h.ivSentMedia.isClickable = sentReady
@@ -706,9 +778,8 @@ class MessageAdapter(
             h.ivRcvMedia.isClickable = rcvReady
             h.ivRcvPlay.isClickable = rcvReady
         }
-
-
     }
+
 
     private fun bindAudio(h: VH, item: MessageUiModel, sent: Boolean) {
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
@@ -743,9 +814,10 @@ class MessageAdapter(
                 "pending", "uploading" -> {
                     h.sentAudioProgressBar.visibility = View.VISIBLE
                     h.sentAudioProgressBar.progress = item.uploadProgress
-                    h.tvSentAudioUploadState.visibility = View.VISIBLE
+                    h.tvSentAudioUploadStateLayout.visibility = View.VISIBLE
+
                     h.tvSentAudioUploadState.text = if (item.uploadState == "pending")
-                        "Preparing..." else "Uploading ${item.uploadProgress}%"
+                        "Preparing..." else "Sending ${item.uploadProgress}%"
                     h.playPauseFrame(true).isEnabled = false
                     h.waveform(true).alpha = 0.4f
                 }
@@ -753,7 +825,7 @@ class MessageAdapter(
                 "failed" -> {
                     h.sentAudioProgressBar.visibility = View.VISIBLE
                     h.sentAudioProgressBar.progress = 0
-                    h.tvSentAudioUploadState.visibility = View.VISIBLE
+                    h.tvSentAudioUploadStateLayout.visibility = View.VISIBLE
                     h.tvSentAudioUploadState.text = "Upload failed"
                     h.btnRetrySentAudio.visibility = View.VISIBLE
                     h.btnRetrySentAudio.setOnClickListener { onRetryUpload(item) }
@@ -762,7 +834,7 @@ class MessageAdapter(
 
                 else -> {
                     h.sentAudioProgressBar.visibility = View.GONE
-                    h.tvSentAudioUploadState.visibility = View.GONE
+                    h.tvSentAudioUploadStateLayout.visibility = View.GONE
                     h.btnRetrySentAudio.visibility = View.GONE
                     h.playPauseFrame(true).isEnabled = true
                     h.waveform(true).alpha = 1f
@@ -773,7 +845,7 @@ class MessageAdapter(
                 "pending", "downloading" -> {
                     h.rcvAudioProgressBar.visibility = View.VISIBLE
                     h.rcvAudioProgressBar.progress = item.downloadProgress
-                    h.tvRcvAudioDownloadState.visibility = View.VISIBLE
+                    h.tvRcvAudioDownloadStateLayout.visibility = View.VISIBLE
                     h.tvRcvAudioDownloadState.text = if (item.downloadState == "pending")
                         "Receiving..." else "Downloading ${item.downloadProgress}%"
                     h.playPauseFrame(false).isEnabled = false
@@ -790,7 +862,7 @@ class MessageAdapter(
                 "failed" -> {
                     h.rcvAudioProgressBar.visibility = View.VISIBLE
                     h.rcvAudioProgressBar.progress = 0
-                    h.tvRcvAudioDownloadState.visibility = View.VISIBLE
+                    h.tvRcvAudioDownloadStateLayout.visibility = View.VISIBLE
                     h.tvRcvAudioDownloadState.text = "Download failed"
                     h.btnRetryRcvAudio.visibility = View.VISIBLE
                     h.btnRetryRcvAudio.setOnClickListener { onRetryDownload(item) }
@@ -799,7 +871,7 @@ class MessageAdapter(
 
                 else -> {
                     h.rcvAudioProgressBar.visibility = View.GONE
-                    h.tvRcvAudioDownloadState.visibility = View.GONE
+                    h.tvRcvAudioDownloadStateLayout.visibility = View.GONE
                     h.btnRetryRcvAudio.visibility = View.GONE
                     h.playPauseFrame(false).isEnabled = true
                     h.waveform(false).alpha = 1f
@@ -809,11 +881,11 @@ class MessageAdapter(
 
 
         //enabling the play_pause_icon once the downloading progress reaches 100 %
-        when(item.downloadProgress){
+        when (item.downloadProgress) {
             100 -> {
                 h.playPauseFrame(false).isEnabled = true
                 h.rcvAudioProgressBar.visibility = View.GONE
-                h.tvRcvAudioDownloadState.visibility = View.GONE
+                h.tvRcvAudioDownloadStateLayout.visibility = View.GONE
             }
         }
 

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+
 
     <!-- drawable/x_base_coun.xml -->
 <vector
@@ -13,9 +13,45 @@ android:viewportHeight="20"
     <clip-path
         android:pathData="M10 0H19C24.5228 0 29 4.47715 29 10C29 15.5228 24.5228 20 19 20H10C4.47715 20 0 15.5228 0 10C0 4.47715 4.47715 0 10 0Z"
         />
-    <path
-        android:pathData="M0 0V20H29V0"
-        android:fillColor="#90BAFF"
-        />
+    <group
+        android:translateX="-0.044"
+        android:translateY="0.471"
+        android:pivotX="14.5"
+        android:pivotY="10"
+        android:scaleX="2.835"
+        android:scaleY="2.117"
+        android:rotation="-41.773"
+        >
+        <path
+            android:pathData="M0 0V20H29V0"
+            >
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="7.25"
+                    android:startY="10"
+                    android:endX="21.75"
+                    android:endY="10"
+                    >
+                    <item
+                        android:color="#0047AF"
+                        android:offset="0"
+                        />
+                    <item
+                        android:color="#354658"
+                        android:offset="0.5"
+                        />
+                    <item
+                        android:color="#486284"
+                        android:offset="0.75"
+                        />
+                    <item
+                        android:color="#3362AB"
+                        android:offset="1"
+                        />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
 </group>
 </vector>

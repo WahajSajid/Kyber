@@ -8,6 +8,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
+import app.secure.kyber.backend.common.DisappearTime
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.onionrouting.UnionService
 import app.secure.kyber.roomdb.AppDb
@@ -68,6 +69,10 @@ class SyncWorker(
                 }
             }
             if (circuitId.isNullOrEmpty()) return@withContext Result.retry()
+
+
+            
+
 
             // Fetch all available messages (no since filter — DB dedup handles duplicates)
             val response = repository.getMessages(myOnion, circuitId, since = null)
@@ -156,12 +161,15 @@ class SyncWorker(
                     val encryptedUri = if (!transport.uri.isNullOrBlank())
                         MessageEncryptionManager.encryptLocal(context, transport.uri).encryptedBlob else null
 
+                    val sentMs = DisappearTime.parseMessageTimestampMs(transport.timestamp)
+                    val localExpiresAt = DisappearTime.expiresAtFromSent(sentMs, transport.disappear_ttl)
+
                     val entity = MessageEntity(
                         messageId = transport.messageId,
                         apiMessageId = apiMsg.id,
                         msg = if (isDecryptionSuccessful) MessageEncryptionManager.encryptLocal(context, decryptedPayloadText).encryptedBlob else transport.msg,
                         senderOnion = transport.senderOnion,
-                        time = System.currentTimeMillis().toString(),
+                        time = sentMs.toString(),
                         isSent = false,
                         type = transport.type,
                         uri = encryptedUri,
@@ -170,7 +178,8 @@ class SyncWorker(
                         reaction = transport.reaction,
                         isRequest = transport.isRequest,
                         keyFingerprint = transport.recipientKeyFingerprint,
-                        iv = transport.iv
+                        iv = transport.iv,
+                        expiresAt = localExpiresAt
                     )
                     messageDao.insert(entity)
                     newMessageCount++
@@ -183,14 +192,13 @@ class SyncWorker(
                             .apply()
                     }
 
-                    // Show notification
                     val currentContact = contactRepo.getContact(transport.senderOnion)
                     if (currentContact != null) {
-                        showNotification(transport.senderOnion, currentContact.name, decryptedPayloadText, transport.type)
+                        showNotification(transport.senderOnion, transport.type ?: "TEXT")
                     } else {
                         val msgCount = messageDao.getBySender(transport.senderOnion).size
                         if (msgCount == 1) {
-                            showNotification(transport.senderOnion, "Someone", "New message request", "TEXT")
+                            showNotification(transport.senderOnion, "REQUEST")
                         }
                     }
 
@@ -201,6 +209,32 @@ class SyncWorker(
 
             Prefs.setLastSyncTime(context, System.currentTimeMillis())
             Log.d(TAG, "SyncWorker inserted $newMessageCount new messages")
+
+            // --- GLOBAL CONTACT PUBLIC KEY SYNC ---
+            try {
+                val allContacts = contactRepo.getAllOnce()
+                for (contact in allContacts) {
+                    try {
+                        val resp = repository.getPublicKey(contact.onionAddress)
+                        if (resp.isSuccessful) {
+                            val freshKey = resp.body()?.publicKey
+                            if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                                contactRepo.saveContact(
+                                    onionAddress = contact.onionAddress,
+                                    name = contact.name,
+                                    publicKey = freshKey
+                                )
+                                Log.d(TAG, "SyncWorker globally refreshed public key for contact ${contact.onionAddress}")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "SyncWorker could not refresh key for ${contact.onionAddress}: ${e.message}")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "SyncWorker contact key global sync loop failed: ${e.message}")
+            }
+
 
             // If service is not running, start it so real-time delivery resumes
             try {
@@ -227,13 +261,15 @@ class SyncWorker(
         }
     }
 
-    private fun showNotification(sender: String, title: String, msg: String, type: String) {
+    private fun showNotification(sender: String, type: String) {
         try {
             val displayMsg = when (type.uppercase()) {
-                "IMAGE" -> "📷 Photo"
-                "VIDEO" -> "🎥 Video"
-                "AUDIO" -> "🎵 Voice Message"
-                else -> if (msg.length > 60) msg.take(57) + "..." else msg
+                "IMAGE" -> "Photo"
+                "VIDEO" -> "Video"
+                "AUDIO" -> "Voice message"
+                "REQUEST" -> "New message request"
+                "REACTION" -> "Someone reacted to your message"
+                else -> "Text message"
             }
             val notificationManager = context.getSystemService(
                 Context.NOTIFICATION_SERVICE
@@ -247,7 +283,7 @@ class SyncWorker(
             )
             val notification = androidx.core.app.NotificationCompat
                 .Builder(context, "union_messages_channel")
-                .setContentTitle(title)
+                .setContentTitle("You have a new message")
                 .setContentText(displayMsg)
                 .setSmallIcon(app.secure.kyber.R.drawable.notification)
                 .setContentIntent(pendingIntent)

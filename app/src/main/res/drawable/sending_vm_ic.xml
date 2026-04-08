@@ -1,0 +1,41 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Send/Upload arrow icon (light theme) -->
+    <path
+        android:pathData="M24,17.333L28.167,21.5L27,22.708L24.833,20.541V27.333H23.167V20.541L21,22.708L19.833,21.5L24,17.333ZM19,30.666C18.542,30.666 18.149,30.503 17.823,30.177C17.497,29.85 17.333,29.458 17.333,29V26.5H19V29H29V26.5H30.667V29C30.667,29.458 30.503,29.85 30.177,30.177C29.851,30.503 29.458,30.666 29,30.666H19Z"
+        android:fillColor="#96A9E6"/>
+
+    <!-- Outer circle subtle background ring -->
+    <path
+        android:pathData="M24,44C35.038,44 44,35.038 44,24C44,12.962 35.038,4 24,4C12.962,4 4,12.962 4,24C4,35.038 12.962,44 24,44V44"
+        android:strokeAlpha="0.15"
+        android:strokeWidth="2"
+        android:fillColor="#00000000"
+        android:strokeColor="#0047AF"/>
+
+    <!-- Outer circle gradient border -->
+    <path
+        android:pathData="M24,44C35.038,44 44,35.038 44,24C44,12.962 35.038,4 24,4C12.962,4 4,12.962 4,24C4,35.038 12.962,44 24,44V44"
+        android:strokeWidth="2"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="44"
+                android:startY="44.729"
+                android:endX="41.839"
+                android:endY="0.69"
+                android:type="linear">
+                <item android:offset="0"    android:color="#FF0047AF"/>
+                <item android:offset="0.5"  android:color="#FF354658"/>
+                <item android:offset="0.75" android:color="#FF486284"/>
+                <item android:offset="1"    android:color="#FF3362AB"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>

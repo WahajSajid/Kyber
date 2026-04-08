@@ -14,13 +14,20 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
+import app.secure.kyber.Utils.NetworkMonitor
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 
 @AndroidEntryPoint
 class ValidatePasswordActivity : AppCompatActivity() {
 
     private lateinit var controller: NavController
+    private var networkObserverJob: Job? = null
+    private var networkDialogVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,8 +47,28 @@ class ValidatePasswordActivity : AppCompatActivity() {
         window.statusBarColor = this.resources.getColor(R.color.statusbar_color,theme)
 
         controller = this.findNavController(R.id.pwdSet_fragment)
+        observeInternetDisconnect()
 
 
+    }
+
+    private fun observeInternetDisconnect() {
+        networkObserverJob?.cancel()
+        networkObserverJob = lifecycleScope.launch {
+            NetworkMonitor.isConnected.collectLatest { connected ->
+                if (connected) {
+                    networkDialogVisible = false
+                    return@collectLatest
+                }
+                if (networkDialogVisible || isFinishing || isDestroyed) return@collectLatest
+                networkDialogVisible = true
+                androidx.appcompat.app.AlertDialog.Builder(this@ValidatePasswordActivity)
+                    .setMessage("You are not connected to the network")
+                    .setPositiveButton("OK") { _, _ -> networkDialogVisible = false }
+                    .setOnDismissListener { networkDialogVisible = false }
+                    .show()
+            }
+        }
     }
 
     override fun onCreateView(name: String, context: Context, attrs: AttributeSet): View? {
@@ -51,6 +78,10 @@ class ValidatePasswordActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
+    }
+    override fun onDestroy() {
+        networkObserverJob?.cancel()
+        super.onDestroy()
     }
     private fun openActivity(){
         val handler = Handler()

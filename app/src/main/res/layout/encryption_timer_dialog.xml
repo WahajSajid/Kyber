@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="@dimen/_240sdp"
+    android:layout_height="wrap_content"
+    android:layout_marginRight="@dimen/_18sdp"
+    android:layout_marginLeft="@dimen/_18sdp"
+    android:background="@drawable/disappearing_messages_dialog_bg">
+
+    <LinearLayout
+        android:id="@+id/linear_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/_18sdp">
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="Encryption Timer"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_18sdp"
+            android:textStyle="bold" />
+
+        <!-- Centered icon -->
+        <ImageView
+            android:id="@+id/centerIcon"
+            android:layout_width="@dimen/_35sdp"
+            android:layout_height="@dimen/_41sdp"
+            android:layout_gravity="center"
+            android:layout_marginTop="@dimen/_14sdp"
+            android:src="@drawable/encryption_ic"
+            app:tint="@color/white" />
+
+        <!-- Description -->
+        <TextView
+            android:id="@+id/description"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="@dimen/_12sdp"
+            android:lineSpacingExtra="@dimen/_2sdp"
+            android:text="Determine how often your\n encryption keys automatically\n update to maintain top security."
+            android:textColor="#CDE6FF"
+            android:textSize="@dimen/_13sdp" />
+
+        <!-- Options list -->
+        <LinearLayout
+            android:id="@+id/optionsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingTop="@dimen/_2sdp"
+            android:paddingBottom="@dimen/_6sdp">
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/divider1"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:background="#26263A" />
+
+            <!-- Option: 24 Hours -->
+            <LinearLayout
+                android:id="@+id/layout_24Hours"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:gravity="center_vertical"
+                android:paddingRight="@dimen/_20sdp"
+                android:paddingLeft="@dimen/_20sdp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/opt_24h"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="24 Hours"
+                    android:textColor="#E6F7FF"
+                    android:textSize="@dimen/_16sdp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="RECOMMENDED"
+                    android:textColor="#7BD0FFB2"
+                    android:textSize="@dimen/_10sdp" />
+
+                <ImageView
+                    android:id="@+id/radio_24h"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
+                    android:buttonTint="@null" />
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/divider2"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:background="#26263A" />
+
+            <!-- Option: 48 Hours -->
+            <LinearLayout
+                android:id="@+id/layout_48Hours"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:gravity="center_vertical"
+                android:paddingRight="@dimen/_20sdp"
+                android:paddingLeft="@dimen/_20sdp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/opt_48h"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="48 Hours"
+                    android:textColor="#E6F7FF"
+                    android:textSize="@dimen/_16sdp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="STANDARD"
+                    android:textColor="#7BD0FFB2"
+                    android:textSize="@dimen/_10sdp" />
+
+                <ImageView
+                    android:id="@+id/radio_48h"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
+                    android:buttonTint="@null" />
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/divider3"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:background="#26263A" />
+
+            <!-- Option: 7 Days -->
+            <LinearLayout
+                android:id="@+id/layout_7Days"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:gravity="center_vertical"
+                android:paddingRight="@dimen/_20sdp"
+                android:paddingLeft="@dimen/_20sdp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/opt_7d"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="7 Days"
+                    android:textColor="#E6F7FF"
+                    android:textSize="@dimen/_16sdp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="RELAXED"
+                    android:textColor="#7BD0FFB2"
+                    android:textSize="@dimen/_10sdp" />
+
+                <ImageView
+                    android:id="@+id/radio_7d"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
+                    android:buttonTint="@null" />
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/divider4"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:background="#26263A" />
+
+            <!-- Option: 30 Days -->
+            <LinearLayout
+                android:id="@+id/layout_30Days"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_56sdp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingRight="@dimen/_20sdp"
+                android:paddingLeft="@dimen/_20sdp">
+
+                <TextView
+                    android:id="@+id/opt_30d"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="30 Days"
+                    android:textColor="#E6F7FF"
+                    android:textSize="@dimen/_16sdp" />
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="MINIMAL"
+                    android:textColor="#7BD0FFB2"
+                    android:textSize="@dimen/_10sdp" />
+
+                <ImageView
+                    android:id="@+id/radio_30d"
+                    android:layout_width="@dimen/_25sdp"
+                    android:layout_height="@dimen/_25sdp"
+                    android:src="@drawable/radio_unchecked"
+                    android:buttonTint="@null" />
+            </LinearLayout>
+
+            <!-- Divider -->
+            <View
+                android:id="@+id/divider5"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_1sdp"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:background="#26263A" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:paddingHorizontal="@dimen/_10sdp"
+        android:layout_width="@dimen/_222sdp"
+        android:layout_height="@dimen/_91sdp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:background="@drawable/encryption_timer_instruction_bg"
+        app:layout_constraintTop_toBottomOf="@id/linear_layout">
+
+        <ImageView
+            android:id="@+id/info_ic"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:src="@drawable/info_ic"
+            android:layout_marginEnd="@dimen/_5sdp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@id/instruction_encryption"
+            app:layout_constraintEnd_toStartOf="@id/instruction_encryption"
+            tools:layout_editor_absoluteY="23dp" />
+
+        <TextView
+            android:id="@+id/instruction_encryption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Frequent rotation ensures that\n even if a key is compromised,\n historical data remains inaccessible."
+            android:textColor="#96A9E6"
+            android:textSize="@dimen/_12sdp"
+            android:layout_marginStart="@dimen/_5sdp"
+            tools:layout_editor_absoluteX="21dp"
+            tools:layout_editor_absoluteY="23dp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toEndOf="@id/info_ic"
+            app:layout_constraintBottom_toBottomOf="parent" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

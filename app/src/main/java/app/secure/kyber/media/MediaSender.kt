@@ -28,7 +28,8 @@ class MediaSender(
     ) {
         val messageId  = UUID.randomUUID().toString()
         val mediaId    = UUID.randomUUID().toString()
-        val timestamp  = System.currentTimeMillis().toString()
+        val sentTimeMs = System.currentTimeMillis()
+        val timestamp  = sentTimeMs.toString()
         
         val durableFilePath = when (mimeType) {
             "IMAGE" -> prepareImageForUpload(context, filePath)
@@ -38,6 +39,20 @@ class MediaSender(
 
         val fileSize   = resolveFileSize(durableFilePath)
         val durationMs = if (mimeType != "IMAGE") getDurationMs(durableFilePath) else 0L
+
+        // Generate thumbnail immediately for VIDEO so the bubble shows a real frame
+        // from the very first DB write — before the upload worker even starts.
+        val earlyThumbnailPath: String? = if (mimeType == "VIDEO") {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                VideoCompressor.generateThumbnailForPath(context, durableFilePath)
+            }
+        } else null
+
+        val disappearTimerMs = app.secure.kyber.backend.common.Prefs.getDisappearingTimerMs(context)
+        var localExpiresAt = 0L
+        if (disappearTimerMs > 0L) {
+            localExpiresAt = sentTimeMs + disappearTimerMs
+        }
 
         // 1. Insert local pending row immediately
         messageDao.insert(
@@ -55,7 +70,9 @@ class MediaSender(
                 remoteMediaId  = mediaId,
                 localFilePath  = durableFilePath.removePrefix("file://"),
                 mediaDurationMs = durationMs,
-                mediaSizeBytes = fileSize
+                mediaSizeBytes = fileSize,
+                thumbnailPath  = earlyThumbnailPath,
+                expiresAt = localExpiresAt
             )
         )
         onLocalMessageSaved?.invoke(messageId)
@@ -72,7 +89,8 @@ class MediaSender(
             senderOnion  = senderOnion,
             senderName   = senderName,
             isContact    = isContact,
-            durationMs   = durationMs
+            durationMs   = durationMs,
+            disappearTtl = disappearTimerMs
         )
         WorkManager.getInstance(context)
             .enqueueUniqueWork(
