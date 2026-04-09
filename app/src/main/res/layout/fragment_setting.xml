@@ -28,45 +28,29 @@
                 android:background="@drawable/settings_card_bg"
                 android:paddingHorizontal="@dimen/_10sdp">
 
-                <FrameLayout
+                <androidx.constraintlayout.widget.ConstraintLayout
                     android:id="@+id/profile_picture"
-                    android:layout_width="@dimen/_67sdp"
-                    android:layout_height="@dimen/_67sdp"
+                    android:layout_width="@dimen/_55sdp"
+                    android:layout_height="@dimen/_55sdp"
                     android:background="@drawable/bg_avatar"
                     android:backgroundTint="#2A3E63"
                     app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent">
 
-                    <FrameLayout
+                    <ImageView
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content">
+                        android:layout_height="wrap_content"
+                        android:src="@drawable/ano_ic"
+                        android:padding="@dimen/_8sdp"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent"
+                        app:layout_constraintBottom_toBottomOf="parent"/>
 
-                        <TextView
-                            android:id="@+id/avatar_letter"
-                            android:layout_width="@dimen/_67sdp"
-                            android:layout_height="@dimen/_67sdp"
-                            android:background="@drawable/circle_avatar"
-                            android:fontFamily="sans-serif-medium"
-                            android:gravity="center"
-                            android:text="B"
-                            android:textColor="@color/avatar_text"
-                            android:textSize="@dimen/_20sdp" />
 
-                        <ImageView
-                            android:id="@+id/avatar_edit"
-                            android:layout_width="@dimen/_20sdp"
-                            android:layout_height="@dimen/_20sdp"
-                            android:layout_gravity="bottom|end"
-                            android:layout_marginEnd="0dp"
-                            android:layout_marginBottom="0dp"
-                            android:background="@drawable/edit_icon_bg"
-                            android:contentDescription="@null"
-                            android:padding="@dimen/_4sdp"
-                            android:src="@drawable/pencil" />
-                    </FrameLayout>
 
-                </FrameLayout>
+                </androidx.constraintlayout.widget.ConstraintLayout>
 
                 <androidx.constraintlayout.widget.ConstraintLayout
                     android:id="@+id/details_layout"
@@ -79,15 +63,15 @@
 
                     <TextView
                         android:id="@+id/tvNameDis"
-                        android:layout_width="@dimen/_150sdp"
+                        android:layout_width="@dimen/_190sdp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="@dimen/_15sdp"
                         android:ellipsize="end"
                         android:fontFamily="@font/roboto_regular"
                         android:maxLines="1"
-                        android:text="Bryan"
+                        android:text="Wahaj"
                         android:textColor="#E0F1FF"
-                        android:textSize="@dimen/_24sdp"
+                        android:textSize="@dimen/_20sdp"
                         android:textStyle="bold"
                         app:layout_constraintStart_toStartOf="parent"
                         app:layout_constraintTop_toTopOf="parent" />
@@ -149,18 +133,18 @@
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
-                <com.google.android.material.button.MaterialButton
+                <ImageButton
                     android:id="@+id/btnQR"
                     android:layout_width="@dimen/_35sdp"
-                    android:layout_height="@dimen/_40sdp"
+                    android:layout_height="@dimen/_35sdp"
                     android:layout_marginHorizontal="@dimen/_6sdp"
-                    android:backgroundTint="@color/primary_color"
+                    android:background="@drawable/btn_bg"
                     android:gravity="center"
                     android:text=""
                     android:textAllCaps="false"
                     android:textColor="@android:color/white"
                     app:cornerRadius="@dimen/_10sdp"
-                    app:icon="@drawable/qr"
+                    android:src="@drawable/qr"
                     app:iconGravity="textStart"
                     app:iconTint="#FFFFFF"
                     app:layout_constraintBottom_toBottomOf="parent"
@@ -169,18 +153,17 @@
                     app:strokeColor="@color/primary_color"
                     app:strokeWidth="@dimen/_1sdp" />
 
-                <com.google.android.material.button.MaterialButton
+                <ImageButton
                     android:id="@+id/btnShare"
                     android:layout_width="@dimen/_35sdp"
-                    android:layout_height="@dimen/_40sdp"
+                    android:layout_height="@dimen/_35sdp"
                     android:layout_marginHorizontal="@dimen/_6sdp"
-                    android:backgroundTint="@color/primary_color"
+                    android:background="@drawable/btn_bg"
                     android:gravity="center"
-                    android:text=""
                     android:textAllCaps="false"
                     android:textColor="@android:color/white"
                     app:cornerRadius="@dimen/_10sdp"
-                    app:icon="@drawable/share"
+                    android:src="@drawable/share"
                     app:iconGravity="textStart"
                     app:iconTint="#FFFFFF"
                     app:layout_constraintBottom_toBottomOf="parent"
@@ -348,7 +331,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:paddingHorizontal="@dimen/_20sdp"
-                        android:text="END DATE April 18, 2025"
+                        android:text="END DATE - May 18, 2026"
                         android:textColor="@color/white"
                         android:textSize="@dimen/_14sdp" />
                 </LinearLayout>

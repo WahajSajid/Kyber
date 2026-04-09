@@ -8,55 +8,61 @@
     tools:context=".fragments.MessageRequestsFragment">
 
 
+
+
     <HorizontalScrollView
         android:id="@+id/scroll_view"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fillViewport="true"
         android:scrollbars="none"
-        tools:ignore="MissingConstraints">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:orientation="horizontal">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnIndividualChat"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/_40sdp"
-                android:layout_marginHorizontal="@dimen/_14sdp"
+                android:layout_height="@dimen/_36sdp"
+                android:layout_marginHorizontal="@dimen/_8sdp"
                 android:layout_marginTop="@dimen/_10sdp"
                 android:backgroundTint="@color/btn_unselected_color"
                 android:gravity="center"
-                android:paddingStart="@dimen/_16sdp"
-                android:paddingEnd="@dimen/_16sdp"
+                android:paddingStart="@dimen/_10sdp"
+                android:paddingEnd="@dimen/_10sdp"
                 android:text="Individual chat"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
                 app:cornerRadius="@dimen/_24sdp"
+                android:textSize="@dimen/_12sdp"
                 app:icon="@drawable/person_blue"
                 app:iconGravity="textStart"
                 app:iconTint="#1A8BCE"
+
                 app:strokeColor="#803362AB"
                 app:strokeWidth="@dimen/_1sdp" />
 
             <com.google.android.material.button.MaterialButton
-
                 android:id="@+id/btnGroupChat"
                 android:layout_width="wrap_content"
-                android:layout_height="@dimen/_40sdp"
+                android:layout_height="@dimen/_36sdp"
                 android:layout_marginTop="@dimen/_10sdp"
                 android:layout_toEndOf="@id/btnIndividualChat"
                 android:backgroundTint="@color/btn_unselected_color"
                 android:gravity="center"
-                android:paddingStart="@dimen/_16sdp"
-                android:paddingEnd="@dimen/_16sdp"
+                android:paddingStart="@dimen/_10sdp"
+                android:paddingEnd="@dimen/_10sdp"
                 android:text="Group chat"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
                 app:cornerRadius="@dimen/_24sdp"
                 app:icon="@drawable/group_person"
+                android:textSize="@dimen/_12sdp"
                 app:iconGravity="textStart"
                 app:iconTint="#1A8BCE"
                 app:strokeColor="#803362AB"
@@ -64,19 +70,20 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRequest"
-                android:layout_width="@dimen/_130sdp"
-                android:layout_height="@dimen/_40sdp"
-                android:layout_marginHorizontal="@dimen/_14sdp"
+                android:layout_width="wrap_content"
+                android:layout_height="@dimen/_36sdp"
+                android:layout_marginHorizontal="@dimen/_8sdp"
                 android:layout_marginTop="@dimen/_10sdp"
                 android:layout_toEndOf="@id/btnGroupChat"
                 android:backgroundTint="@color/btn_selected_color"
                 android:gravity="center"
-                android:paddingStart="@dimen/_16sdp"
-                android:paddingEnd="@dimen/_16sdp"
+                android:paddingStart="@dimen/_10sdp"
+                android:paddingEnd="@dimen/_10sdp"
                 android:text="Requests"
                 android:textAllCaps="false"
                 android:textColor="@android:color/white"
                 app:cornerRadius="@dimen/_24sdp"
+                android:textSize="@dimen/_12sdp"
                 app:icon="@drawable/person_blue"
                 app:iconGravity="textStart"
                 app:iconTint="#1A8BCE"

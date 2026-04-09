@@ -43,6 +43,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
@@ -455,8 +456,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (networkDialogVisible || isFinishing || isDestroyed) return@collectLatest
                 networkDialogVisible = true
-                androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
-                    .setMessage("You are not connected to the network")
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage("Secure Connection Lost")
                     .setPositiveButton("OK") { _, _ ->
                         myApp.isAppLocked = true
                         val intent = Intent(this@MainActivity, ValidatePasswordActivity::class.java)

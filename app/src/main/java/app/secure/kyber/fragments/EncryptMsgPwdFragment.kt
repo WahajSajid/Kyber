@@ -76,7 +76,7 @@ class EncryptMsgPwdFragment :  Fragment( R.layout.fragment_encrypt_msg_pwd) {
         if (shownOfflineDialog || !isAdded) return
         shownOfflineDialog = true
         androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setMessage("You are not connected to the network")
+            .setMessage("Connection cannot be established")
             .setPositiveButton("OK") { _, _ ->
                 shownOfflineDialog = false
             }

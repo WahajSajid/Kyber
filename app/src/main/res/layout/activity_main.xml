@@ -58,7 +58,7 @@
                 android:layout_marginLeft="@dimen/_25sdp"
                 android:text="Wahaj"
                 android:textColor="@color/white"
-                android:textSize="@dimen/_25sdp"
+                android:textSize="@dimen/_20sdp"
                 android:textStyle="bold"
                 android:visibility="gone" />
 

@@ -16,7 +16,7 @@
     <dimen name="mediumPadding">@dimen/_24sdp</dimen>
     <dimen name="largePadding">@dimen/_32sdp</dimen>
     <dimen name="xLargePadding">@dimen/_50sdp</dimen>
-    <dimen name="bottom_navigation_icon_size">@dimen/_28sdp</dimen>
+    <dimen name="bottom_navigation_icon_size">@dimen/_26sdp</dimen>
 
 
     <dimen name="_1sdp">1.00dp</dimen>
@@ -684,7 +684,7 @@
 
 
 
-    <dimen name="audio_play_ic_dimen">18dp</dimen>
+    <dimen name="audio_play_ic_dimen">16dp</dimen>
     <dimen name="reaction_size">16dp</dimen>
 
     <dimen name="video_playback_bg">32dp</dimen>

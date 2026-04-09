@@ -36,6 +36,7 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="@dimen/_24sdp"
         android:orientation="vertical"
+        android:fitsSystemWindows="true"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
@@ -48,15 +49,6 @@
             android:paddingStart="@dimen/_24sdp"
             android:paddingEnd="@dimen/_24sdp"
             android:paddingBottom="@dimen/_16sdp">
-
-            <!--
-                All five views are placed in a packed horizontal chain
-                centered on the parent. The capture button is the anchor
-                at the centre; the two pairs (gallery+flash) and
-                (zoom+flip) sit symmetrically on each side.
-                Using 0dp width where allowed keeps things from ever
-                going off-screen on narrow devices.
-            -->
 
             <!-- LEFT side: Gallery -->
             <ImageButton
@@ -169,8 +161,8 @@
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingBottom="@dimen/_4sdp"
-                android:paddingTop="@dimen/_4sdp">
+                android:paddingTop="@dimen/_4sdp"
+                android:paddingBottom="@dimen/_4sdp">
 
                 <TextView
                     android:id="@+id/mode0"
@@ -212,6 +204,7 @@
                     android:textSize="@dimen/_13sdp" />
 
             </LinearLayout>
+
         </app.secure.kyber.activities.SwipeableModeScrollView>
 
     </LinearLayout>

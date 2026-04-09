@@ -1,16 +1,20 @@
 package app.secure.kyber.fragments
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
+import app.secure.kyber.MyApp.MyApp
 import app.secure.kyber.R
+import app.secure.kyber.activities.ValidatePasswordActivity
 import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentNetworkBinding
@@ -20,6 +24,7 @@ import app.secure.kyber.workers.KeyRotationWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import okhttp3.internal.trimSubstring
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
@@ -28,6 +33,7 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
 
     private lateinit var binding: FragmentNetworkBinding
     private lateinit var navController: NavController
+    private lateinit var myApp: MyApp
     
     @Inject
     lateinit var repository: KyberRepository
@@ -41,6 +47,24 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         savedInstanceState: Bundle?
     ): View {
         binding = FragmentNetworkBinding.inflate(inflater, container, false)
+
+        myApp = requireActivity().application as MyApp
+
+        binding.btnDisconnect.setOnClickListener {
+
+            AlertDialog.Builder(requireContext())
+                .setMessage("Are you sure to disconnect?")
+                .setPositiveButton("OK") { _, _ ->
+                    myApp.isAppLocked = true
+                    val intent = Intent(requireContext(), ValidatePasswordActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    startActivity(intent)
+                    requireActivity().finish()
+                }
+                .setCancelable(false)
+                .show()
+        }
+
         return binding.root
     }
 
@@ -169,10 +193,11 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         }
     }
 
-    private fun truncatePublicKey(key: String, visibleChars: Int = 4): String {
-        if (key.length <= visibleChars * 2) return key
-        val start = key.take(visibleChars)
-        val end = key.takeLast(visibleChars)
+    private fun truncatePublicKey(key: String, visibleChars: Int = 8): String {
+        val trimmedKey = key.trimSubstring(37, key.length - 4)
+        if (trimmedKey.length <= visibleChars * 2) return trimmedKey
+        val start = trimmedKey.take(visibleChars)
+        val end = trimmedKey.takeLast(visibleChars)
         val masked = "*".repeat(28)
         return "$start$masked$end"
     }

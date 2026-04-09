@@ -14,7 +14,7 @@ android:viewportHeight="66"
         />
     <path
         android:pathData="M0 0V66H367V0"
-        android:fillColor="#CC0F172A"
+        android:fillColor="#30009FFF"
         />
 </group>
 </vector>

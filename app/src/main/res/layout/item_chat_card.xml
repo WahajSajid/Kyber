@@ -2,29 +2,30 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="84dp"
+    android:layout_height="@dimen/_70sdp"
+    android:layout_marginTop="@dimen/_10sdp"
     android:background="@drawable/contact_bg"
-    android:padding="@dimen/_10sdp"
-    android:layout_marginTop="@dimen/_10sdp">
+    android:paddingHorizontal="@dimen/_10sdp"
+    android:paddingVertical="@dimen/_8sdp">
 
     <!-- Avatar + small clock badge -->
     <FrameLayout
         android:id="@+id/avatarHolder"
-        android:layout_width="@dimen/_56sdp"
-        android:layout_height="@dimen/_56sdp"
+        android:layout_width="@dimen/_48sdp"
+        android:layout_height="@dimen/_48sdp"
         android:background="@drawable/bg_avatar"
+        android:backgroundTint="#2A3E63"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent">
+        app:layout_constraintTop_toTopOf="parent">
 
         <ImageView
             android:id="@+id/imgAvatar"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:src="@drawable/new_ic"
-            android:padding="@dimen/_5sdp"
             android:contentDescription="@string/app_name"
-            />
+            android:padding="@dimen/_5sdp"
+            android:src="@drawable/ano_ic" />
 
         <!-- little clock badge -->
         <View
@@ -33,7 +34,7 @@
             android:layout_height="@dimen/_16sdp"
             android:layout_gravity="top|end"
             android:layout_margin="@dimen/_2sdp"
-            android:background="@drawable/clock"/>
+            android:background="@drawable/clock" />
     </FrameLayout>
 
     <!-- Name -->
@@ -41,29 +42,31 @@
         android:id="@+id/tvName"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="Bryan"
-        android:fontFamily="@font/roboto_regular"
-        android:textSize="@dimen/_18sdp"
-        android:textColor="#E0F1FF"
         android:layout_marginStart="@dimen/_10sdp"
-        app:layout_constraintStart_toEndOf="@id/avatarHolder"
-        app:layout_constraintTop_toTopOf="@id/avatarHolder"
+        android:fontFamily="@font/roboto_regular"
+        android:text="Bryan"
+        android:textColor="#E0F1FF"
+        android:textSize="@dimen/_16sdp"
         app:layout_constraintEnd_toStartOf="@id/rightTimeGroup"
-        app:layout_constraintHorizontal_bias="0"/>
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toEndOf="@id/avatarHolder"
+        app:layout_constraintTop_toTopOf="@id/avatarHolder" />
 
     <!-- Subtitle / last message -->
     <TextView
         android:id="@+id/tvSubtitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="What do you think?"
-        android:textSize="@dimen/_14sdp"
-        android:textColor="#A8ADBD"
+        android:ellipsize="end"
         android:fontFamily="@font/roboto_regular"
-        app:layout_constraintStart_toStartOf="@id/tvName"
-        app:layout_constraintTop_toBottomOf="@id/tvName"
+        android:maxLines="2"
+        android:text="What do you think? \n kdf;j;aj \n jfd;laj"
+        android:textColor="#A8ADBD"
+        android:textSize="@dimen/_14sdp"
+        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
         app:layout_constraintEnd_toStartOf="@id/badgeUnread"
-        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"/>
+        app:layout_constraintStart_toStartOf="@id/tvName"
+        app:layout_constraintTop_toBottomOf="@id/tvName" />
 
     <!-- Right top: 18 min remain  -  4:30 PM -->
     <LinearLayout
@@ -78,43 +81,43 @@
             android:id="@+id/tvRemain"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="18 min remain"
-            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
-            android:textColor="#A8ADBD"/>
+            android:text="18 min remain"
+            android:textColor="#A8ADBD"
+            android:textSize="@dimen/_12sdp" />
 
         <TextView
-            android:visibility="gone"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="  -  "
-            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
-            android:textColor="#A8ADBD"/>
+            android:text="  -  "
+            android:textColor="#A8ADBD"
+            android:textSize="@dimen/_12sdp"
+            android:visibility="gone" />
 
         <TextView
-            android:visibility="gone"
             android:id="@+id/tvTime"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="4:30 PM"
-            android:textSize="@dimen/_12sdp"
             android:fontFamily="@font/roboto_regular"
-            android:textColor="#A8ADBD"/>
+            android:text="4:30 PM"
+            android:textColor="#A8ADBD"
+            android:textSize="@dimen/_12sdp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Unread count pill -->
     <TextView
-        android:visibility="gone"
         android:id="@+id/badgeUnread"
         android:layout_width="@dimen/_22sdp"
         android:layout_height="@dimen/_22sdp"
         android:background="@drawable/bg_unread_pill"
+        android:fontFamily="@font/roboto_medium"
         android:gravity="center"
         android:text="2"
         android:textColor="#FFFFFF"
-        android:fontFamily="@font/roboto_medium"
         android:textSize="@dimen/_12sdp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"/>
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
+        app:layout_constraintEnd_toEndOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

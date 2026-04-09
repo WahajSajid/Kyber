@@ -45,6 +45,10 @@ class ChatDetailsFragment : Fragment() {
         binding.muteNotificationsStatus.text = Prefs.getMuteNotificationStatus(requireContext())
 
 
+        binding.messageUser.setOnClickListener {
+            navController.navigate(R.id.action_chatDetailsFragment_to_chatFragment)
+        }
+
         binding.disappearingMessagesLayout.setOnClickListener {
             showDisappearingMessagesDialog()
         }

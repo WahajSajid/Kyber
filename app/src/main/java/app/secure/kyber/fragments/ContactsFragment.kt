@@ -80,7 +80,7 @@ class ContactsFragment : Fragment(R.layout.fragment_contacts) {
                 "contact_name" to contactEntity.name,
                 "coming_from" to "chat_list"
             )
-            findNavController().navigate(R.id.chatFragment, args)
+            findNavController().navigate(R.id.contactDetailsFragment, args)
 
         })
 

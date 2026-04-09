@@ -30,6 +30,8 @@ object Prefs {
     private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
     private const val KEY_ENCRYPTION_TIMER = "encryption_timer"
 
+    private const val DUMMY_PUBLIC_KEY = "dummy_public_key"
+
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -37,6 +39,13 @@ object Prefs {
     fun setOnionAddress(ctx: Context, value: String?) {
         prefs(ctx).edit().apply {
             if (value == null) remove(KEY_ONION_ADDRESS) else putString(KEY_ONION_ADDRESS, value)
+            apply()
+        }
+    }
+
+    fun setDummyPublicKey(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(DUMMY_PUBLIC_KEY) else putString(DUMMY_PUBLIC_KEY, value)
             apply()
         }
     }
@@ -137,6 +146,10 @@ object Prefs {
     fun getNameHash(ctx: Context): String? = prefs(ctx).getString(NAME_HASH, null)
 
     fun getShortId(ctx: Context): String? = prefs(ctx).getString(SHORT_ID, null)
+
+
+
+    fun getDummyPublicKey(ctx: Context): String? = prefs(ctx).getString(DUMMY_PUBLIC_KEY, null)
 
 
 

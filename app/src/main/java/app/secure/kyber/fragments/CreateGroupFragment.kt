@@ -106,7 +106,7 @@ class CreateGroupFragment : Fragment() {
                 }
             }
         }
-        
+
         myApp.addedMembersList.observe(viewLifecycleOwner) { list ->
             binding.tvSelectedCount.text = "${list?.size ?: 0} Selected"
         }
@@ -124,12 +124,22 @@ class CreateGroupFragment : Fragment() {
                 binding.llCreatorViewOnly.visibility = View.VISIBLE
                 binding.cvAnonymousMode.setBackgroundResource(R.drawable.creator_view_expanded_view_bg)
                 binding.ivAnonymousIcon.setImageResource(R.drawable.selected_anonymous_overlay_ic)
-                binding.textAnonymousMode.setTextColor(ContextCompat.getColor(requireContext(), R.color.selected_anonymous_text_color))
+                binding.textAnonymousMode.setTextColor(
+                    ContextCompat.getColor(
+                        requireContext(),
+                        R.color.selected_anonymous_text_color
+                    )
+                )
             } else {
                 binding.llCreatorViewOnly.visibility = View.GONE
                 binding.cvAnonymousMode.setBackgroundResource(R.drawable.anonymous_mode_bg)
                 binding.ivAnonymousIcon.setImageResource(R.drawable.deselected_overlay_anonymous_ic)
-                binding.textAnonymousMode.setTextColor(ContextCompat.getColor(requireContext(), R.color.deselected_anonymous_text_color))
+                binding.textAnonymousMode.setTextColor(
+                    ContextCompat.getColor(
+                        requireContext(),
+                        R.color.deselected_anonymous_text_color
+                    )
+                )
             }
         }
     }
@@ -148,14 +158,19 @@ class CreateGroupFragment : Fragment() {
             val membersList = myApp.addedMembersList.value
             if (membersList.isNullOrEmpty()) {
                 binding.loading.visibility = View.GONE
-                Toast.makeText(context, "Please select at least one member", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Please select at least one member", Toast.LENGTH_SHORT)
+                    .show()
                 return@setOnClickListener
             }
 
             // Enforce 15-member limit: selected members + creator = total
             if (membersList.size > 14) {
                 binding.loading.visibility = View.GONE
-                Toast.makeText(context, "Maximum 15 members allowed (including you)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    context,
+                    "Maximum 15 members allowed (including you)",
+                    Toast.LENGTH_SHORT
+                ).show()
                 return@setOnClickListener
             }
 
@@ -196,7 +211,8 @@ class CreateGroupFragment : Fragment() {
 
                 if (groupId != null) {
                     Log.d("CreateGroupFragment", "Group created successfully with ID: $groupId")
-                    Toast.makeText(context, "Group created successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Group created successfully!", Toast.LENGTH_SHORT)
+                        .show()
 
                     myApp.addedMembersList.value?.clear()
                     myApp.addedMembersList.value = mutableListOf()
@@ -257,5 +273,11 @@ class CreateGroupFragment : Fragment() {
             myApp.addedMembersList.value?.clear()
             myApp.addedMembersList.value = mutableListOf()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (activity as? MainActivity)?.hideBottomBar()
+        (activity as? MainActivity)?.hideTopBar()
     }
 }

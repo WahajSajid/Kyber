@@ -49,7 +49,7 @@ class AddMembersViewHolder(
 
     fun bind(contact: ContactEntity) {
         nameTextView.text = contact.name
-        id.text = contact.onionAddress
+        id.text = ""
         // Handle image or generic icon
         profileIcon.setImageResource(R.drawable.anonymous_icon)
         bindSelectionState(contact.name, contact.onionAddress)

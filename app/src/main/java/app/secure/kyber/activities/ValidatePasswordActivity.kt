@@ -63,7 +63,7 @@ class ValidatePasswordActivity : AppCompatActivity() {
                 if (networkDialogVisible || isFinishing || isDestroyed) return@collectLatest
                 networkDialogVisible = true
                 androidx.appcompat.app.AlertDialog.Builder(this@ValidatePasswordActivity)
-                    .setMessage("You are not connected to the network")
+                    .setMessage("Connection cannot be established")
                     .setPositiveButton("OK") { _, _ -> networkDialogVisible = false }
                     .setOnDismissListener { networkDialogVisible = false }
                     .show()

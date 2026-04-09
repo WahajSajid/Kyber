@@ -48,6 +48,7 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         val name = Prefs.getName(requireContext()).toString()
         val shortId = Prefs.getShortId(requireContext()).toString()
 
+
         binding.tvName.text = shortId
         binding.tvNameDis.text = name
 
@@ -59,8 +60,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             requireContext().shareText(shortId, subject = "-yPlease use my this Id to add me on Kyber Chat")
         }
 
-        val firstLetter = if (name.isNotEmpty()) name[0] else '?'
-        binding.avatarLetter.text = firstLetter.toString()
+//        val firstLetter = if (name.isNotEmpty()) name[0] else '?'
+//        binding.avatarLetter.text = firstLetter.toString()
 
         setupCardTitles()
         loadSavedValues()
@@ -84,14 +85,19 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
 
     /** Reads persisted values and shows them in each card's value label. */
     private fun loadSavedValues() {
+        val prefs = requireContext().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        // true = On, false = Off  |  default: On
+        val isOn = prefs.getBoolean("search_privacy_on", true)
+
+
         binding.autoLockCard.cardValue.text =
             Prefs.getAutoLockTimeout(requireContext()) ?: "Never"
 
         binding.disappearingChatCard.cardValue.text =
             Prefs.getDisappearingMessageStatus(requireContext()) ?: "Off"
 
-        // Search Privacy is Coming Soon — always display Off
-        binding.searchPrivacyCard.cardValue.text = "Off"
+        binding.searchPrivacyCard.cardValue.text = if (isOn) "On" else "Off"
+
 
         binding.encryptionTimerCard.cardValue.text =
             Prefs.getEncryptionTimer(requireContext()) ?: "24 Hours"
@@ -211,9 +217,7 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             .setImageDrawable(if (selected == "Off") checked else unchecked)
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 3) SEARCH PRIVACY DIALOG  (Coming Soon — no real backend)
-    // ──────────────────────────────────────────────────────────────
 
     private fun showSearchPrivacyDialog() {
         val dialogView = LayoutInflater.from(context)
@@ -224,15 +228,49 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         )
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
 
-        // Intercept the switch: always revert it and show "Coming Soon"
-        val switchPrivacy = dialogView.findViewById<SwitchMaterial>(R.id.switchPrivacy)
-//        switchPrivacy.setOnCheckedChangeListener { buttonView, isChecked ->
-//            if (isChecked) {
-//                // Revert the toggle without triggering another listener cycle
-//                buttonView.post { buttonView.isChecked = false }
-//                Toast.makeText(requireContext(), "Coming Soon", Toast.LENGTH_SHORT).show()
-//            }
-//        }
+        // --- Views ---
+        val layoutOn   = dialogView.findViewById<LinearLayout>(R.id.layout_on)
+        val layoutOff  = dialogView.findViewById<LinearLayout>(R.id.layout_off)
+        val radioOn    = dialogView.findViewById<ImageView>(R.id.radio_on)
+        val radioOff   = dialogView.findViewById<ImageView>(R.id.radio_off)
+
+        // --- SharedPreferences ---
+        val prefs = requireContext().getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        // true = On, false = Off  |  default: On
+        val isOn = prefs.getBoolean("search_privacy_on", true)
+
+        // --- Helper to update radio icons ---
+        fun updateSelection(selectedOn: Boolean) {
+            radioOn.setImageResource(
+                if (selectedOn) {
+                    R.drawable.radio_checked
+                } else{
+                    R.drawable.radio_unchecked
+                }
+            )
+            radioOff.setImageResource(
+                if (selectedOn) R.drawable.radio_unchecked else R.drawable.radio_checked
+            )
+
+            binding.searchPrivacyCard.cardValue.text =
+                if (selectedOn) "On" else "Off"
+        }
+
+        // Apply saved state immediately
+        updateSelection(isOn)
+
+        // --- Click listeners ---
+        layoutOn.setOnClickListener {
+            updateSelection(true)
+            prefs.edit().putBoolean("search_privacy_on", true).apply()
+            dialog.dismiss()
+        }
+
+        layoutOff.setOnClickListener {
+            updateSelection(false)
+            prefs.edit().putBoolean("search_privacy_on", false).apply()
+            dialog.dismiss()
+        }
 
         dialog.show()
     }

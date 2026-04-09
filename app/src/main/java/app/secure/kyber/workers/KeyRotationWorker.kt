@@ -66,6 +66,7 @@ class KeyRotationWorker @AssistedInject constructor(
             val keyInfo = SecureKeyManager.generateNewKeyPair()
             val newKeyId = UUID.randomUUID().toString()
 
+
             // 2. Push new public key to backend FIRST to guarantee upload
             val licenseKey = Prefs.getLicense(context) ?: ""
             val nameHash = Prefs.getNameHash(context) ?: ""
@@ -104,7 +105,7 @@ class KeyRotationWorker @AssistedInject constructor(
             keyDao.insert(newKey)
             
             // Save to Prefs for quick access
-            Prefs.setPublicKey(context, keyInfo.publicKeyBase64)
+            Prefs.setDummyPublicKey(context, keyInfo.publicKeyBase64)
 
             // 5. Cleanup expired OLD_RETENTION keys and their associated messages.
             // The retention window mirrors the user-selected rotation interval so contacts
