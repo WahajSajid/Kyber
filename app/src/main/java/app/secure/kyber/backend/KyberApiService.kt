@@ -61,6 +61,11 @@ interface KyberApiService {
         @Query("onionAddress") onionAddress: String
     ): Response<PublicKeyResponse>
 
+    @PUT("api/v1/discovery/public-key")
+    suspend fun updatePublicKey(
+        @Query("onionAddress") onionAddress: String,
+        @Body request: UpdatePublicKeyRequest
+    ): Response<UpdatePublicKeyResponse>
     // --- Admin - License Keys ---
 
     @POST("api/v1/admin/license-keys")

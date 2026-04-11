@@ -50,6 +50,9 @@ class KyberRepository @Inject constructor(
     suspend fun getPublicKey(onionAddress: String): Response<PublicKeyResponse> =
         apiService.getPublicKey(onionAddress)
 
+    suspend fun updatePublicKey(onionAddress: String, publicKey: String): Response<UpdatePublicKeyResponse> =
+        apiService.updatePublicKey(onionAddress, UpdatePublicKeyRequest(publicKey))
+
     // --- Admin - License Keys ---
 
     suspend fun createLicenseKey(licenseKey: String): Response<LicenseActionResponse> =

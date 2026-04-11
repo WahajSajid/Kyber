@@ -38,10 +38,8 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
     @Inject
     lateinit var repository: KyberRepository
 
-    // ────────────────────────────────────────────────────────────────────
     // REALTIME KEY OBSERVER: Listens to ALL key changes in DB
     // Works regardless of fragment lifecycle or whether app is backgrounded
-    // ────────────────────────────────────────────────────────────────────
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -77,15 +75,13 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         setupListeners()
     }
 
-    // ────────────────────────────────────────────────────────────────────
     // NEW METHOD: REAL-TIME KEY OBSERVER (GLOBAL)
     // Flow observer ALWAYS runs (not paused when backgrounded)
     // + manual refresh on resume ensures updates are caught
-    // ────────────────────────────────────────────────────────────────────
     private fun setupRealtimeKeyObserver() {
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
-            // ✅ CHANGED: Observe ALWAYS (not tied to STARTED state)
+            // CHANGED: Observe ALWAYS (not tied to STARTED state)
             // This ensures periodic rotations in background are detected when fragment becomes visible
             db.keyDao().observeActiveKey().collect { activeKey ->
                 // This block executes whenever the active key changes in DB
@@ -128,10 +124,8 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         binding.lastUpdateBadge.text = "Updated $timeStr"
     }
 
-    // ────────────────────────────────────────────────────────────────────
     // PERIODIC TIME REFRESH: Update time display every 10 seconds
     // This ensures "1 day ago" etc. are accurate and reset on new rotation
-    // ────────────────────────────────────────────────────────────────────
     private fun startPeriodicTimeRefresh() {
         lifecycleScope.launch {
             while (isAdded) {
@@ -172,7 +166,7 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
         binding.generateButton.isEnabled = false
         lifecycleScope.launch {
             try {
-                // ✅ SAVE TIMESTAMP BEFORE ROTATION
+                // SAVE TIMESTAMP BEFORE ROTATION
                 // This ensures when Flow observer triggers after DB changes,
                 // updateButtonState() sees the cooldown is active
                 val prefs = requireContext().getSharedPreferences("key_rotation_prefs", android.content.Context.MODE_PRIVATE)

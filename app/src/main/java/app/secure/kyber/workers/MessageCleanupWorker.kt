@@ -57,6 +57,15 @@ class MessageCleanupWorker(
                         Log.w(TAG, "Failed to delete media for private message ${msg.messageId}")
                     }
                 }
+                // Delete thumbnail file if thumbnailPath is present
+                msg.thumbnailPath?.let { path ->
+                    try {
+                        val file = File(path)
+                        if (file.exists()) file.delete()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to delete thumbnail for private message ${msg.messageId}")
+                    }
+                }
             }
             if (expiredPrivateMessages.isNotEmpty()) {
                 messageDao.deleteExpiredMessages(currentTime)
@@ -72,6 +81,15 @@ class MessageCleanupWorker(
                         if (file.exists()) file.delete()
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to delete media for group message ${msg.messageId}")
+                    }
+                }
+                // Delete thumbnail file if thumbnailPath is present
+                msg.thumbnailPath?.let { path ->
+                    try {
+                        val file = File(path)
+                        if (file.exists()) file.delete()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to delete thumbnail for group message ${msg.messageId}")
                     }
                 }
             }

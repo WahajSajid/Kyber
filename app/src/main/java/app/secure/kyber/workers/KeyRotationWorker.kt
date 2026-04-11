@@ -68,19 +68,20 @@ class KeyRotationWorker @AssistedInject constructor(
 
 
             // 2. Push new public key to backend FIRST to guarantee upload
-            val licenseKey = Prefs.getLicense(context) ?: ""
-            val nameHash = Prefs.getNameHash(context) ?: ""
-            Log.d("### Name Hashh ###", nameHash)
+            val onionAddress = Prefs.getOnionAddress(context) ?: ""
+            if (onionAddress.isEmpty()) {
+                Log.e("### Key Rotation Failed ###", "No onion address found. Cannot update public key.")
+                throw Exception("Onion address not available")
+            }
             try {
-                   val response = repository.registerDiscovery(licenseKey, keyInfo.publicKeyBase64, nameHash, "")
-                if(response.isSuccessful && response.body()?.success == true){
+                val response = repository.updatePublicKey(onionAddress, keyInfo.publicKeyBase64)
+                if (response.isSuccessful) {
                     Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
-                } else{
-//                    Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
-                    Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.")
+                } else {
+                    val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                    Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Status: ${response.code()}, Error: $errorBody")
                 }
             } catch (e: Exception) {
-//                Toast.makeText(context, "Failed to push new public key to backend. Aborting rotation.", Toast.LENGTH_LONG).show()
                 Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Aborting rotation.", e)
                 throw e // Surface to WorkManager for retry
             }
@@ -105,7 +106,7 @@ class KeyRotationWorker @AssistedInject constructor(
             keyDao.insert(newKey)
             
             // Save to Prefs for quick access
-            Prefs.setDummyPublicKey(context, keyInfo.publicKeyBase64)
+            Prefs.setPublicKey(context, keyInfo.publicKeyBase64)
 
             // 5. Cleanup expired OLD_RETENTION keys and their associated messages.
             // The retention window mirrors the user-selected rotation interval so contacts

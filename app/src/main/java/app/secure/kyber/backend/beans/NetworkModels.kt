@@ -84,6 +84,17 @@ data class PublicKeyResponse(
     @Json(name = "publicKey") val publicKey: String
 )
 
+@JsonClass(generateAdapter = true)
+data class UpdatePublicKeyRequest(
+    @Json(name = "publicKey") val publicKey: String
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdatePublicKeyResponse(
+    @Json(name = "success") val success: Boolean? = null,
+    @Json(name = "message") val message: String? = ""
+)
+
 // Admin / License
 @JsonClass(generateAdapter = true)
 data class LicenseKeyRequest(

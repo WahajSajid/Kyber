@@ -42,12 +42,16 @@ import dagger.hilt.android.AndroidEntryPoint
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.MotionEvent
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
+import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.common.Prefs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -70,6 +74,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var myApp: MyApp
     private lateinit var controller: NavController
+
+    @Inject
+    lateinit var repository: KyberRepository
 
     var lastInteractionTime: Long = System.currentTimeMillis()
     private val lockHandler = Handler(Looper.getMainLooper())
@@ -104,15 +111,39 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ═══════════════════════════════════════════════════════════════
         // START GLOBAL SYNC SERVICE - Runs 24/7 Even When App is Closed
-        // ═══════════════════════════════════════════════════════════════
         startGlobalSyncService()
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         
         observeInternetDisconnect()
+
+        val isAppOpen = Prefs.getAppOpen(this)
+
+        if(isAppOpen == "false"){
+            Prefs.setAppOpen(this, "true")
+
+            //push the new updated key to backend
+            val publicKey = Prefs.getDummyPublicKey(this)
+            val onionAddress = Prefs.getOnionAddress(this)
+
+            lifecycleScope.launch {
+                try {
+                    val response = repository.updatePublicKey(onionAddress!!, publicKey!!)
+                    if (response.isSuccessful) {  // Just check 200-299 status code
+                        Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
+                    } else {
+                        val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                        Log.e("### Key Rotation Failed ###", "Status: ${response.code()}, Error: $errorBody")
+                    }
+                } catch (e: Exception) {
+                    Log.e("### Key Rotation Failed ###", "Aborting rotation.", e)
+                }
+            }
+
+
+        }
 
 
 

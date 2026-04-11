@@ -32,6 +32,8 @@ object Prefs {
 
     private const val DUMMY_PUBLIC_KEY = "dummy_public_key"
 
+    private const val IS_APP_OPEN = "IS_APP_OPEN"
+
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -39,6 +41,14 @@ object Prefs {
     fun setOnionAddress(ctx: Context, value: String?) {
         prefs(ctx).edit().apply {
             if (value == null) remove(KEY_ONION_ADDRESS) else putString(KEY_ONION_ADDRESS, value)
+            apply()
+        }
+    }
+
+
+    fun setAppOpen(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(IS_APP_OPEN) else putString(IS_APP_OPEN, value)
             apply()
         }
     }
@@ -150,6 +160,9 @@ object Prefs {
 
 
     fun getDummyPublicKey(ctx: Context): String? = prefs(ctx).getString(DUMMY_PUBLIC_KEY, null)
+
+
+    fun getAppOpen(ctx: Context): String? = prefs(ctx).getString(IS_APP_OPEN, "false")
 
 
 
