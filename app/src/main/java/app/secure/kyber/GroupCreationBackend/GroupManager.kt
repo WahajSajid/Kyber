@@ -34,8 +34,6 @@ class GroupManager {
     private val MAX_IMAGE_BYTES = 4 * 1024 * 1024L   // 4 MB raw
     private val MAX_AV_BYTES    = 7 * 1024 * 1024L   // 7 MB raw
 
-    private fun sanitizeKey(key: String): String = key.replace(".", ",")
-    private fun desanitizeKey(key: String): String = key.replace(",", ".")
 
     // ── Base64 helpers (group media only — private media uses MediaUploadWorker) ──
 
@@ -136,9 +134,9 @@ class GroupManager {
             Log.d("GroupManager", "Starting group creation for: $groupName with ID: $groupId")
 
             val membersMap = members.associate {
-                sanitizeKey(it.id) to mapOf("id" to it.id, "name" to it.name)
+                currentUserId to mapOf("id" to it.id, "name" to it.name)
             }.toMutableMap()
-            membersMap[sanitizeKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
+            membersMap[currentUserId] = mapOf("id" to currentUserId, "name" to currentUserName)
 
             val now = System.currentTimeMillis()
             val groupExpiresAt = burnDurationMs?.takeIf { it > 0L }?.let { now + it } ?: 0L
@@ -147,7 +145,7 @@ class GroupManager {
                     .mapNotNull { it["id"] }
                     .filter { it != currentUserId }
                     .sorted()
-                    .mapIndexed { index, memberId -> sanitizeKey(memberId) to "BK${index + 1}" }
+                    .mapIndexed { index, memberId -> memberId to "BK${index + 1}" }
                     .toMap()
             } else {
                 emptyMap()
@@ -275,7 +273,7 @@ class GroupManager {
         Log.d("GroupManager", "Non-creator members to alias: $members")
         
         val aliases = members
-            .mapIndexed { index, memberId -> sanitizeKey(memberId) to "BK${index + 1}" }
+            .mapIndexed { index, memberId -> memberId to "BK${index + 1}" }
             .toMap()
         
         Log.d("GroupManager", "Generated aliases: $aliases")
@@ -892,7 +890,7 @@ class GroupManager {
             groupsRef.child(groupId).removeValue().await()
             groupMessagesRef.child(groupId).removeValue().await()
             members.forEach { userId ->
-                userGroupsRef.child(sanitizeKey(userId)).child(groupId).removeValue().await()
+                userGroupsRef.child(userId).child(groupId).removeValue().await()
             }
         } catch (e: Exception) {
             Log.e("GroupManager", "Error deleting group globally: ${e.message}", e)
@@ -921,7 +919,7 @@ class GroupManager {
 
 
     fun getUserGroups(userId: String, onGroupsReceived: (List<Group>) -> Unit) {
-        userGroupsRef.child(sanitizeKey(userId)).addValueEventListener(object : ValueEventListener {
+        userGroupsRef.child(userId).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = mutableListOf<Group>()
                 val groupIds = snapshot.children.mapNotNull { it.key }
