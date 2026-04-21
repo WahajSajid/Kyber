@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="@dimen/_270sdp"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/_18sdp"
+    android:background="@drawable/disappearing_messages_dialog_bg">
+
+    <LinearLayout
+        android:id="@+id/wipe_timer_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingTop="@dimen/_24sdp"
+        android:paddingBottom="@dimen/_20sdp"
+        android:paddingHorizontal="@dimen/_20sdp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Warning icon -->
+        <ImageView
+            android:id="@+id/wipe_timer_icon"
+            android:layout_width="@dimen/_48sdp"
+            android:layout_height="@dimen/_48sdp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/security_ic"
+            app:tint="#FF6B6B" />
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/wipe_timer_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_10sdp"
+            android:text="Security Alert"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_18sdp"
+            android:textStyle="bold" />
+
+        <!-- Message -->
+        <TextView
+            android:id="@+id/wipe_timer_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:gravity="center"
+            android:text="App data will be wiped out"
+            android:textColor="#CDE6FF"
+            android:textSize="@dimen/_13sdp"
+            android:lineSpacingExtra="@dimen/_2sdp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_1sdp"
+            android:layout_marginTop="@dimen/_18sdp"
+            android:background="#26263A" />
+
+        <!-- Countdown circle background -->
+        <TextView
+            android:id="@+id/wipe_timer_countdown"
+            android:layout_width="@dimen/_90sdp"
+            android:layout_height="@dimen/_90sdp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_18sdp"
+            android:background="@drawable/wipe_countdown_bg"
+            android:gravity="center"
+            android:text="10"
+            android:textColor="#FF6B6B"
+            android:textSize="@dimen/_36sdp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:text="seconds"
+            android:textColor="#7B9FD4"
+            android:textSize="@dimen/_12sdp" />
+
+        <!-- UNDO button (hidden for unauthorized wipes) -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_wipe_undo"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_50sdp"
+            android:layout_marginTop="@dimen/_20sdp"
+            android:background="@drawable/btn_gradient"
+            android:text="UNDO"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_15sdp"
+            android:textStyle="bold"
+            app:backgroundTint="@null"
+            app:cornerRadius="@dimen/_10sdp"
+            android:visibility="visible" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
