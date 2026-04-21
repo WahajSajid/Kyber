@@ -10,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -21,6 +22,7 @@ import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentSettingBinding
 import app.secure.kyber.workers.KeyRotationWorker
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.textfield.TextInputEditText
 
 
 class SettingFragment : Fragment(R.layout.fragment_setting) {
@@ -118,6 +120,11 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
 
         binding.encryptionTimerCard.topCard.setOnClickListener {
             showEncryptionTimerDialog()
+        }
+
+        // ── NEW: Security item → Wipe-Out Password ──
+        binding.itemSecurity.setOnClickListener {
+            showWipePasswordDialog()
         }
     }
 
@@ -326,6 +333,61 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
     // ──────────────────────────────────────────────────────────────
     // Shared utilities
     // ──────────────────────────────────────────────────────────────
+
+    // ── NEW: Wipe-Out Password dialog ──────────────────────────────
+    private fun showWipePasswordDialog() {
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.wipe_password_dialog, null)
+        val dialog = AlertDialog.Builder(context).setView(dialogView).create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(requireContext(), R.drawable.disappearing_messages_dialog_bg)
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+
+        val etPassword = dialogView.findViewById<TextInputEditText>(R.id.et_wipe_password)
+        val etConfirm  = dialogView.findViewById<TextInputEditText>(R.id.et_wipe_password_confirm)
+        val tvError    = dialogView.findViewById<TextView>(R.id.tv_wipe_error)
+        val btnSet     = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btn_set_wipe_password)
+
+        // Show different label if password already exists
+        val existing = Prefs.getWipePassword(requireContext())
+        if (existing != null) {
+            btnSet.text = "Update Wipe-Out Password"
+        }
+
+        btnSet.setOnClickListener {
+            val newPwd  = etPassword.text.toString().trim()
+            val confirm = etConfirm.text.toString().trim()
+            val loginPwd = Prefs.getPassword(requireContext()) ?: ""
+
+            when {
+                newPwd.isEmpty() || confirm.isEmpty() -> {
+                    tvError.text = "Password fields cannot be empty."
+                    tvError.visibility = View.VISIBLE
+                }
+                newPwd != confirm -> {
+                    tvError.text = "Passwords do not match."
+                    tvError.visibility = View.VISIBLE
+                }
+                newPwd == loginPwd -> {
+                    tvError.text = "You cannot use your login password as the wipe-out password. Please choose a different password."
+                    tvError.visibility = View.VISIBLE
+                }
+                else -> {
+                    Prefs.setWipePassword(requireContext(), newPwd)
+                    tvError.visibility = View.GONE
+                    dialog.dismiss()
+                    Toast.makeText(
+                        requireContext(),
+                        "Wipe-out password set successfully.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+
+        dialog.show()
+    }
 
     private fun Context.shareText(text: String, subject: String? = null) {
         val intent = Intent(Intent.ACTION_SEND).apply {

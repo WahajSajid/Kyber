@@ -30,6 +30,11 @@ object Prefs {
     private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
     private const val KEY_ENCRYPTION_TIMER = "encryption_timer"
 
+    private const val KEY_WIPE_PASSWORD = "wipe_password"
+    private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
+    private const val KEY_WIPE_PENDING = "wipe_pending"
+    private const val KEY_LOCKOUT_START_TIME = "lockout_start_time"
+
     private const val DUMMY_PUBLIC_KEY = "dummy_public_key"
 
     private const val IS_APP_OPEN = "IS_APP_OPEN"
@@ -146,6 +151,25 @@ object Prefs {
         }
     }
 
+    fun setWipePassword(ctx: Context, value: String?) {
+        prefs(ctx).edit().apply {
+            if (value == null) remove(KEY_WIPE_PASSWORD) else putString(KEY_WIPE_PASSWORD, value)
+            apply()
+        }
+    }
+
+    fun setFailedAttempts(ctx: Context, count: Int) {
+        prefs(ctx).edit().putInt(KEY_FAILED_ATTEMPTS, count).apply()
+    }
+
+    fun setWipePending(ctx: Context, pending: Boolean) {
+        prefs(ctx).edit().putBoolean(KEY_WIPE_PENDING, pending).apply()
+    }
+
+    fun setLockoutStartTime(ctx: Context, timeMs: Long) {
+        prefs(ctx).edit().putLong(KEY_LOCKOUT_START_TIME, timeMs).apply()
+    }
+
     fun setRecentEmojis(ctx: Context, emojis: List<String>) {
         val json = JSONArray(emojis).toString()
         prefs(ctx).edit().putString(KEY_RECENT_EMOJIS, json).apply()
@@ -172,6 +196,10 @@ object Prefs {
     fun getName(ctx: Context): String? = prefs(ctx).getString(KEY_NAME, null)
     fun getPassword(ctx: Context): String? = prefs(ctx).getString(KEY_PASSWORD, null)
     fun getLicense(ctx: Context): String? = prefs(ctx).getString(KEY_LICENSE, null)
+    fun getWipePassword(ctx: Context): String? = prefs(ctx).getString(KEY_WIPE_PASSWORD, null)
+    fun getFailedAttempts(ctx: Context): Int = prefs(ctx).getInt(KEY_FAILED_ATTEMPTS, 0)
+    fun getWipePending(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_WIPE_PENDING, false)
+    fun getLockoutStartTime(ctx: Context): Long = prefs(ctx).getLong(KEY_LOCKOUT_START_TIME, 0L)
     fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(KEY_DISAPPEARING_MESSAGES_STATUS, null)
     fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(KEY_MUTE_NOTIFICATION_STATUS, null)
     fun getAutoLockTimeout(ctx: Context): String? = prefs(ctx).getString(KEY_AUTO_LOCK_TIMEOUT, "Never")

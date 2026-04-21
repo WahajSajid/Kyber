@@ -68,6 +68,22 @@
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
+        <service
+            android:name=".services.WipeService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".receivers.WipeReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.secure.kyber.ACTION_CANCEL_WIPE" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".activities.SplashActivity"
             android:exported="true"
