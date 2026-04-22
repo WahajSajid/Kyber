@@ -42,6 +42,7 @@ class MediaUploadWorker(
         const val KEY_IS_CONTACT = "is_contact"
         const val KEY_DURATION_MS = "duration_ms"
         const val KEY_DISAPPEAR_TTL = "disappear_ttl"
+        const val KEY_REPLY_TO_TEXT = "reply_to_text"
 
         fun buildRequest(
             messageId: String,
@@ -55,7 +56,8 @@ class MediaUploadWorker(
             senderName: String,
             isContact: Boolean,
             durationMs: Long,
-            disappearTtl: Long = 0L
+            disappearTtl: Long = 0L,
+            replyToText: String = ""
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
@@ -69,7 +71,8 @@ class MediaUploadWorker(
                 KEY_SENDER_NAME to senderName,
                 KEY_IS_CONTACT to isContact,
                 KEY_DURATION_MS to durationMs,
-                KEY_DISAPPEAR_TTL to disappearTtl
+                KEY_DISAPPEAR_TTL to disappearTtl,
+                KEY_REPLY_TO_TEXT to replyToText
             )
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -106,6 +109,7 @@ class MediaUploadWorker(
         val isContact = inputData.getBoolean(KEY_IS_CONTACT, true)
         val durationMs = inputData.getLong(KEY_DURATION_MS, 0L)
         val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
+        val replyToText = inputData.getString(KEY_REPLY_TO_TEXT) ?: ""
 
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
@@ -252,7 +256,7 @@ class MediaUploadWorker(
                         val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey!!, chunkJson)
 
                         val sent = sendChunk(
-                            repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey!!, encryptionResult.senderPublicKeyBase64, disappearTtl
+                            repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey!!, encryptionResult.senderPublicKeyBase64, disappearTtl, replyToText
                         )
                         if (sent) {
                             successCount++
@@ -323,7 +327,8 @@ class MediaUploadWorker(
         isContact: Boolean,
         recipientPublicKey: String,
         myPublicKey: String?,
-        disappearTtl: Long
+        disappearTtl: Long,
+        replyToText: String
     ): Boolean {
         return try {
             val chunkJson = chunkAdapter.toJson(chunk)
@@ -344,7 +349,8 @@ class MediaUploadWorker(
                 senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
                 recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
                 senderPublicKey = myPublicKey,
-                disappear_ttl = disappearTtl
+                disappear_ttl = disappearTtl,
+                replyToText = replyToText
             )
             val transportJson = transportAdapter.toJson(transport)
             val payload = Base64.encodeToString(

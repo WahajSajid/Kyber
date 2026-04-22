@@ -49,6 +49,7 @@ class MessageAdapter(
     private var recentEmojis: List<String> = listOf("👌", "😊", "😂", "😍", "💜", "🎮"),
     private val onRetryUpload: (MessageUiModel) -> Unit = {},
     private val onRetryDownload: (MessageUiModel) -> Unit = {},
+    private val onReplyQuoteClicked: (String) -> Unit = {},
 ) : ListAdapter<MessageUiModel, MessageAdapter.VH>(DIFF) {
 
     companion object {
@@ -149,6 +150,28 @@ class MessageAdapter(
 
     fun releasePlayer() {
         stopPlayback(resetUi = true)
+    }
+
+    /**
+     * Flashes the message bubble at [position] with a brief blue overlay,
+     * mimicking the WhatsApp tap-to-navigate reply highlight.
+     */
+    fun highlightItem(position: Int) {
+        val vh  = recyclerView?.findViewHolderForAdapterPosition(position) as? VH ?: return
+        val item = runCatching { getItem(position) }.getOrNull() ?: return
+        val bubble: View = if (item.isSent) vh.rlSent else vh.rlRcvd
+        val overlay = android.graphics.drawable.ColorDrawable(0)
+        bubble.foreground = overlay
+        android.animation.ValueAnimator.ofArgb(0x55009FFF.toInt(), 0x00009FFF.toInt()).apply {
+            duration = 1400
+            addUpdateListener { overlay.color = it.animatedValue as Int }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    bubble.foreground = null
+                }
+            })
+            start()
+        }
     }
 
     fun updateRecentEmojis(newList: List<String>, reactedItemId: String? = null) {
@@ -258,6 +281,14 @@ class MessageAdapter(
         fun actionMenu(sent: Boolean) = if (sent) actionMenuSent else actionMenuReceived
         fun rvEmojis(sent: Boolean) = if (sent) rvRecentEmojisSent else rvRecentEmojisReceived
         fun btnMore(sent: Boolean) = if (sent) btnMoreSent else btnMoreReceived
+
+        // Reply quote blocks embedded inside each bubble
+        val replyQuoteBlockSent: View = view.findViewById(R.id.replyQuoteBlockSent)
+        val replyQuoteBlockRcv: View = view.findViewById(R.id.replyQuoteBlockRcv)
+        val tvReplyQuoteSent: TextView = replyQuoteBlockSent.findViewById(R.id.tvReplyQuote)
+        val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
+        fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
+        fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -282,6 +313,18 @@ class MessageAdapter(
 
         holder.rlSent.isVisible = isSent
         holder.rlRcvd.isVisible = !isSent
+
+        // ── Reply Quote Block ─────────────────────────────────────────────
+        val replyRaw = item.replyToText
+        val replyText = extractReplyPreviewText(replyRaw)
+        holder.replyQuote(isSent).isVisible = replyRaw.isNotEmpty()
+        holder.replyQuote(!isSent).isVisible = false
+        if (replyRaw.isNotEmpty()) {
+            holder.tvReplyQuote(isSent).text = replyText
+            holder.replyQuote(isSent).setOnClickListener { onReplyQuoteClicked(replyRaw) }
+        } else {
+            holder.replyQuote(isSent).setOnClickListener(null)
+        }
 
         when {
             isAudio -> bindAudio(holder, item, isSent)
@@ -404,12 +447,89 @@ class MessageAdapter(
         openMenuPositions.clear(); openMenuPositions.add(position)
         prev.forEach { if (it != position) notifyItemChanged(it) }
         notifyItemChanged(position)
+        // After layout pass completes, scroll so the full block
+        // (emoji bar + message bubble + action menu) is visible.
+        recyclerView?.post {
+            recyclerView?.post { scrollMenuIntoView(position) }
+        }
     }
 
     fun closeMenu() {
         val prev = openMenuPositions.toSet()
         openMenuPositions.clear()
         prev.forEach { notifyItemChanged(it) }
+    }
+
+    /**
+     * Scrolls the RecyclerView so that the entire long-press overlay
+     * (emoji reaction bar above + message bubble + action menu below)
+     * is fully visible on screen.
+     *
+     * Layout structure (ConstraintLayout root, wrap_content height):
+     *   [emoji_reaction_bar_sent/received]  — above the bubble (GONE when not shown)
+     *   [rlMsgSent / rlMsgRcvd]             — the message bubble
+     *   [actionMenuSent / actionMenuReceived]— below the bubble (GONE when not shown)
+     *
+     * We compare the itemView.top and itemView.bottom positions (in the RV's
+     * coordinate system) against the RV's visible height and scroll by the
+     * minimum delta needed to bring the whole block on screen.
+     */
+    private fun scrollMenuIntoView(position: Int) {
+        val rv = recyclerView ?: return
+        val vh = rv.findViewHolderForAdapterPosition(position) as? VH ?: return
+        val root = vh.itemView
+
+        // itemView encompasses the full ConstraintLayout (emoji bar + bubble + action menu)
+        // because clipChildren=false lets the overlay extend the measured height.
+        // However, the item's measured height may not yet reflect the newly-visible
+        // action menu — so we ask the action menu for its own screen location.
+        val rvTop = 0
+        val rvBottom = rv.height
+
+        // Top of the block = top of the emoji bar (or top of the bubble if bar is GONE)
+        val isSent = getItem(position).isSent
+        val emojiBar = vh.emojiBar(isSent)
+        val blockTop: Int = if (emojiBar.visibility == android.view.View.VISIBLE) {
+            val loc = IntArray(2); emojiBar.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1]
+        } else {
+            val loc = IntArray(2); root.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1]
+        }
+
+        // Bottom of the block = bottom of the action menu (or bottom of the bubble if GONE)
+        val actionMenu = vh.actionMenu(isSent)
+        val blockBottom: Int = if (actionMenu.visibility == android.view.View.VISIBLE) {
+            val loc = IntArray(2); actionMenu.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1] + actionMenu.height
+        } else {
+            val loc = IntArray(2); root.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1] + root.height
+        }
+
+        val blockHeight = blockBottom - blockTop
+        val rvHeight = rvBottom - rvTop
+
+        val scrollDelta: Int = when {
+            // Block is taller than the screen — just show the top (message + emoji bar)
+            blockHeight >= rvHeight -> {
+                if (blockTop < rvTop) blockTop - rvTop - 16 else 0
+            }
+            // Bottom of action menu is below visible area — scroll down
+            blockBottom > rvBottom -> blockBottom - rvBottom + 16
+            // Top of emoji bar is above visible area — scroll up
+            blockTop < rvTop -> blockTop - rvTop - 16
+            // Already fully visible
+            else -> 0
+        }
+
+        if (scrollDelta != 0) {
+            rv.smoothScrollBy(0, scrollDelta)
+        }
     }
 
     fun showReactionImmediately(itemId: String, emoji: String) {
@@ -1098,6 +1218,14 @@ class MessageAdapter(
     fun extractOwner(rawReaction: String): String {
         val parts = rawReaction.split("|", limit = 2)
         return if (parts.size == 2) parts[0] else ""
+    }
+
+    private fun extractReplyPreviewText(raw: String): String {
+        if (!raw.startsWith("__reply__")) return raw
+        val content = raw.removePrefix("__reply__")
+        val sep = content.indexOf("::")
+        if (sep < 0 || sep + 2 > content.length) return raw
+        return content.substring(sep + 2)
     }
 
 }

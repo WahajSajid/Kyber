@@ -34,7 +34,8 @@ data class MessageEntity(
     val thumbnailPath: String? = null,   // local path to thumbnail image
     val keyFingerprint: String? = null,  // Fingerprint of the key used to encrypt/decrypt
     val iv: String? = null,              // IV for AES-GCM decryption
-    val expiresAt: Long = 0L             // Timestamp when the message expires (0 = no expiry)
+    val expiresAt: Long = 0L,             // Timestamp when the message expires (0 = no expiry)
+    val replyToText: String = ""           // Text of the message this is replying to (empty = not a reply)
 )
 
 /**
@@ -77,6 +78,7 @@ data class MessageUiModel(
         set(value) { entity.updatedAt = value }
 
     val apiMessageId: String? get() = entity.apiMessageId
+    val replyToText: String get() = entity.replyToText
 }
 
 suspend fun MessageEntity.toUiModel(context: android.content.Context): MessageUiModel {

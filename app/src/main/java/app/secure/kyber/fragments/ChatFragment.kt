@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Canvas
 import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -46,6 +47,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import app.secure.kyber.GroupCreationBackend.GroupManager
@@ -150,6 +152,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var selectedMsg: MessageUiModel? = null
     private var selectedGroupMsg: GroupMessageEntity? = null
+    private var currentReplyText: String = ""
+    private var currentReplyRefRaw: String = ""
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
 
@@ -254,8 +258,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 groupMessagesViewModel = vm1, type = item.type,
                                 uri = item.uriString,         // Local URI
                                 firebasePayload = null,       // Chunked upload starts in worker
+                                replyToText = currentReplyRefRaw,
                                 context = requireContext()
                             )
+                            clearReply()
                         }
                     } else {
                         lifecycleScope.launch {
@@ -271,8 +277,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 filePath = item.uriString,
                                 mimeType = item.type,
                                 caption = caption,
-                                isContact = isContact
+                                isContact = isContact,
+                                replyToText = currentReplyRefRaw
                             )
+                            clearReply()
                         }
                     }
                 }
@@ -537,11 +545,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                     name,
                                     text,
                                     vm1,
+                                    replyToText = currentReplyRefRaw,
                                     context = requireContext()
-                                ); binding.etMsg.setText("")
+                                ); binding.etMsg.setText(""); clearReply()
                             }
                         } else {
                             sendTextMessage(text, onionAddr, name)
+                            clearReply()
                         }
                     }
                 }
@@ -567,7 +577,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         ?: "Unknown User")
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
-                    if (text.isNotEmpty()) sendTextMessage(text, onionAddr, name)
+                    if (text.isNotEmpty()) { sendTextMessage(text, onionAddr, name); clearReply() }
                 }
                 (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
                 setListMessageAdapter()
@@ -605,8 +615,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             name,
                             text,
                             vm1,
+                            replyToText = currentReplyRefRaw,
                             context = requireContext()
-                        ); binding.etMsg.setText("")
+                        ); binding.etMsg.setText(""); clearReply()
                     }
                 }
                 (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = groupId
@@ -626,6 +637,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         updatePreviewVisibility()
         
+        binding.ivCancelReply.setOnClickListener {
+            clearReply()
+        }
+        binding.replyPreviewBar.setOnClickListener {
+            jumpToReplyTarget(currentReplyRefRaw)
+        }
+        
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contactsVm.observeContact(contactOnion).collect { contact ->
@@ -642,9 +660,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
 
     private fun sendTextMessage(text: String, onionAddr: String, name: String) {
-        val messageId = UUID.randomUUID().toString()
-        val sentTimeMs = System.currentTimeMillis()
-        val timestamp = sentTimeMs.toString()
+        val messageId       = UUID.randomUUID().toString()
+        val sentTimeMs      = System.currentTimeMillis()
+        val timestamp       = sentTimeMs.toString()
+        // ⚠️ Capture BEFORE the coroutine launches — clearReply() is called synchronously right
+        // after sendTextMessage() returns, which would race with the coroutine body and clear
+        // currentReplyText before the DB insert reads it.
+        val capturedReplyText = currentReplyRefRaw
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
             val contactRepo = ContactRepository(db.contactDao())
@@ -655,7 +677,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             if (disappearTimerMs > 0L) {
                 localExpiresAt = sentTimeMs + disappearTimerMs
             }
-            
+
             db.messageDao().insert(
                 MessageEntity(
                     messageId = messageId,
@@ -666,7 +688,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     type = "TEXT",
                     uploadState = "pending",
                     uploadProgress = 0,
-                    expiresAt = localExpiresAt
+                    expiresAt = localExpiresAt,
+                    replyToText = capturedReplyText
                 )
             )
 
@@ -772,10 +795,107 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     }
 
     private fun handleReply(text: String) {
-        lifecycleScope.launch {
-            messageEdit.setText(">> \"$text\"\n"); messageEdit.requestFocus(); showKeyboard(
-            messageEdit
-        )
+        currentReplyText = extractReplyPreviewText(text)
+        currentReplyRefRaw = text
+        binding.replyPreviewBar.isVisible = true
+        binding.tvReplyText.text = currentReplyText.replace("\n", " ")
+        messageEdit.requestFocus()
+        showKeyboard(messageEdit)
+    }
+
+    private fun clearReply() {
+        currentReplyText = ""
+        currentReplyRefRaw = ""
+        binding.replyPreviewBar.isVisible = false
+        binding.tvReplyText.text = ""
+    }
+
+    private fun buildReplyPreviewForPrivate(msg: MessageUiModel): String {
+        val preview = when (msg.type.uppercase(Locale.getDefault())) {
+            "IMAGE" -> "Photo"
+            "VIDEO" -> "Video"
+            "AUDIO" -> "Voice message"
+            else -> msg.decryptedMsg.ifBlank { "Message" }
+        }
+        return encodeReplyRef(msg.messageId, preview)
+    }
+
+    private fun buildReplyPreviewForGroup(msg: GroupMessageEntity): String {
+        val preview = when (msg.type.uppercase(Locale.getDefault())) {
+            "IMAGE" -> "Photo"
+            "VIDEO" -> "Video"
+            "AUDIO" -> "Voice message"
+            else -> msg.msg.ifBlank { "Message" }
+        }
+        return encodeReplyRef(msg.messageId, preview)
+    }
+
+    private fun encodeReplyRef(messageId: String, preview: String): String {
+        return "__reply__${messageId}::${preview}"
+    }
+
+    private fun extractReplyMessageId(raw: String): String? {
+        if (!raw.startsWith("__reply__")) return null
+        val content = raw.removePrefix("__reply__")
+        val sep = content.indexOf("::")
+        if (sep <= 0) return null
+        return content.substring(0, sep)
+    }
+
+    private fun extractReplyPreviewText(raw: String): String {
+        if (!raw.startsWith("__reply__")) return raw
+        val content = raw.removePrefix("__reply__")
+        val sep = content.indexOf("::")
+        if (sep < 0 || sep + 2 > content.length) return raw
+        return content.substring(sep + 2)
+    }
+
+    private fun findPrivateReplyPosition(replyRaw: String): Int {
+        val targetId = extractReplyMessageId(replyRaw)
+        if (!targetId.isNullOrBlank()) {
+            val byId = adapterMsg.currentList.indexOfFirst { it.messageId == targetId }
+            if (byId != -1) return byId
+        }
+        val preview = extractReplyPreviewText(replyRaw)
+        return adapterMsg.currentList.indexOfFirst {
+            val candidate = when (it.type.uppercase(Locale.getDefault())) {
+                "IMAGE" -> "Photo"
+                "VIDEO" -> "Video"
+                "AUDIO" -> "Voice message"
+                else -> it.decryptedMsg
+            }
+            candidate == preview
+        }
+    }
+
+    private fun findGroupReplyPosition(replyRaw: String): Int {
+        val targetId = extractReplyMessageId(replyRaw)
+        if (!targetId.isNullOrBlank()) {
+            val byId = groupMessageAdapter.currentList.indexOfFirst { it.messageId == targetId }
+            if (byId != -1) return byId
+        }
+        val preview = extractReplyPreviewText(replyRaw)
+        return groupMessageAdapter.currentList.indexOfFirst {
+            val candidate = when (it.type.uppercase(Locale.getDefault())) {
+                "IMAGE" -> "Photo"
+                "VIDEO" -> "Video"
+                "AUDIO" -> "Voice message"
+                else -> it.msg
+            }
+            candidate == preview
+        }
+    }
+
+    private fun jumpToReplyTarget(replyRaw: String) {
+        if (replyRaw.isBlank()) return
+        if (comingFrom == "group_chat_list") {
+            if (!::groupMessageAdapter.isInitialized) return
+            val idx = findGroupReplyPosition(replyRaw)
+            if (idx != -1) scrollToAndHighlight(recyclerview, idx) { groupMessageAdapter.highlightItem(idx) }
+        } else {
+            if (!::adapterMsg.isInitialized) return
+            val idx = findPrivateReplyPosition(replyRaw)
+            if (idx != -1) scrollToAndHighlight(recyclerview, idx) { adapterMsg.highlightItem(idx) }
         }
     }
 
@@ -918,16 +1038,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 )
             },
             onLongClick = { view, msg ->
-                val t = msg.decryptedMsg
                 val clipboard =
                     requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 when (view.id) {
-                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(t)
+                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(buildReplyPreviewForPrivate(msg))
                     R.id.btnDeleteSent, R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent, R.id.btnCopyRcv -> clipboard.setPrimaryClip(
                         android.content.ClipData.newPlainText(
                             "msg",
-                            t
+                            msg.decryptedMsg
                         )
                     )
 
@@ -998,6 +1117,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
                     }
                 }
+            },
+            onReplyQuoteClicked = { replyText ->
+                val idx = findPrivateReplyPosition(replyText)
+                if (idx != -1) scrollToAndHighlight(recyclerview, idx) { adapterMsg.highlightItem(idx) }
             }
         )
         adapterMsg.messageDecryptor = { MessageEncryptionManager.decryptLocal(requireContext(), it) }
@@ -1094,6 +1217,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
             }
         })
+
+        // Attach swipe-to-reply for private messages
+        attachSwipeToReply(
+            rv = recyclerview,
+            onReply = { position ->
+                val item = adapterMsg.currentList.getOrNull(position)
+                if (item != null) handleReply(buildReplyPreviewForPrivate(item))
+            }
+        )
     }
 
     private fun setupGroupMessageAdapter(onionAddr: String, isAnonymous: Boolean, groupCreatorId: String, anonymousAliasesJson: String) {
@@ -1142,7 +1274,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 val clipboard =
                     requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 when (view.id) {
-                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(msg.msg)
+                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(buildReplyPreviewForGroup(msg))
                     R.id.btnDeleteSent, R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent, R.id.btnCopyRcv -> clipboard.setPrimaryClip(
                         android.content.ClipData.newPlainText(
@@ -1172,7 +1304,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             recentEmojis = recentEmojisList,
             isAnonymous = isAnonymous,
             groupCreatorId = groupCreatorId,
-            anonymousAliasesJson = anonymousAliasesJson
+            anonymousAliasesJson = anonymousAliasesJson,
+            onReplyQuoteClicked = { replyText ->
+                val idx = findGroupReplyPosition(replyText)
+                if (idx != -1) scrollToAndHighlight(recyclerview, idx) { groupMessageAdapter.highlightItem(idx) }
+            }
         )
         val groupLlm = object : LinearLayoutManager(requireContext()) {
             override fun supportsPredictiveItemAnimations() = false
@@ -1203,6 +1339,39 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         // Reset unread count when user opens the group chat
         vm2.resetUnread(groupId)
+
+        // Attach swipe-to-reply for group messages
+        attachSwipeToReply(
+            rv = recyclerview,
+            onReply = { position ->
+                val item = groupMessageAdapter.currentList.getOrNull(position)
+                if (item != null) handleReply(buildReplyPreviewForGroup(item))
+            }
+        )
+    }
+
+    /**
+     * Smoothly scrolls [rv] to [idx] then invokes [highlight] once the item is
+     * fully on screen.  If the item is already visible the highlight fires
+     * immediately on the next layout pass.
+     */
+    private fun scrollToAndHighlight(rv: RecyclerView, idx: Int, highlight: () -> Unit) {
+        val lm    = rv.layoutManager as? LinearLayoutManager ?: return
+        val first = lm.findFirstCompletelyVisibleItemPosition()
+        val last  = lm.findLastCompletelyVisibleItemPosition()
+        if (idx in first..last) {
+            rv.post { highlight() }
+        } else {
+            rv.smoothScrollToPosition(idx)
+            rv.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                        recyclerView.removeOnScrollListener(this)
+                        recyclerView.post { highlight() }
+                    }
+                }
+            })
+        }
     }
 
     private fun hasAudioPermission() =
@@ -1210,6 +1379,107 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             requireContext(),
             Manifest.permission.RECORD_AUDIO
         ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Attaches a swipe-to-reply gesture to [rv].
+     *
+     * Direction is consistent:
+     *  - Received messages swipe RIGHT → reply icon appears on the LEFT.
+     *  - Sent messages swipe RIGHT     → reply icon appears on the LEFT.
+     *
+     * The gesture is purely cosmetic — the item always springs back to its
+     * original position. The reply callback fires once at 30 % width.
+     */
+    private fun attachSwipeToReply(
+        rv: RecyclerView,
+        onReply: (position: Int) -> Unit
+    ) {
+        val replyIcon = ContextCompat.getDrawable(requireContext(), R.drawable.reply)
+        val triggerFraction  = 0.30f   // 30 % of item width fires the reply
+        val maxSwipeFraction = 0.40f   // cap translation at 40 % of item width
+        var triggered = false
+
+        val callback = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.RIGHT) {
+            override fun onMove(
+                rv: RecyclerView,
+                vh: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ) = false
+
+            override fun onSwiped(vh: RecyclerView.ViewHolder, direction: Int) {
+                // Impossible threshold keeps this from ever firing; reset just in case.
+                rv.adapter?.notifyItemChanged(vh.bindingAdapterPosition)
+                triggered = false
+            }
+
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder) = 2.0f
+            override fun getSwipeEscapeVelocity(defaultValue: Float) = Float.MAX_VALUE
+            override fun getSwipeVelocityThreshold(defaultValue: Float) = 0f
+
+            override fun onChildDraw(
+                c: Canvas,
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean
+            ) {
+                if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) {
+                    super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+                    return
+                }
+
+                val pos = viewHolder.bindingAdapterPosition
+                if (pos == RecyclerView.NO_POSITION) return
+
+                val itemView = viewHolder.itemView
+                val maxDx    = itemView.width * maxSwipeFraction
+
+                // Support right-swipe on both sent and received messages.
+                if (dX < 0f) { itemView.translationX = 0f; return }
+
+                // Clamp to a smooth right-swipe distance.
+                val effectiveDx = dX.coerceAtMost(maxDx)
+                val fraction = effectiveDx / itemView.width
+
+                // Fire callback once at threshold; reset when finger lifts.
+                if (fraction >= triggerFraction && !triggered && isCurrentlyActive) {
+                    triggered = true
+                    requireView().performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    if (pos != RecyclerView.NO_POSITION) onReply(pos)
+                }
+                if (!isCurrentlyActive) triggered = false
+
+                // Draw reply icon on the left side.
+                replyIcon?.let { icon ->
+                    val alpha    = ((fraction / triggerFraction) * 255).toInt().coerceIn(0, 255)
+                    val iconSize = (itemView.height * 0.35f).toInt()
+                    val margin   = (itemView.height - iconSize) / 2
+                    val iconTop  = itemView.top + margin
+                    val iconBottom = iconTop + iconSize
+                    val iconLeft = itemView.left + margin
+                    val iconRight = iconLeft + iconSize
+                    icon.setBounds(iconLeft, iconTop, iconRight, iconBottom)
+                    icon.alpha = alpha
+                    icon.draw(c)
+                }
+
+                itemView.translationX = effectiveDx
+            }
+
+            override fun clearView(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ) {
+                super.clearView(recyclerView, viewHolder)
+                viewHolder.itemView.translationX = 0f
+                triggered = false
+            }
+        }
+
+        ItemTouchHelper(callback).attachToRecyclerView(rv)
+    }
 
     private fun startAudioRecording() {
         if (!audioRecordingManager.startRecording()) return
@@ -1278,11 +1548,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     messageText = messageText,
                     groupMessagesViewModel = vm1,
                     type = "AUDIO",
-                    uri = localPath,              // file:// path → Room 
+                    uri = localPath,              // file:// path → Room
                     ampsJson = ampsJson,
                     firebasePayload = null,       // Will be encoded async in GroupManager
+                    replyToText = currentReplyRefRaw,
                     context = requireContext()
                 )
+                clearReply()
             }
         } else {
             lifecycleScope.launch {
@@ -1297,8 +1569,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     mimeType = "AUDIO",
                     caption = messageText,
                     ampsJson = ampsJson,
-                    isContact = isContact
+                    isContact = isContact,
+                    replyToText = currentReplyRefRaw
                 )
+                clearReply()
             }
         }
     }
@@ -1535,6 +1809,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         m.uri.toString(),
                         null,
                         null,
+                        currentReplyText,
                         requireContext()
                     )
                 }

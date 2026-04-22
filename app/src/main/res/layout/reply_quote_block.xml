@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/replyQuoteBlock"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:layout_marginStart="@dimen/_4sdp"
+    android:layout_marginEnd="@dimen/_4sdp"
+    android:layout_marginTop="@dimen/_4sdp"
+    android:layout_marginBottom="@dimen/_4sdp"
+    android:background="@drawable/reply_quote_bg"
+    android:padding="@dimen/_6sdp"
+    android:visibility="visible">
+
+    <!-- Colored accent line on the left -->
+    <View
+        android:id="@+id/replyAccentBar"
+        android:layout_width="@dimen/_3sdp"
+        android:layout_height="match_parent"
+        android:background="#009FFF"
+        android:layout_marginEnd="@dimen/_6sdp" />
+
+    <!-- Quoted text snippet -->
+    <TextView
+        android:id="@+id/tvReplyQuote"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:fontFamily="@font/roboto_regular"
+        android:textColor="#B0FFFFFF"
+        android:textSize="@dimen/_12sdp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="" />
+
+</LinearLayout>

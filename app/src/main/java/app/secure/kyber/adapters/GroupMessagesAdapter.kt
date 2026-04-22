@@ -46,7 +46,8 @@ class GroupMessagesAdapter(
     private val recyclerView: RecyclerView? = null,
     private val isAnonymous: Boolean = false,
     private val groupCreatorId: String = "",
-    private val anonymousAliasesJson: String = "{}"
+    private val anonymousAliasesJson: String = "{}",
+    private val onReplyQuoteClicked: (String) -> Unit = {},
 ) : ListAdapter<GroupMessageEntity, GroupMessagesAdapter.VH>(DIFF) {
 
     companion object {
@@ -124,6 +125,30 @@ class GroupMessagesAdapter(
     override fun getItemId(position: Int) = getItem(position).messageId.hashCode().toLong()
 
     fun releasePlayer() { stopPlayback(resetUi = true) }
+
+    /**
+     * Flashes the message bubble at [position] with a brief blue overlay,
+     * mimicking the WhatsApp tap-to-navigate reply highlight.
+     */
+    fun highlightItem(position: Int) {
+        val vh   = rvRef?.findViewHolderForAdapterPosition(position) as? VH ?: return
+        val item  = runCatching { getItem(position) }.getOrNull() ?: return
+        val isSent = item.senderOnion == myId
+        val bubble: View = if (isSent) vh.rlSendMsg else vh.rlRecieveMsg
+        val overlay = android.graphics.drawable.ColorDrawable(0)
+        bubble.foreground = overlay
+        android.animation.ValueAnimator.ofArgb(0x55009FFF.toInt(), 0x00009FFF.toInt()).apply {
+            duration = 1400
+            addUpdateListener { overlay.color = it.animatedValue as Int }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    bubble.foreground = null
+                }
+            })
+            start()
+        }
+    }
+
     fun updateRecentEmojis(newList: List<String>) { recentEmojis = newList }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
@@ -203,6 +228,14 @@ class GroupMessagesAdapter(
         fun actionMenu(sent: Boolean) = if (sent) actionMenuSent else actionMenuReceived
         fun rvEmojis(sent: Boolean) = if (sent) rvRecentEmojisSent else rvRecentEmojisReceived
         fun btnMore(sent: Boolean) = if (sent) btnMoreSent else btnMoreReceived
+
+        // Reply quote blocks embedded inside each bubble
+        val replyQuoteBlockSent: View = view.findViewById(R.id.replyQuoteBlockSent)
+        val replyQuoteBlockRcv: View = view.findViewById(R.id.replyQuoteBlockRcv)
+        val tvReplyQuoteSent: TextView = replyQuoteBlockSent.findViewById(R.id.tvReplyQuote)
+        val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
+        fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
+        fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -227,6 +260,18 @@ class GroupMessagesAdapter(
         holder.rlRecieveMsg.isVisible = !isSent
         holder.sentMessageTime.isVisible = isSent && showTime
         holder.receivedMessageTime.isVisible = !isSent && showTime
+
+        // ── Reply Quote Block ─────────────────────────────────────────────
+        val replyRaw = item.replyToText
+        val replyText = extractReplyPreviewText(replyRaw)
+        holder.replyQuote(isSent).isVisible = replyRaw.isNotEmpty()
+        holder.replyQuote(!isSent).isVisible = false
+        if (replyRaw.isNotEmpty()) {
+            holder.tvReplyQuote(isSent).text = replyText
+            holder.replyQuote(isSent).setOnClickListener { onReplyQuoteClicked(replyRaw) }
+        } else {
+            holder.replyQuote(isSent).setOnClickListener(null)
+        }
 
         val isMenuOpen = openMenuPositions.contains(pos)
         if (isMenuOpen) {
@@ -295,9 +340,61 @@ class GroupMessagesAdapter(
     private fun showMenu(position: Int) {
         val prev = openMenuPositions.toSet(); openMenuPositions.clear(); openMenuPositions.add(position)
         prev.forEach { if (it != position) notifyItemChanged(it) }; notifyItemChanged(position)
+        // Double-post so the layout pass for the newly-visible menu views
+        // finishes before we measure positions.
+        rvRef?.post {
+            rvRef?.post { scrollMenuIntoView(position) }
+        }
     }
 
     fun closeMenu() { val prev = openMenuPositions.toSet(); openMenuPositions.clear(); prev.forEach { notifyItemChanged(it) } }
+
+    /**
+     * Scrolls the RecyclerView so that the entire long-press overlay
+     * (emoji reaction bar above + message bubble + action menu below)
+     * is fully visible on screen.
+     */
+    private fun scrollMenuIntoView(position: Int) {
+        val rv = rvRef ?: return
+        val vh = rv.findViewHolderForAdapterPosition(position) as? VH ?: return
+        val root = vh.itemView
+
+        val rvBottom = rv.height
+
+        val isSent = getItem(position).senderOnion == myId
+        val emojiBar = vh.emojiBar(isSent)
+        val blockTop: Int = if (emojiBar.visibility == android.view.View.VISIBLE) {
+            val loc = IntArray(2); emojiBar.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1]
+        } else {
+            val loc = IntArray(2); root.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1]
+        }
+
+        val actionMenu = vh.actionMenu(isSent)
+        val blockBottom: Int = if (actionMenu.visibility == android.view.View.VISIBLE) {
+            val loc = IntArray(2); actionMenu.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1] + actionMenu.height
+        } else {
+            val loc = IntArray(2); root.getLocationInWindow(loc)
+            val rvLoc = IntArray(2); rv.getLocationInWindow(rvLoc)
+            loc[1] - rvLoc[1] + root.height
+        }
+
+        val blockHeight = blockBottom - blockTop
+
+        val scrollDelta: Int = when {
+            blockHeight >= rvBottom -> if (blockTop < 0) blockTop - 16 else 0
+            blockBottom > rvBottom  -> blockBottom - rvBottom + 16
+            blockTop < 0            -> blockTop - 16
+            else                    -> 0
+        }
+
+        if (scrollDelta != 0) rv.smoothScrollBy(0, scrollDelta)
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     // bindText — strict 2-phase sequential animation for received group messages
@@ -696,6 +793,14 @@ class GroupMessagesAdapter(
      * Must match the sanitization logic in GroupManager.
      */
     private fun sanitizeKey(key: String): String = key.replace(".", ",")
+
+    private fun extractReplyPreviewText(raw: String): String {
+        if (!raw.startsWith("__reply__")) return raw
+        val content = raw.removePrefix("__reply__")
+        val sep = content.indexOf("::")
+        if (sep < 0 || sep + 2 > content.length) return raw
+        return content.substring(sep + 2)
+    }
 
     private fun convertDatetime(time: String): String {
         return try { java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(time.toLong())) } catch (_: Exception) { "" }

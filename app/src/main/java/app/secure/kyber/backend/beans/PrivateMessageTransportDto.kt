@@ -24,5 +24,8 @@ data class PrivateMessageTransportDto(
     @Json(name = "senderPublicKey") val senderPublicKey: String? = null,
     
     // Settings metadata
-    @Json(name = "disappear_ttl") val disappear_ttl: Long? = 0L
+    @Json(name = "disappear_ttl") val disappear_ttl: Long? = 0L,
+    
+    // Reply context
+    @Json(name = "replyToText") val replyToText: String = ""
 )

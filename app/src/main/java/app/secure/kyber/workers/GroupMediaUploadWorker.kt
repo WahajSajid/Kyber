@@ -33,6 +33,7 @@ class GroupMediaUploadWorker(
         const val KEY_SENDER_ID = "sender_id"
         const val KEY_SENDER_NAME = "sender_name"
         const val KEY_DISAPPEAR_TTL = "disappear_ttl"
+        const val KEY_REPLY_TO_TEXT = "reply_to_text"
 
         fun buildRequest(
             messageId: String,
@@ -42,7 +43,8 @@ class GroupMediaUploadWorker(
             caption: String,
             senderId: String,
             senderName: String,
-            disappearTtl: Long = 0L
+            disappearTtl: Long = 0L,
+            replyToText: String = ""
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
@@ -52,7 +54,8 @@ class GroupMediaUploadWorker(
                 KEY_CAPTION to caption,
                 KEY_SENDER_ID to senderId,
                 KEY_SENDER_NAME to senderName,
-                KEY_DISAPPEAR_TTL to disappearTtl
+                KEY_DISAPPEAR_TTL to disappearTtl,
+                KEY_REPLY_TO_TEXT to replyToText
             )
             return OneTimeWorkRequestBuilder<GroupMediaUploadWorker>()
                 .setInputData(data)
@@ -71,6 +74,7 @@ class GroupMediaUploadWorker(
         val senderId = inputData.getString(KEY_SENDER_ID) ?: ""
         val senderName = inputData.getString(KEY_SENDER_NAME) ?: ""
         val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
+        val replyToText = inputData.getString(KEY_REPLY_TO_TEXT) ?: ""
 
         val db = AppDb.get(context)
         val dao = db.groupsMessagesDao()
@@ -192,7 +196,8 @@ class GroupMediaUploadWorker(
                 "isSent" to true, // Set to true here because the payload signifies sender's upload
                 "totalChunks" to chunks.size,
                 "thumbnail" to (thumbnailPath?.let { encodeThumbnail(it) } ?: ""),
-                "disappear_ttl" to disappearTtl
+                "disappear_ttl" to disappearTtl,
+                "replyToText" to replyToText
             )
             msgRef.setValue(header).await()
 

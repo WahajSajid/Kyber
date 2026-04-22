@@ -24,6 +24,7 @@ class MediaSender(
         caption: String,
         ampsJson: String = "",
         isContact: Boolean = true,
+        replyToText: String = "",
         onLocalMessageSaved: ((messageId: String) -> Unit)? = null
     ) {
         val messageId  = UUID.randomUUID().toString()
@@ -69,10 +70,10 @@ class MediaSender(
                 uploadProgress = 0,
                 remoteMediaId  = mediaId,
                 localFilePath  = durableFilePath.removePrefix("file://"),
-                mediaDurationMs = durationMs,
                 mediaSizeBytes = fileSize,
                 thumbnailPath  = earlyThumbnailPath,
-                expiresAt = localExpiresAt
+                expiresAt = localExpiresAt,
+                replyToText = replyToText
             )
         )
         onLocalMessageSaved?.invoke(messageId)
@@ -90,7 +91,8 @@ class MediaSender(
             senderName   = senderName,
             isContact    = isContact,
             durationMs   = durationMs,
-            disappearTtl = disappearTimerMs
+            disappearTtl = disappearTimerMs,
+            replyToText  = replyToText
         )
         WorkManager.getInstance(context)
             .enqueueUniqueWork(

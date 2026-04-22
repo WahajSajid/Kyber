@@ -25,6 +25,7 @@ data class GroupMessageEntity(
     val mediaDurationMs: Long = 0,
     val mediaSizeBytes: Long = 0,
     val expiresAt: Long = 0L,
-    val thumbnailPath: String? = null   // local path to thumbnail JPEG
+    val thumbnailPath: String? = null,   // local path to thumbnail JPEG
+    val replyToText: String = ""           // Text of the message this is replying to (empty = not a reply)
 )
 

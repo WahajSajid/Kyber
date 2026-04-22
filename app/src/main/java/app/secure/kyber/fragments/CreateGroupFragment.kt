@@ -264,7 +264,7 @@ class CreateGroupFragment : Fragment() {
     }
 
     private fun getCurrentUserId(): String {
-        return Prefs.getShortId(requireContext()) ?: ""
+        return Prefs.getOnionAddress(requireContext()) ?: ""
     }
 
     override fun onDestroy() {

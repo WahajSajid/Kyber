@@ -26,7 +26,7 @@ object LoadGroups {
                     
                     for (groupSnapshot in snapshot.children) {
                         val group = groupSnapshot.getValue(Group::class.java) ?: continue
-                        val isMember = group.members.values.any { it["id"] == myId }
+                        val isMember = group.members.values.any { idsMatch(it["id"], myId) }
 
                         if (isMember) {
                             val existing = dao.getGroupById(group.groupId)
@@ -66,4 +66,11 @@ object LoadGroups {
         })
     }
 
+    private fun normalizeId(id: String?): String {
+        return id.orEmpty().trim().replace(",", ".")
+    }
+
+    private fun idsMatch(left: String?, right: String?): Boolean {
+        return normalizeId(left).isNotEmpty() && normalizeId(left) == normalizeId(right)
+    }
 }

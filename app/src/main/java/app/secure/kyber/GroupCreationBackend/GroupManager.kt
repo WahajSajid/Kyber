@@ -27,6 +27,7 @@ class GroupManager {
     private val groupsRef = database.getReference("groups")
     private val groupMessagesRef = database.getReference("group_messages")
     private val userGroupsRef = database.getReference("user_groups")
+    private val invalidFirebaseKeyChars = Regex("""[\/.#$\[\]]""")
 
     // ── Size limits for group media sent via Firebase Base64 ──────────────────
     // Firebase has a ~10 MB per-node limit; Base64 adds ~33% overhead.
@@ -131,21 +132,26 @@ class GroupManager {
     ): String? {
         return try {
             val groupId = groupsRef.push().key ?: return null
-            Log.d("GroupManager", "Starting group creation for: $groupName with ID: $groupId")
+            Log.d("GroupManager", "STEP 1 OK — groupId=$groupId, currentUserId=$currentUserId, members=${members.size}")
 
+            // Firebase RTDB does not allow '.' in node keys — it treats it as a path separator.
+            // Use a sanitized key (dot->comma) as the Firebase node name, but keep the original
+            // onionAddress as the stored "id" VALUE so the isMember check works correctly.
             val membersMap = members.associate {
-                currentUserId to mapOf("id" to it.id, "name" to it.name)
+                sanitizeFirebaseKey(it.id) to mapOf("id" to it.id, "name" to it.name)
             }.toMutableMap()
-            membersMap[currentUserId] = mapOf("id" to currentUserId, "name" to currentUserName)
+            membersMap[sanitizeFirebaseKey(currentUserId)] = mapOf("id" to currentUserId, "name" to currentUserName)
+            Log.d("GroupManager", "STEP 2 OK — membersMap keys: ${membersMap.keys}")
 
             val now = System.currentTimeMillis()
             val groupExpiresAt = burnDurationMs?.takeIf { it > 0L }?.let { now + it } ?: 0L
+            // anonymousAliases keys must also be sanitized for Firebase
             val anonymousAliases = if (isAnonymous) {
                 membersMap.values
                     .mapNotNull { it["id"] }
                     .filter { it != currentUserId }
                     .sorted()
-                    .mapIndexed { index, memberId -> memberId to "BK${index + 1}" }
+                    .mapIndexed { index, memberId -> sanitizeFirebaseKey(memberId) to "BK${index + 1}" }
                     .toMap()
             } else {
                 emptyMap()
@@ -183,27 +189,42 @@ class GroupManager {
                 anonymousAliases = org.json.JSONObject(anonymousAliases).toString()
             )
 
-            groupsRef.child(groupId).setValue(group).await()
-            Log.d("GroupManager", "Group saved to Firebase")
+            try {
+                groupsRef.child(groupId).setValue(group).await()
+                Log.d("GroupManager", "STEP 3 OK — group saved to Firebase")
+            } catch (e: Exception) {
+                Log.e("GroupManager", "STEP 3 FAILED — groupsRef.setValue threw: ${e.javaClass.simpleName}: ${e.message}", e)
+                throw e
+            }
 
             try {
                 groupViewModel.saveGroup(groupLocal)
-                Log.d("GroupManager", "Group saved to local DB")
+                Log.d("GroupManager", "STEP 4 OK — group saved to local DB")
             } catch (e: Exception) {
-                Log.e("GroupManager", "Failed to save group locally: ${e.message}")
+                Log.e("GroupManager", "STEP 4 FAILED — saveGroup threw: ${e.javaClass.simpleName}: ${e.message}")
+                // Non-fatal: continue
             }
 
-            membersMap.keys.forEach { sanitizedUserId ->
-                userGroupsRef.child(sanitizedUserId).child(groupId).setValue(true).await()
+            membersMap.keys.forEachIndexed { idx, userId ->
+                val sanitizedUserId = sanitizeFirebaseKey(userId)
+                Log.d("GroupManager", "STEP 5.$idx — writing userGroupsRef for key: '$sanitizedUserId'")
+                try {
+                    userGroupsRef.child(sanitizedUserId).child(groupId).setValue(true).await()
+                    Log.d("GroupManager", "STEP 5.$idx OK")
+                } catch (e: Exception) {
+                    Log.e("GroupManager", "STEP 5.$idx FAILED — userGroupsRef.child('$sanitizedUserId') threw: ${e.javaClass.simpleName}: ${e.message}", e)
+                    throw e
+                }
             }
 
-            Log.d("GroupManager", "Group created successfully")
+            Log.d("GroupManager", "STEP 6 OK — Group created successfully: $groupId")
             groupId
         } catch (e: Exception) {
-            Log.e("GroupManager", "Error creating group: ${e.message}", e)
+            Log.e("GroupManager", "createGroup FAILED — ${e.javaClass.simpleName}: ${e.message}", e)
             null
         }
     }
+
 
     // ── Fetch and sync group metadata ───────────────────────────────────────
 
@@ -273,7 +294,7 @@ class GroupManager {
         Log.d("GroupManager", "Non-creator members to alias: $members")
         
         val aliases = members
-            .mapIndexed { index, memberId -> memberId to "BK${index + 1}" }
+            .mapIndexed { index, memberId -> sanitizeFirebaseKey(memberId) to "BK${index + 1}" }
             .toMap()
         
         Log.d("GroupManager", "Generated aliases: $aliases")
@@ -310,6 +331,7 @@ class GroupManager {
         uri: String? = null,
         ampsJson: String? = null,
         firebasePayload: String? = null,   // No longer used for media, kept for signature compatibility
+        replyToText: String? = null,
         context: Context? = null
     ): Boolean {
         return try {
@@ -337,7 +359,8 @@ class GroupManager {
                 uploadState = initialUploadState,
                 uploadProgress = initialUploadProgress,
                 localFilePath = uri?.removePrefix("file://"),
-                expiresAt = localExpiresAt
+                expiresAt = localExpiresAt,
+                replyToText = replyToText ?: ""
             )
 
             groupMessagesViewModel.saveMessage(roomEntity)
@@ -354,7 +377,8 @@ class GroupManager {
                     "isSent" to roomEntity.isSent,
                     "type" to roomEntity.type,
                     "ampsJson" to roomEntity.ampsJson,
-                    "disappear_ttl" to disappearTimerMs
+                    "disappear_ttl" to disappearTimerMs,
+                    "replyToText" to roomEntity.replyToText
                 )
                 groupMessagesRef.child(groupId).child(messageId).setValue(firebasePayload).await()
                 
@@ -375,7 +399,8 @@ class GroupManager {
                     caption = messageText,
                     senderId = senderId,
                     senderName = senderName,
-                    disappearTtl = disappearTimerMs
+                    disappearTtl = disappearTimerMs,
+                    replyToText = roomEntity.replyToText
                 )
                 androidx.work.WorkManager.getInstance(context).enqueue(request)
             }
@@ -454,6 +479,7 @@ class GroupManager {
                             val rawUri      = messageSnapshot.child("uri").getValue(String::class.java)
                             val ampsJson    = messageSnapshot.child("ampsJson").getValue(String::class.java) ?: ""
                             val reaction    = messageSnapshot.child("reaction").getValue(String::class.java) ?: ""
+                            val replyToText = messageSnapshot.child("replyToText").getValue(String::class.java) ?: ""
 
                             // ── Anonymous masking ────────────────────────────────
                             val displayName = resolveAnonymousDisplayName(
@@ -491,7 +517,8 @@ class GroupManager {
                                 uri         = resolvedUri,
                                 ampsJson    = ampsJson,
                                 reaction    = reaction,
-                                downloadState = if (rawType == "CHUNKED_MEDIA") "pending" else "done"
+                                downloadState = if (rawType == "CHUNKED_MEDIA") "pending" else "done",
+                                replyToText = replyToText
                             )
 
                             // DEEP MERGE: Preserve local file/upload data
@@ -614,6 +641,7 @@ class GroupManager {
         val rawUri      = snapshot.child("uri").getValue(String::class.java)
         val ampsJson    = snapshot.child("ampsJson").getValue(String::class.java) ?: ""
         val reaction    = snapshot.child("reaction").getValue(String::class.java) ?: ""
+        val replyToText = snapshot.child("replyToText").getValue(String::class.java) ?: ""
         val disappearTtl = snapshot.child("disappear_ttl").getValue(Long::class.java) ?: 0L
         val msgTimeRaw = timeStamp.toLongOrNull() ?: 0L
         val sentBaseMs = if (msgTimeRaw > 0L) msgTimeRaw else System.currentTimeMillis()
@@ -657,7 +685,8 @@ class GroupManager {
                 downloadState = "pending",
                 downloadProgress = 0,
                 remoteMediaId = mediaId,
-                expiresAt = localExpiresAt
+                expiresAt = localExpiresAt,
+                replyToText = replyToText
             )
             
             // PRESERVE SENDER/LOCAL DATA:
@@ -712,7 +741,8 @@ class GroupManager {
                 uri         = resolvedUri,
                 ampsJson    = ampsJson,
                 reaction    = reaction,
-                expiresAt   = localExpiresAt
+                expiresAt   = localExpiresAt,
+                replyToText = replyToText
             )
             dao.insertGroupMessage(message)
         }
@@ -890,7 +920,8 @@ class GroupManager {
             groupsRef.child(groupId).removeValue().await()
             groupMessagesRef.child(groupId).removeValue().await()
             members.forEach { userId ->
-                userGroupsRef.child(userId).child(groupId).removeValue().await()
+                val sanitizedUserId = sanitizeFirebaseKey(userId)
+                userGroupsRef.child(sanitizedUserId).child(groupId).removeValue().await()
             }
         } catch (e: Exception) {
             Log.e("GroupManager", "Error deleting group globally: ${e.message}", e)
@@ -919,7 +950,7 @@ class GroupManager {
 
 
     fun getUserGroups(userId: String, onGroupsReceived: (List<Group>) -> Unit) {
-        userGroupsRef.child(userId).addValueEventListener(object : ValueEventListener {
+        userGroupsRef.child(sanitizeFirebaseKey(userId)).addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 val groups = mutableListOf<Group>()
                 val groupIds = snapshot.children.mapNotNull { it.key }
@@ -972,9 +1003,15 @@ class GroupManager {
             val raw = context.getSharedPreferences("anonymous_aliases", Context.MODE_PRIVATE)
                 .getString(groupId, null) ?: return null
             val json = org.json.JSONObject(raw)
-            json.optString(senderId, json.optString(senderId.replace(".", ","), "")).ifBlank { null }
+            json.optString(senderId, json.optString(sanitizeFirebaseKey(senderId), "")).ifBlank { null }
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun sanitizeFirebaseKey(raw: String): String {
+        if (raw.isBlank()) return "_"
+        val sanitized = raw.replace(invalidFirebaseKeyChars, ",")
+        return if (sanitized.isBlank()) "_" else sanitized
     }
 }

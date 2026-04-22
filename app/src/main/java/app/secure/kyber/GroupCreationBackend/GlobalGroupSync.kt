@@ -2,6 +2,7 @@ package app.secure.kyber.GroupCreationBackend
 
 import android.content.Context
 import android.util.Log
+import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.dataClasses.Group
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.GroupsEntity
@@ -14,7 +15,7 @@ object GlobalGroupSync {
     private val activeGroupListeners = mutableMapOf<String, ChildEventListener>()
     private const val DB_URL = "https://kyber-b144e-default-rtdb.asia-southeast1.firebasedatabase.app/"
 
-    fun startGlobalSync(context: Context, myOnion: String) {
+    fun startGlobalSync(context: Context, myId: String) {
         val database = FirebaseDatabase.getInstance(DB_URL)
         val groupsRef = database.getReference("groups")
 
@@ -31,11 +32,11 @@ object GlobalGroupSync {
 
                         for (groupSnapshot in snapshot.children) {
                             val group = groupSnapshot.getValue(Group::class.java) ?: continue
-                            val isMember = group.members.values.any { it["id"] == myOnion }
+                            val isMember = group.members.values.any { idsMatch(it["id"], myId) }
                             val isExpired = group.groupExpiresAt > 0L && now >= group.groupExpiresAt
 
                             if (isExpired) {
-                                if (myOnion == group.createdBy) {
+                                if (idsMatch(myId, group.createdBy)) {
                                     val allMemberIds = group.members.values.mapNotNull { it["id"] }
                                     manager.deleteGroupEverywhere(group.groupId, allMemberIds)
                                 }
@@ -66,7 +67,7 @@ object GlobalGroupSync {
                                     )
                                     groupDao.insert(groupEntity)
 
-                                    if (group.createdBy != myOnion) {
+                                    if (!idsMatch(group.createdBy, myId)) {
                                         val creatorName = group.members.values.find { it["id"] == group.createdBy }?.get("name") ?: "Someone"
                                         GroupManager().showGroupNotification(
                                             context,
@@ -110,7 +111,7 @@ object GlobalGroupSync {
 
                                 // Start listening to messages for this group if not already doing so
                                 if (!activeGroupListeners.containsKey(group.groupId)) {
-                                    listenForGroupMessages(context, group.groupId, myOnion, group.anonymous, group.createdBy)
+                                    listenForGroupMessages(context, group.groupId, myId, group.anonymous, group.createdBy)
                                 }
                             }
                         }
@@ -132,7 +133,7 @@ object GlobalGroupSync {
         })
     }
 
-    private fun listenForGroupMessages(context: Context, groupId: String, myOnion: String, isAnonymous: Boolean, creatorId: String) {
+    private fun listenForGroupMessages(context: Context, groupId: String, myId: String, isAnonymous: Boolean, creatorId: String) {
         val database = FirebaseDatabase.getInstance(DB_URL)
         val msgRef = database.getReference("group_messages").child(groupId)
         
@@ -143,14 +144,14 @@ object GlobalGroupSync {
             override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
                 CoroutineScope(Dispatchers.IO).launch {
                     groupManager.processIncomingGlobalMessage(
-                        context, snapshot, groupId, myOnion, isAnonymous, creatorId, listenerStartedAt
+                        context, snapshot, groupId, myId, isAnonymous, creatorId, listenerStartedAt
                     )
                 }
             }
             override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
                 CoroutineScope(Dispatchers.IO).launch {
                     groupManager.processIncomingGlobalReaction(
-                        context, snapshot, groupId, myOnion, isAnonymous, creatorId
+                        context, snapshot, groupId, myId, isAnonymous, creatorId
                     )
                 }
             }
@@ -161,5 +162,13 @@ object GlobalGroupSync {
         
         msgRef.addChildEventListener(listener)
         activeGroupListeners[groupId] = listener
+    }
+
+    private fun normalizeId(id: String?): String {
+        return id.orEmpty().trim().replace(",", ".")
+    }
+
+    private fun idsMatch(left: String?, right: String?): Boolean {
+        return normalizeId(left).isNotEmpty() && normalizeId(left) == normalizeId(right)
     }
 }

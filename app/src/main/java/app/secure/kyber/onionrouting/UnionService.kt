@@ -111,9 +111,9 @@ class UnionService : Service() {
     private fun startGlobalPolling() {
         pollingJob?.cancel()
         pollingJob = serviceScope.launch {
-            val myOnion = Prefs.getOnionAddress(applicationContext) ?: ""
-            if (myOnion.isNotEmpty()) {
-                app.secure.kyber.GroupCreationBackend.GlobalGroupSync.startGlobalSync(applicationContext, myOnion)
+            val myId = Prefs.getOnionAddress(applicationContext) ?: ""
+            if (myId.isNotEmpty()) {
+                app.secure.kyber.GroupCreationBackend.GlobalGroupSync.startGlobalSync(applicationContext, myId)
             }
             
             refreshCircuitOnStart()
@@ -345,7 +345,8 @@ class UnionService : Service() {
                 isRequest = transport.isRequest,
                 keyFingerprint = transport.recipientKeyFingerprint, // Targeted my key
                 iv = transport.iv,
-                expiresAt = localExpiresAt
+                expiresAt = localExpiresAt,
+                replyToText = transport.replyToText
             )
             messageDao.insert(entity)
 
@@ -770,7 +771,8 @@ class UnionService : Service() {
                     mediaSizeBytes = chunk.totalBytes,
                     isRequest = transport.isRequest,
                     keyFingerprint = transport.recipientKeyFingerprint,
-                    iv = transport.iv
+                    iv = transport.iv,
+                    replyToText = transport.replyToText
                 )
                 messageDao.insert(entity)
                 val isAccepted = contactRepo.getContact(transport.senderOnion) != null

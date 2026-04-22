@@ -31,6 +31,7 @@ class AddMembersViewHolder(
     val profileIcon: ImageView = view.findViewById(R.id.ivAvatar)
     val selectedImage: ImageView = view.findViewById(R.id.btnAdd)
     val id: TextView = view.findViewById(R.id.tvStatus)
+    private var boundOnionId: String = ""
 
 
     init {
@@ -41,7 +42,7 @@ class AddMembersViewHolder(
 
                     // Toggle the selection state
                     viewModel.toggleMemberSelection(nameTextView.text.toString())
-                    bindSelectionState(nameTextView.text.toString(), id.text.toString())
+                    bindSelectionState(nameTextView.text.toString(), boundOnionId)
                 }
             }
         }
@@ -50,6 +51,7 @@ class AddMembersViewHolder(
     fun bind(contact: ContactEntity) {
         nameTextView.text = contact.name
         id.text = ""
+        boundOnionId = contact.onionAddress
         // Handle image or generic icon
         profileIcon.setImageResource(R.drawable.anonymous_icon)
         bindSelectionState(contact.name, contact.onionAddress)

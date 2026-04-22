@@ -130,7 +130,8 @@ class TextUploadWorker(
                         recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
                         senderPublicKey = encryptionResult.senderPublicKeyBase64,
                         ampsJson = localMsg?.ampsJson ?: "",
-                        disappear_ttl = disappearTtl
+                        disappear_ttl = disappearTtl,
+                        replyToText = localMsg?.replyToText ?: ""
                     )
 
 

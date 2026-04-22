@@ -76,7 +76,7 @@ class GroupChatListFragment : Fragment() {
             controller.navigate(R.id.action_groupChatListFragment_to_messageRequestsFragment)
         }
 
-        val unionId = Prefs.getShortId(requireContext()).toString()
+        val unionId = Prefs.getOnionAddress(requireContext()) ?: ""
 
         //Retrieve the groups from the database
         LoadGroups.loadGroup(requireContext(), unionId, database, vm)
