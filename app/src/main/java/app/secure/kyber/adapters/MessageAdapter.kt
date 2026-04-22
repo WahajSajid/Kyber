@@ -157,17 +157,18 @@ class MessageAdapter(
      * mimicking the WhatsApp tap-to-navigate reply highlight.
      */
     fun highlightItem(position: Int) {
-        val vh  = recyclerView?.findViewHolderForAdapterPosition(position) as? VH ?: return
-        val item = runCatching { getItem(position) }.getOrNull() ?: return
-        val bubble: View = if (item.isSent) vh.rlSent else vh.rlRcvd
+        val vh = recyclerView?.findViewHolderForAdapterPosition(position) as? VH ?: return
+        // Highlight the full-width item row (match_parent ConstraintLayout) so the
+        // flash covers the entire message row — not just the narrow bubble.
+        val container: View = vh.itemView
         val overlay = android.graphics.drawable.ColorDrawable(0)
-        bubble.foreground = overlay
+        container.foreground = overlay
         android.animation.ValueAnimator.ofArgb(0x55009FFF.toInt(), 0x00009FFF.toInt()).apply {
             duration = 1400
             addUpdateListener { overlay.color = it.animatedValue as Int }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
-                    bubble.foreground = null
+                    container.foreground = null
                 }
             })
             start()

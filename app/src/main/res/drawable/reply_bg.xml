@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="60dp"
+    android:viewportWidth="391"
+    android:viewportHeight="111">
+
+    <!-- Rounded rectangle stroke + fill -->
+    <path
+        android:fillColor="#1A009FFF"
+        android:pathData="M15.5 0.5H375.5C383.784 0.5 390.5 7.21573 390.5 15.5V95.5C390.5 103.784 383.784 110.5 375.5 110.5H15.5C7.21573 110.5 0.5 103.784 0.5 95.5V15.5C0.5 7.21573 7.21573 0.5 15.5 0.5Z"
+        android:strokeWidth="0.5"
+        android:strokeColor="#1A009FFF" />
+</vector>
+
+
+
+
+
+
+
+
+
+
+
+

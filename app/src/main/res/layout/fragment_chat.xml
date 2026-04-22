@@ -249,6 +249,79 @@
 
         </LinearLayout>
 
+
+
+        <!-- Reply Preview Bar (WhatsApp-style) -->
+        <!-- Appears above the composer when the user swipes or taps Reply -->
+        <LinearLayout
+            android:id="@+id/replyPreviewBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/reply_bg"
+            android:layout_marginTop="@dimen/_6sdp"
+            android:layout_marginBottom="@dimen/_4sdp"
+            android:paddingVertical="@dimen/_8sdp"
+            android:paddingStart="@dimen/_8sdp"
+            android:paddingEnd="@dimen/_8sdp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@id/bottom_sheet"
+            app:layout_constraintStart_toStartOf="@id/bottom_sheet"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- Left accent stripe -->
+            <View
+                android:layout_width="@dimen/_3sdp"
+                android:layout_height="match_parent"
+                android:background="#009FFF"
+                android:layout_marginEnd="@dimen/_8sdp" />
+
+            <!-- Quoted content column -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_weight="1"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvReplyLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/roboto_medium"
+                    android:text="Replying to"
+                    android:textColor="#009FFF"
+                    android:textSize="@dimen/_12sdp" />
+
+                <TextView
+                    android:id="@+id/tvReplyText"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/roboto_regular"
+                    android:textColor="#B0FFFFFF"
+                    android:textSize="@dimen/_13sdp"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:text="" />
+
+            </LinearLayout>
+
+            <!-- Close / cancel button -->
+            <ImageView
+                android:id="@+id/ivCancelReply"
+                android:layout_width="@dimen/_28sdp"
+                android:layout_height="@dimen/_28sdp"
+                android:padding="@dimen/_4sdp"
+                android:src="@drawable/close_icon"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:clickable="true"
+                android:focusable="true"
+                app:tint="#80FFFFFF" />
+
+        </LinearLayout>
+
+
+
         <!-- Expandable bottom sheet (compose UI) -->
         <LinearLayout
             android:id="@+id/bottom_sheet"
@@ -262,72 +335,6 @@
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
-
-            <!-- ── Reply Preview Bar (WhatsApp-style) ─────────────────────── -->
-            <!-- Appears above the composer when the user swipes or taps Reply -->
-            <LinearLayout
-                android:id="@+id/replyPreviewBar"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:background="#1A009FFF"
-                android:layout_marginTop="@dimen/_6sdp"
-                android:layout_marginBottom="@dimen/_4sdp"
-                android:paddingVertical="@dimen/_8sdp"
-                android:paddingStart="@dimen/_8sdp"
-                android:paddingEnd="@dimen/_8sdp"
-                android:visibility="gone">
-
-                <!-- Left accent stripe -->
-                <View
-                    android:layout_width="@dimen/_3sdp"
-                    android:layout_height="match_parent"
-                    android:background="#009FFF"
-                    android:layout_marginEnd="@dimen/_8sdp" />
-
-                <!-- Quoted content column -->
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical">
-
-                    <TextView
-                        android:id="@+id/tvReplyLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/roboto_medium"
-                        android:text="Replying to"
-                        android:textColor="#009FFF"
-                        android:textSize="@dimen/_12sdp" />
-
-                    <TextView
-                        android:id="@+id/tvReplyText"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/roboto_regular"
-                        android:textColor="#B0FFFFFF"
-                        android:textSize="@dimen/_13sdp"
-                        android:maxLines="2"
-                        android:ellipsize="end"
-                        android:text="" />
-
-                </LinearLayout>
-
-                <!-- Close / cancel button -->
-                <ImageView
-                    android:id="@+id/ivCancelReply"
-                    android:layout_width="@dimen/_28sdp"
-                    android:layout_height="@dimen/_28sdp"
-                    android:padding="@dimen/_4sdp"
-                    android:src="@drawable/close_icon"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:clickable="true"
-                    android:focusable="true"
-                    app:tint="#80FFFFFF" />
-
-            </LinearLayout>
 
             <!-- Preview strip -->
             <LinearLayout
