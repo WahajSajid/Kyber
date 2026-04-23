@@ -471,13 +471,13 @@
             <!-- Content Menu -->
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/contentMenu"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginTop="@dimen/_25sdp"
                 android:layout_marginBottom="@dimen/_10sdp"
                 android:visibility="gone">
-
+a
                 <LinearLayout
                     android:id="@+id/llGallery"
                     android:layout_width="wrap_content"
@@ -486,6 +486,7 @@
                     android:orientation="vertical"
                     app:layout_constraintEnd_toStartOf="@+id/llDocument"
                     app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintStart_toStartOf="parent">
 
                     <ImageView
@@ -515,6 +516,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/_3sdp"
                     android:orientation="vertical"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintEnd_toStartOf="@+id/llAudio"
                     app:layout_constraintHorizontal_bias="0.5"
                     app:layout_constraintStart_toEndOf="@+id/llGallery">
@@ -545,6 +547,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/_3sdp"
                     android:orientation="vertical"
+                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintHorizontal_bias="0.5"
                     app:layout_constraintStart_toEndOf="@+id/llDocument">

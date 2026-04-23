@@ -35,7 +35,7 @@ class ContactListAdapter(
     inner class VH(view: View) : RecyclerView.ViewHolder(view) {
         val titleTextView: TextView = itemView.findViewById(R.id.tvName)
         val userId: TextView = itemView.findViewById(R.id.tvID)
-        val letter: TextView = itemView.findViewById(R.id.letter)
+//        val letter: TextView = itemView.findViewById(R.id.letter)
 
         fun bind(item: ContactEntity) {
             titleTextView.text = item.name ?: ""
@@ -72,8 +72,8 @@ class ContactListAdapter(
             currentLetterChar != prevLetterChar
         }
 
-        holder.letter.text = currentLetterChar.toString()
-        holder.letter.visibility = if (showLetter) View.VISIBLE else View.GONE
+//        holder.letter.text = currentLetterChar.toString()
+//        holder.letter.visibility = if (showLetter) View.VISIBLE else View.GONE
 
         holder.itemView.setOnClickListener {
             onItemClick(current)

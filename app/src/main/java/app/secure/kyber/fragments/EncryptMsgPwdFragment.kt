@@ -25,19 +25,11 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
     private lateinit var binding: FragmentEncryptMsgPwdBinding
     private var shownOfflineDialog = false
 
-    // Lockout = 60 seconds
-    private val LOCKOUT_DURATION_MS = 60_000L
-
-    // In-app countdown display for the 1-minute lockout
-    private var lockoutCountdownTimer: CountDownTimer? = null
-
     // Wipe dialog / service countdown
     private var wipeCountdownTimer: CountDownTimer? = null
     private var wipeDialog: AlertDialog? = null
 
-    // ─────────────────────────────────────────────────────────────────────
     // Lifecycle
-    // ─────────────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,46 +50,22 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
             showOfflineDialog()
         }
 
-        // Resume lockout countdown if app was reopened during an active lockout
-        resumeLockoutIfActive()
-
         setClickListeners()
+        restoreAttemptWarningIfNeeded()
     }
 
     override fun onDestroyView() {
-        lockoutCountdownTimer?.cancel()
         wipeCountdownTimer?.cancel()
         wipeDialog?.dismiss()
         super.onDestroyView()
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Resume lockout on app open (persists across app kill via Prefs)
-    // ─────────────────────────────────────────────────────────────────────
-
-    private fun resumeLockoutIfActive() {
-        val ctx = requireContext()
-        val lockoutStart = Prefs.getLockoutStartTime(ctx)
-        if (lockoutStart == 0L) return  // no lockout stored
-
-        val elapsed = System.currentTimeMillis() - lockoutStart
-        val remaining = LOCKOUT_DURATION_MS - elapsed
-
-        if (remaining <= 0) {
-            // Lockout already expired while app was closed — reset silently
-            clearLockout(ctx)
-        } else {
-            // Still in lockout — resume the countdown display
-            startLockoutCountdownDisplay(remaining)
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
     // Click listeners
-    // ─────────────────────────────────────────────────────────────────────
 
     private fun setClickListeners() {
         binding.btnPwd.setOnClickListener {
+            hideKeyboard()
+
             if (!NetworkMonitor.isConnected.value) {
                 showOfflineDialog()
                 return@setOnClickListener
@@ -106,116 +74,52 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
             val input = binding.etPwd.text.toString().trim()
             val ctx = requireContext()
 
-            // ── Feature 1.1: Check wipe-out password BEFORE anything else ──
+            // Check wipe-out password BEFORE anything else
             val wipePassword = Prefs.getWipePassword(ctx)
             if (!wipePassword.isNullOrEmpty() && input == wipePassword) {
                 startWipeProcess(isAuthorized = true)
                 return@setOnClickListener
             }
 
-            // ── Resolve lockout state ──
-            val lockoutStart = Prefs.getLockoutStartTime(ctx)
-            val inLockout = lockoutStart > 0L &&
-                    (System.currentTimeMillis() - lockoutStart) < LOCKOUT_DURATION_MS
-
-            if (inLockout) {
-                // ── In lockout window: one more wrong = WIPE ──
-                if (Prefs.getPassword(ctx).equals(input)) {
-                    // Correct password during lockout → login normally + clear lockout
-                    clearLockout(ctx)
-                    performLogin()
-                } else {
-                    // 4th consecutive wrong during lockout → WIPE (no UNDO)
-                    clearLockout(ctx)
-                    startWipeProcess(isAuthorized = false)
-                }
-                return@setOnClickListener
-            }
-
-            // ── Normal login check ──
+            // Normal login check
             if (Prefs.getPassword(ctx).equals(input)) {
-                // Successful login — reset any stale attempt counter
+                // Successful login reset attempt counter and login
                 Prefs.setFailedAttempts(ctx, 0)
                 performLogin()
             } else {
-                // ── Track failed attempts ──
+                // Track failed attempts
                 val attempts = Prefs.getFailedAttempts(ctx) + 1
                 Prefs.setFailedAttempts(ctx, attempts)
-                val remaining = 3 - attempts
 
-                when {
-                    remaining > 0 -> {
-                        Snackbar.make(
-                            binding.root,
-                            "$remaining attempt${if (remaining != 1) "s" else ""} remaining",
-                            Snackbar.LENGTH_SHORT
-                        ).show()
+                when (attempts) {
+                    1 -> {
+                        binding.tvLockoutCountdown.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "2 login attempts remaining"
+                    }
+                    2 -> {
+                        binding.tvLockoutCountdown.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "1 login attempt remaining"
+                    }
+                    3 -> {
+                        binding.tvLockoutCountdown.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "⚠️ Too many wrong attempts. One more wrong attempt will wipe out the whole app"
                     }
                     else -> {
-                        // 3rd wrong — start 1-minute lockout
-                        val lockoutStartTime = System.currentTimeMillis()
-                        Prefs.setLockoutStartTime(ctx, lockoutStartTime)
-                        startLockoutCountdownDisplay(LOCKOUT_DURATION_MS)
+                        // 4th wrong attempt — WIPE (no UNDO)
+                        startWipeProcess(isAuthorized = false)
                     }
                 }
             }
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Lockout countdown display (in-app UI only — persistence via Prefs)
-    // ─────────────────────────────────────────────────────────────────────
-
-    /**
-     * Shows the red warning text below the button with a live countdown.
-     * Automatically resets the attempt counter when the timer expires.
-     */
-    private fun startLockoutCountdownDisplay(remainingMs: Long) {
-        if (!isAdded) return
-
-        binding.tvLockoutCountdown.visibility = View.VISIBLE
-
-        lockoutCountdownTimer?.cancel()
-        lockoutCountdownTimer = object : CountDownTimer(remainingMs, 1_000L) {
-
-            override fun onTick(millisUntilFinished: Long) {
-                if (!isAdded) return
-                val secondsLeft = (millisUntilFinished / 1_000L).toInt() + 1
-                binding.tvLockoutCountdown.text =
-                    "Too many attempts.\nTry again in $secondsLeft second${if (secondsLeft != 1) "s" else ""}.\n⚠️ One more wrong attempt will wipe all data."
-            }
-
-            override fun onFinish() {
-                if (!isAdded) return
-                // 1 minute passed — reset counter, hide warning
-                clearLockout(requireContext())
-                binding.tvLockoutCountdown.visibility = View.GONE
-                binding.tvLockoutCountdown.text = ""
-                Snackbar.make(
-                    binding.root,
-                    "Lockout expired. You may try again.",
-                    Snackbar.LENGTH_SHORT
-                ).show()
-            }
-        }.start()
-    }
-
-    /** Clears lockout state from Prefs and resets attempt counter. */
-    private fun clearLockout(ctx: android.content.Context) {
-        Prefs.setFailedAttempts(ctx, 0)
-        Prefs.setLockoutStartTime(ctx, 0L)
-        lockoutCountdownTimer?.cancel()
-        if (isAdded) {
-            binding.tvLockoutCountdown.visibility = View.GONE
-            binding.tvLockoutCountdown.text = ""
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
     // Login helper
-    // ─────────────────────────────────────────────────────────────────────
 
     private fun performLogin() {
+        Prefs.setFailedAttempts(requireContext(), 0)
+        binding.tvLockoutCountdown.visibility = View.GONE
+        binding.tvLockoutCountdown.text = ""
+
         val myApp = requireActivity().application as MyApp
         myApp.isAppLocked = false
         myApp.lastBackgroundTime = System.currentTimeMillis()
@@ -227,17 +131,8 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Wipe orchestration (unchanged from previous implementation)
-    // ─────────────────────────────────────────────────────────────────────
+    // Wipe orchestration
 
-    /**
-     * Starts the wipe process:
-     * 1. Shows in-app countdown dialog (foreground UX)
-     * 2. Starts WipeService foreground service (background/kill persistence)
-     *
-     * @param isAuthorized true = manual wipe (UNDO shown), false = unauthorized (no UNDO)
-     */
     private fun startWipeProcess(isAuthorized: Boolean) {
         startWipeService(isAuthorized)
         showInAppWipeDialog(isAuthorized)
@@ -288,7 +183,7 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
 
         dialog.show()
 
-        wipeCountdownTimer = object : CountDownTimer(10_000L, 1_000L) {
+        wipeCountdownTimer = object : CountDownTimer(5_000L, 1_000L) {
             override fun onTick(millisUntilFinished: Long) {
                 val seconds = (millisUntilFinished / 1_000L).toInt() + 1
                 if (isAdded) tvCountdown.text = seconds.toString()
@@ -308,12 +203,8 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
             action = WipeService.ACTION_CANCEL_WIPE
         }
         requireContext().startService(cancelIntent)
-        Snackbar.make(binding.root, "Wipe-out cancelled.", Snackbar.LENGTH_SHORT).show()
+        showSnackbar("Wipe-out cancelled.")
     }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Existing helpers (UNCHANGED)
-    // ─────────────────────────────────────────────────────────────────────
 
     private fun goToMainActivity() {
         val intent = Intent(activity, MainActivity::class.java)
@@ -333,5 +224,32 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
                 shownOfflineDialog = false
             }
             .show()
+    }
+
+    private fun showSnackbar(message: String) {
+        val snackbar = Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT)
+        snackbar.anchorView = binding.etPwd
+        snackbar.show()
+    }
+
+    private fun hideKeyboard() {
+        val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
+    }
+
+
+    private fun restoreAttemptWarningIfNeeded() {
+        val attempts = Prefs.getFailedAttempts(requireContext())
+        if (attempts <= 0) return
+
+        val message = when (attempts) {
+            1 -> "2 login attempts remaining"
+            2 -> "1 login attempt remaining"
+            else -> "⚠️ Too many wrong attempts. One more wrong attempt will wipe out the whole app"
+        }
+
+        binding.tvLockoutCountdown.visibility = View.VISIBLE
+        binding.tvLockoutCountdown.text = message
     }
 }

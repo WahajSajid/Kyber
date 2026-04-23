@@ -52,19 +52,57 @@ class GroupMessagesAdapter(
 
     companion object {
         val DIFF = object : DiffUtil.ItemCallback<GroupMessageEntity>() {
-            override fun areItemsTheSame(old: GroupMessageEntity, new: GroupMessageEntity) = old.messageId == new.messageId
-            override fun areContentsTheSame(old: GroupMessageEntity, new: GroupMessageEntity) = old == new
+            override fun areItemsTheSame(old: GroupMessageEntity, new: GroupMessageEntity) =
+                old.messageId == new.messageId
+
+            override fun areContentsTheSame(old: GroupMessageEntity, new: GroupMessageEntity) =
+                old == new
         }
         private val SPEED_STEPS = listOf(1.0f, 1.5f, 2.0f)
-        private val SCRAMBLE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
+        private val SCRAMBLE_CHARS =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#\$%^&*"
 
         fun generateEncryptedPlaceholder(length: Int): String {
             if (length <= 0) return "••••••••"
-            return (1..length.coerceAtLeast(8)).map { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }.joinToString("")
+            return (1..length.coerceAtLeast(8)).map { SCRAMBLE_CHARS[Random.nextInt(SCRAMBLE_CHARS.length)] }
+                .joinToString("")
         }
 
         private val persistentCache = mutableMapOf<String, String>()
         fun clearPersistentCache() = persistentCache.clear()
+
+        /**
+         * Returns true when [text] is composed entirely of emoji characters
+         * (plus optional whitespace, ZWJ, and variation selectors).
+         *
+         * Uses codepoint-level inspection so it works for all supplementary-
+         * plane emoji (🎉🔥🐶 etc.) which Android stores as surrogate pairs.
+         */
+        fun isEmojiOnly(text: String): Boolean {
+            if (text.isBlank()) return false
+            var i = 0
+            while (i < text.length) {
+                val cp = text.codePointAt(i)
+                i += Character.charCount(cp)
+                if (Character.isWhitespace(cp)) continue
+                if (cp == 0x200D || cp == 0xFE0F || cp == 0xFE0E || cp == 0x20E3) continue
+                if (cp in 0xFE00..0xFE0F) continue
+                if (cp in 0xE0000..0xE007F) continue
+                if (cp in 0x1F3FB..0x1F3FF) continue
+                if (cp in 0x1F000..0x1FFFF) continue
+                if (cp in 0x1F100..0x1F1FF) continue
+                if (cp in 0x2600..0x27BF) continue
+                if (cp in 0x2300..0x23FF) continue
+                if (cp in 0x2B00..0x2BFF) continue
+                if (cp in 0x2194..0x21FF) continue
+                if (cp in 0x25A0..0x27BF) continue
+                if (cp in 0x3000..0x303F) continue
+                if (cp == 0x00A9 || cp == 0x00AE) continue
+                if (Character.getType(cp) == Character.OTHER_SYMBOL.toInt()) continue
+                return false
+            }
+            return true
+        }
     }
 
     private var activePlayer: MediaPlayer? = null
@@ -84,7 +122,9 @@ class GroupMessagesAdapter(
 
     private var firstLoadDone = false
 
-    init { setHasStableIds(true) }
+    init {
+        setHasStableIds(true)
+    }
 
     override fun submitList(list: List<GroupMessageEntity>?) {
         val prevSize = currentList.size
@@ -121,10 +161,17 @@ class GroupMessagesAdapter(
         rvRef = rv
         // stackFromEnd intentionally NOT set — messages start from top in new chats.
     }
-    override fun onDetachedFromRecyclerView(rv: RecyclerView) { super.onDetachedFromRecyclerView(rv); rvRef = null; adapterScope.coroutineContext.cancelChildren() }
+
+    override fun onDetachedFromRecyclerView(rv: RecyclerView) {
+        super.onDetachedFromRecyclerView(rv); rvRef =
+            null; adapterScope.coroutineContext.cancelChildren()
+    }
+
     override fun getItemId(position: Int) = getItem(position).messageId.hashCode().toLong()
 
-    fun releasePlayer() { stopPlayback(resetUi = true) }
+    fun releasePlayer() {
+        stopPlayback(resetUi = true)
+    }
 
     /**
      * Flashes the message bubble at [position] with a brief blue overlay,
@@ -149,10 +196,13 @@ class GroupMessagesAdapter(
         }
     }
 
-    fun updateRecentEmojis(newList: List<String>) { recentEmojis = newList }
+    fun updateRecentEmojis(newList: List<String>) {
+        recentEmojis = newList
+    }
 
     class VH(view: View) : RecyclerView.ViewHolder(view) {
         val tvSentMsg: TextView = view.findViewById(R.id.tvSentMsg)
+
         // DecryptRevealTextView — same id as old tvMsgRcv, is a subclass of AppCompatTextView
         val tvMsgRcv: DecryptRevealTextView = view.findViewById(R.id.tvMsgRcv)
         val tvRcvTime: TextView = view.findViewById(R.id.tvRcvTime)
@@ -170,13 +220,15 @@ class GroupMessagesAdapter(
         val flMediaRcv: FrameLayout = view.findViewById(R.id.flMediaRcv)
         val ivMediaRcv: ShapeableImageView = view.findViewById(R.id.ivMediaRcv)
         val ivPlayRcv: ImageView = view.findViewById(R.id.ivPlayRcv)
-        
+
         val flRcvProgress: FrameLayout? = view.findViewById(R.id.flRcvProgress)
-        val progressRcv: com.google.android.material.progressindicator.CircularProgressIndicator? = view.findViewById(R.id.progressRcv)
+        val progressRcv: com.google.android.material.progressindicator.CircularProgressIndicator? =
+            view.findViewById(R.id.progressRcv)
         val tvDownloadProgress: TextView? = view.findViewById(R.id.tvDownloadProgress)
-        
+
         val flSentProgress: FrameLayout? = view.findViewById(R.id.flSentProgress)
-        val progressSent: com.google.android.material.progressindicator.CircularProgressIndicator? = view.findViewById(R.id.progressSent)
+        val progressSent: com.google.android.material.progressindicator.CircularProgressIndicator? =
+            view.findViewById(R.id.progressSent)
         val tvUploadProgress: TextView? = view.findViewById(R.id.tvUploadProgress)
 
         val sentAudio: LinearLayout = view.findViewById(R.id.sentAudioContainer)
@@ -214,7 +266,8 @@ class GroupMessagesAdapter(
         val infoBtnRcv: LinearLayout = view.findViewById(R.id.btnInfoRcv)
 
         val rvRecentEmojisSent: RecyclerView = sentEmojiBar.findViewById(R.id.rvRecentEmojis)
-        val rvRecentEmojisReceived: RecyclerView = receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
+        val rvRecentEmojisReceived: RecyclerView =
+            receivedEmojiBar.findViewById(R.id.rvRecentEmojis)
         val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
         val btnMoreReceived: ImageButton = receivedEmojiBar.findViewById(R.id.emojiMore)
 
@@ -250,7 +303,8 @@ class GroupMessagesAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
-        val showTime = if (pos < itemCount - 1) convertDatetime(item.time) != convertDatetime(getItem(pos + 1).time) else true
+        val showTime =
+            if (pos < itemCount - 1) convertDatetime(item.time) != convertDatetime(getItem(pos + 1).time) else true
         val type = item.type.uppercase(Locale.US)
         val isSent = item.senderOnion == myId
         val isMedia = type == "IMAGE" || type == "VIDEO"
@@ -276,9 +330,18 @@ class GroupMessagesAdapter(
         val isMenuOpen = openMenuPositions.contains(pos)
         if (isMenuOpen) {
             val emojiAdapter = RecentEmojiAdapter(recentEmojis, item.reaction) { emoji ->
-                val fe = if (emoji == item.reaction) "" else emoji; closeMenu(); onEmojiSelected(item, fe)
+                val fe = if (emoji == item.reaction) "" else emoji; closeMenu(); onEmojiSelected(
+                item,
+                fe
+            )
             }
-            holder.rvEmojis(isSent).apply { layoutManager = LinearLayoutManager(holder.itemView.context, LinearLayoutManager.HORIZONTAL, false); adapter = emojiAdapter }
+            holder.rvEmojis(isSent).apply {
+                layoutManager = LinearLayoutManager(
+                    holder.itemView.context,
+                    LinearLayoutManager.HORIZONTAL,
+                    false
+                ); adapter = emojiAdapter
+            }
             holder.btnMore(isSent).setOnClickListener { onMoreEmojisClicked(item); closeMenu() }
             holder.emojiBar(isSent).visibility = View.VISIBLE
             holder.actionMenu(isSent).visibility = View.VISIBLE
@@ -288,7 +351,14 @@ class GroupMessagesAdapter(
             holder.actionMenu(isSent).visibility = View.GONE
         }
 
-        when { isAudio -> bindAudio(holder, item, isSent); isMedia -> bindMedia(holder, item, isSent, type); else -> bindText(holder, item, isSent) }
+        when {
+            isAudio -> bindAudio(holder, item, isSent); isMedia -> bindMedia(
+            holder,
+            item,
+            isSent,
+            type
+        ); else -> bindText(holder, item, isSent)
+        }
 
         if (isSent) holder.tvSendTime.text = convertDatetime(item.time)
         else {
@@ -302,10 +372,26 @@ class GroupMessagesAdapter(
         }
 
         val rv = holder.reaction(isSent)
-        if (item.reaction.isNotEmpty()) { rv.text = item.reaction; rv.visibility = View.VISIBLE } else rv.visibility = View.GONE
+        if (item.reaction.isNotEmpty()) {
+            rv.text = item.reaction; rv.visibility = View.VISIBLE
+        } else rv.visibility = View.GONE
 
-        holder.itemView.setOnLongClickListener { val p = holder.bindingAdapterPosition; if (p != RecyclerView.NO_POSITION) showMenu(p); true }
-        holder.itemView.setOnClickListener { if (openMenuPositions.isNotEmpty()) closeMenu() else onClick(item) }
+        holder.itemView.setOnLongClickListener {
+            val p =
+                holder.bindingAdapterPosition; if (p != RecyclerView.NO_POSITION) showMenu(p); true
+        }
+        holder.itemView.setOnClickListener {
+            if (openMenuPositions.isNotEmpty()) {
+                closeMenu()
+                return@setOnClickListener
+            }
+            val t = item.type.uppercase(Locale.US)
+            // Guard: do NOT fire onClick for text/emoji — prevents "Media not available"
+            if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
+                return@setOnClickListener
+            }
+            onClick(item)
+        }
         setupActionMenuButtons(holder, item)
     }
 
@@ -313,7 +399,9 @@ class GroupMessagesAdapter(
         val pos = currentList.indexOfFirst { it.messageId == itemId }; if (pos == -1) return
         (rvRef?.findViewHolderForAdapterPosition(pos) as? VH)?.let { h ->
             val r = h.reaction(getItem(pos).senderOnion == myId)
-            if (emoji.isEmpty()) r.visibility = View.GONE else { r.text = emoji; r.visibility = View.VISIBLE }
+            if (emoji.isEmpty()) r.visibility = View.GONE else {
+                r.text = emoji; r.visibility = View.VISIBLE
+            }
         }
     }
 
@@ -331,14 +419,23 @@ class GroupMessagesAdapter(
     }
 
     override fun onBindViewHolder(holder: VH, position: Int, payloads: MutableList<Any>) {
-        if (payloads.isEmpty()) { onBindViewHolder(holder, position); return }
+        if (payloads.isEmpty()) {
+            onBindViewHolder(holder, position); return
+        }
         val pos = holder.bindingAdapterPosition; if (pos == RecyclerView.NO_POSITION) return
-        if (payloads.contains("START_PLAYBACK")) { val item = getItem(pos); startPlayback(holder, item.senderOnion == myId, item.uri ?: return) }
-        else onBindViewHolder(holder, position)
+        if (payloads.contains("START_PLAYBACK")) {
+            val item = getItem(pos); startPlayback(
+                holder,
+                item.senderOnion == myId,
+                item.uri ?: return
+            )
+        } else onBindViewHolder(holder, position)
     }
 
     private fun showMenu(position: Int) {
-        val prev = openMenuPositions.toSet(); openMenuPositions.clear(); openMenuPositions.add(position)
+        val prev = openMenuPositions.toSet(); openMenuPositions.clear(); openMenuPositions.add(
+            position
+        )
         prev.forEach { if (it != position) notifyItemChanged(it) }; notifyItemChanged(position)
         // Double-post so the layout pass for the newly-visible menu views
         // finishes before we measure positions.
@@ -347,7 +444,13 @@ class GroupMessagesAdapter(
         }
     }
 
-    fun closeMenu() { val prev = openMenuPositions.toSet(); openMenuPositions.clear(); prev.forEach { notifyItemChanged(it) } }
+    fun closeMenu() {
+        val prev = openMenuPositions.toSet(); openMenuPositions.clear(); prev.forEach {
+            notifyItemChanged(
+                it
+            )
+        }
+    }
 
     /**
      * Scrolls the RecyclerView so that the entire long-press overlay
@@ -388,9 +491,9 @@ class GroupMessagesAdapter(
 
         val scrollDelta: Int = when {
             blockHeight >= rvBottom -> if (blockTop < 0) blockTop - 16 else 0
-            blockBottom > rvBottom  -> blockBottom - rvBottom + 16
-            blockTop < 0            -> blockTop - 16
-            else                    -> 0
+            blockBottom > rvBottom -> blockBottom - rvBottom + 16
+            blockTop < 0 -> blockTop - 16
+            else -> 0
         }
 
         if (scrollDelta != 0) rv.smoothScrollBy(0, scrollDelta)
@@ -402,16 +505,47 @@ class GroupMessagesAdapter(
     private fun bindText(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false; h.rcvAudio.isVisible = false
         h.flMediaSent.isVisible = false; h.flMediaRcv.isVisible = false
-        h.rlSendMsg.setBackgroundResource(R.drawable.sent_msg_bg)
+
+        // ── Emoji-only detection ──────────────────────────────────────────────
+        // Only strip the bubble when the message is pure emoji AND has no quoted reply
+        // (the reply block needs a bubble background to remain legible).
+        val emojiOnly = item.replyToText.isEmpty() && isEmojiOnly(item.msg)
+        val normalPad = h.itemView.resources
+            .getDimensionPixelSize(R.dimen._2sdp)
 
         if (sent) {
             h.tvSentMsg.isVisible = true; h.tvMsgRcv.isVisible = false
             h.tvMsgRcv.cancelAndShowFinal()
             h.tvSentMsg.text = item.msg; h.tvDecryptingRcv?.visibility = View.GONE
+
+            if (emojiOnly) {
+                h.rlSendMsg.background = null
+                h.rlSendMsg.setPadding(0, 0, 0, 0)
+                val emojiCount = countEmojis(item.msg)
+                h.tvSentMsg.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (emojiCount < 6) 36f else 16f)
+            } else {
+                h.rlSendMsg.setBackgroundResource(R.drawable.sent_msg_bg)
+                h.rlSendMsg.setPadding(normalPad, normalPad, normalPad, normalPad)
+                h.tvSentMsg.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+            }
+
             return
+
         }
 
         h.tvMsgRcv.isVisible = true; h.tvSentMsg.isVisible = false
+
+        if (emojiOnly) {
+            h.rlRecieveMsg.background = null
+            h.rlRecieveMsg.setPadding(0, 0, 0, 0)
+            val emojiCount = countEmojis(item.msg)
+            h.tvMsgRcv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (emojiCount < 6) 36f else 16f)
+        } else {
+            h.rlRecieveMsg.setBackgroundResource(R.drawable.recv_msg_bg)
+            h.rlRecieveMsg.setPadding(normalPad, normalPad, normalPad, normalPad)
+            h.tvMsgRcv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+        }
+
         val msgId = item.messageId
         val cached = decryptedTextCache[msgId]
 
@@ -431,26 +565,32 @@ class GroupMessagesAdapter(
             return
         }
 
+
+        if (emojiOnly) {
+            h.tvMsgRcv.cancelAndShowFinal()
+            h.tvMsgRcv.text = item.msg
+            h.tvDecryptingRcv?.visibility = View.GONE
+            decryptedTextCache[msgId] = item.msg
+            return
+        }
+
         // ── Brand new message — strict 2-phase animation ─────────────────────
         val encryptedPlaceholder = generateEncryptedPlaceholder(item.msg.length)
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
-        // prepareForAnimation sets phase = SIZING before setText so any onDraw during
-        // the layout pass draws nothing — prevents encrypted text flashing without background.
         h.tvMsgRcv.prepareForAnimation(encryptedPlaceholder)
-        h.tvMsgRcv.text = encryptedPlaceholder   // size the view (onDraw suppressed via SIZING)
+        h.tvMsgRcv.text = encryptedPlaceholder
 
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
         decryptJobs[msgId] = adapterScope.launch {
             try {
-                // We use messageDecryptor for the pure visual delay effect if needed,
-                // but item.msg is already the fully decrypted message locally.
-                delay(500)
+                delay(250)
                 val decrypted = item.msg
                 decryptedTextCache[msgId] = decrypted
                 withContext(Dispatchers.Main) {
-                    val liveVH = findVHForMessage(msgId) ?: run { animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext }
+                    val liveVH = findVHForMessage(msgId)
+                        ?: run { animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext }
                     liveVH.tvMsgRcv.startPhase1(
                         decrypted = decrypted,
                         onPhase1Done = {
@@ -458,7 +598,8 @@ class GroupMessagesAdapter(
                             if (vh2 != null) {
                                 vh2.tvMsgRcv.beginPhase2(
                                     onDone = {
-                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility = View.GONE
+                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility =
+                                            View.GONE
                                         animatingIds.remove(msgId); decryptJobs.remove(msgId)
                                     }
                                 )
@@ -471,7 +612,9 @@ class GroupMessagesAdapter(
             } catch (_: Exception) {
                 decryptedTextCache[msgId] = item.msg
                 withContext(Dispatchers.Main) {
-                    findVHForMessage(msgId)?.let { vh -> vh.tvMsgRcv.cancelAndShowFinal(); vh.tvDecryptingRcv?.visibility = View.GONE }
+                    findVHForMessage(msgId)?.let { vh ->
+                        vh.tvMsgRcv.cancelAndShowFinal(); vh.tvDecryptingRcv?.visibility = View.GONE
+                    }
                     animatingIds.remove(msgId); decryptJobs.remove(msgId)
                 }
             }
@@ -501,7 +644,8 @@ class GroupMessagesAdapter(
         fun loadGroupMediaSource(target: android.widget.ImageView, isThumbnail: Boolean = false) {
             val raw = item.uri ?: ""
             val localPath = item.localFilePath
-            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
+            val isDownloading =
+                item.downloadState == "downloading" || item.downloadState == "pending"
 
             // Priority 1: pre-generated thumbnail file  — show this during download too
             val thumbFile = item.thumbnailPath?.let { java.io.File(it) }
@@ -529,18 +673,23 @@ class GroupMessagesAdapter(
             val sourceToLoad: Any = when {
                 // Priority 2: high-res local file
                 !localPath.isNullOrBlank() && localPath.startsWith("content://") -> localPath
-                !localPath.isNullOrBlank() && java.io.File(localPath.removePrefix("file://")).exists() -> java.io.File(localPath.removePrefix("file://"))
+                !localPath.isNullOrBlank() && java.io.File(localPath.removePrefix("file://"))
+                    .exists() -> java.io.File(localPath.removePrefix("file://"))
 
                 // Priority 3: raw uri fallback if valid path
                 !raw.isNullOrBlank() && raw.startsWith("content://") -> raw
-                !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) && java.io.File(raw.removePrefix("file://")).exists() -> java.io.File(raw.removePrefix("file://"))
+                !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) && java.io.File(
+                    raw.removePrefix("file://")
+                ).exists() -> java.io.File(raw.removePrefix("file://"))
 
                 // Priority 4: Base64 payload (legacy)
                 !raw.isNullOrBlank() && !raw.startsWith("http") -> {
                     val ext = if (type == "VIDEO") "mp4" else "jpg"
-                    app.secure.kyber.GroupCreationBackend.GroupManager().decodeBase64ToFile(ctx, raw, ext)
+                    app.secure.kyber.GroupCreationBackend.GroupManager()
+                        .decodeBase64ToFile(ctx, raw, ext)
                         ?.let { java.io.File(it.removePrefix("file://")) } ?: R.drawable.photos
                 }
+
                 else -> if (type == "VIDEO") R.drawable.video_playback_bg else R.drawable.photos
             }
 
@@ -576,7 +725,8 @@ class GroupMessagesAdapter(
             if (isUploading) {
                 h.flSentProgress?.isVisible = true
                 h.progressSent?.setProgressCompat(item.uploadProgress, true)
-                h.tvUploadProgress?.text = if (item.uploadState == "compressing") "Compressing..." else "${item.uploadProgress}%"
+                h.tvUploadProgress?.text =
+                    if (item.uploadState == "compressing") "Compressing..." else "${item.uploadProgress}%"
             } else {
                 h.flSentProgress?.isVisible = false
             }
@@ -586,12 +736,13 @@ class GroupMessagesAdapter(
                 h.tvSentMsg.text = item.msg; h.tvSentMsg.isVisible = true
             }
             h.ivMediaSent.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
-            h.ivPlaySent.setOnClickListener  { openGroupMedia(h.itemView.context, item, type) }
+            h.ivPlaySent.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
         } else {
             h.flMediaRcv.isVisible = true; h.flMediaSent.isVisible = false
             h.ivMediaRcv.isVisible = true; h.ivPlayRcv.isVisible = type == "VIDEO"
 
-            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
+            val isDownloading =
+                item.downloadState == "downloading" || item.downloadState == "pending"
             if (isDownloading) {
                 h.flRcvProgress?.isVisible = true
                 h.progressRcv?.setProgressCompat(item.downloadProgress, true)
@@ -605,7 +756,7 @@ class GroupMessagesAdapter(
                 h.tvMsgRcv.text = item.msg; h.tvMsgRcv.isVisible = true
             }
             h.ivMediaRcv.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
-            h.ivPlayRcv.setOnClickListener  { openGroupMedia(h.itemView.context, item, type) }
+            h.ivPlayRcv.setOnClickListener { openGroupMedia(h.itemView.context, item, type) }
         }
     }
 
@@ -613,19 +764,30 @@ class GroupMessagesAdapter(
      * Resolves the group media URI (which may be a Base64 payload) to a local
      * playable file URI, then opens FullscreenMediaActivity.
      */
-    private fun openGroupMedia(ctx: android.content.Context, item: GroupMessageEntity, type: String) {
+    private fun openGroupMedia(
+        ctx: android.content.Context,
+        item: GroupMessageEntity,
+        type: String
+    ) {
         val raw = item.uri ?: ""
         val localPath = item.localFilePath
 
         val actualPath: String? = when {
             !localPath.isNullOrBlank() && java.io.File(localPath).exists() -> localPath
-            !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) -> raw.removePrefix("file://")
+            !raw.isNullOrBlank() && (raw.startsWith("file://") || raw.startsWith("/")) -> raw.removePrefix(
+                "file://"
+            )
+
             else -> null
         }
 
         if (actualPath.isNullOrBlank()) {
             // Cannot open if not downloaded/processed yet
-            android.widget.Toast.makeText(ctx, "File still downloading or processing...", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(
+                ctx,
+                "File still downloading or processing...",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
@@ -634,10 +796,15 @@ class GroupMessagesAdapter(
             androidx.core.content.FileProvider.getUriForFile(
                 ctx, "${ctx.packageName}.provider", file
             ).toString()
-        } catch (e: Exception) { "file://${file.absolutePath}" }
+        } catch (e: Exception) {
+            "file://${file.absolutePath}"
+        }
 
         ctx.startActivity(
-            android.content.Intent(ctx, app.secure.kyber.activities.FullscreenMediaActivity::class.java).apply {
+            android.content.Intent(
+                ctx,
+                app.secure.kyber.activities.FullscreenMediaActivity::class.java
+            ).apply {
                 putExtra("uri", providerUri)
                 putExtra("type", type)
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -672,18 +839,43 @@ class GroupMessagesAdapter(
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
         h.durationLabel(sent).text = formatDuration(getTotalDuration(ctx, uriStr))
         if (activeUri == uriStr) syncPlayingUi(h, sent)
-        else { h.playIcon(sent).setImageResource(R.drawable.play_ic); h.waveform(sent).setProgress(0f); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel() }
+        else {
+            h.playIcon(sent).setImageResource(R.drawable.play_ic); h.waveform(sent)
+                .setProgress(0f); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
+        }
 
         h.playPauseFrame(sent).setOnClickListener {
             if (activeUri == uriStr) {
                 val player = activePlayer
-                if (player != null && player.isPlaying) { player.pause(); activeHandler?.removeCallbacksAndMessages(null); h.playIcon(sent).setImageResource(R.drawable.play_ic) }
-                else if (player != null) { player.start(); h.playIcon(sent).setImageResource(R.drawable.pause_icon_0); startProgressUpdater(h, sent, uriStr) }
+                if (player != null && player.isPlaying) {
+                    player.pause(); activeHandler?.removeCallbacksAndMessages(null); h.playIcon(sent)
+                        .setImageResource(R.drawable.play_ic)
+                } else if (player != null) {
+                    player.start(); h.playIcon(sent)
+                        .setImageResource(R.drawable.pause_icon_0); startProgressUpdater(
+                        h,
+                        sent,
+                        uriStr
+                    )
+                }
             } else startPlayback(h, sent, uriStr)
         }
         h.waveform(sent).setOnSeekListener { progress ->
-            if (activeUri == uriStr) activePlayer?.let { it.seekTo((progress * it.duration).toInt()); h.waveform(sent).setProgress(progress) }
-            else { startPlayback(h, sent, uriStr); activePlayer?.let { it.seekTo((progress * it.duration).toInt()); h.waveform(sent).setProgress(progress) } }
+            if (activeUri == uriStr) activePlayer?.let {
+                it.seekTo((progress * it.duration).toInt()); h.waveform(
+                sent
+            ).setProgress(progress)
+            }
+            else {
+                startPlayback(
+                    h,
+                    sent,
+                    uriStr
+                ); activePlayer?.let {
+                    it.seekTo((progress * it.duration).toInt()); h.waveform(sent)
+                    .setProgress(progress)
+                }
+            }
         }
         h.speedBadge(sent).setOnClickListener {
             activeSpeedIdx = if (activeUri == uriStr) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
@@ -694,22 +886,36 @@ class GroupMessagesAdapter(
 
     private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
         stopPlayback(resetUi = true)
-        val player = try { MediaPlayer().apply { setDataSource(h.itemView.context, uriStr.toUri()); prepare() } } catch (e: Exception) { e.printStackTrace(); return }
+        val player = try {
+            MediaPlayer().apply { setDataSource(h.itemView.context, uriStr.toUri()); prepare() }
+        } catch (e: Exception) {
+            e.printStackTrace(); return
+        }
         activePlayer = player; activeUri = uriStr; activeHolder = h; activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0]); player.start()
-        h.playIcon(sent).setImageResource(R.drawable.pause_icon_0); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
-        h.durationLabel(sent).text = formatDuration(player.duration); startProgressUpdater(h, sent, uriStr)
+        h.playIcon(sent).setImageResource(R.drawable.pause_icon_0); h.speedBadge(sent).text =
+            SPEED_STEPS[0].toLabel()
+        h.durationLabel(sent).text = formatDuration(player.duration); startProgressUpdater(
+            h,
+            sent,
+            uriStr
+        )
         player.setOnCompletionListener {
             activeHandler?.removeCallbacksAndMessages(null)
             h.playIcon(sent).setImageResource(R.drawable.play_ic); h.waveform(sent).setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
-            val cp = h.bindingAdapterPosition; activePlayer = null; activeUri = null; activeHolder = null
+            val cp = h.bindingAdapterPosition; activePlayer = null; activeUri = null; activeHolder =
+            null
             if (cp != -1) playNextAudioIfAvailable(cp)
         }
     }
 
     private fun playNextAudioIfAvailable(currentPos: Int) {
-        for (i in (currentPos + 1) until itemCount) { if (getItem(i).type.uppercase(Locale.US) == "AUDIO") { notifyItemChanged(i, "START_PLAYBACK"); break } }
+        for (i in (currentPos + 1) until itemCount) {
+            if (getItem(i).type.uppercase(Locale.US) == "AUDIO") {
+                notifyItemChanged(i, "START_PLAYBACK"); break
+            }
+        }
     }
 
     private fun startProgressUpdater(h: VH, sent: Boolean, uriStr: String) {
@@ -717,7 +923,12 @@ class GroupMessagesAdapter(
         handler.post(object : Runnable {
             override fun run() {
                 val player = activePlayer ?: return; if (activeUri != uriStr) return
-                if (player.isPlaying) { h.waveform(sent).setProgress(player.currentPosition.toFloat() / player.duration); h.durationLabel(sent).text = formatDuration(player.duration - player.currentPosition) }
+                if (player.isPlaying) {
+                    h.waveform(sent)
+                        .setProgress(player.currentPosition.toFloat() / player.duration); h.durationLabel(
+                        sent
+                    ).text = formatDuration(player.duration - player.currentPosition)
+                }
                 handler.postDelayed(this, 50)
             }
         })
@@ -725,35 +936,62 @@ class GroupMessagesAdapter(
 
     private fun syncPlayingUi(h: VH, sent: Boolean) {
         val player = activePlayer ?: return
-        h.playIcon(sent).setImageResource(if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.play_ic)
+        h.playIcon(sent)
+            .setImageResource(if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.play_ic)
         h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
         if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
     }
 
     private fun stopPlayback(resetUi: Boolean) {
-        activeHandler?.removeCallbacksAndMessages(null); activePlayer?.stop(); activePlayer?.release(); activePlayer = null
-        if (resetUi) activeHolder?.let { h -> val pos = h.bindingAdapterPosition; if (pos != -1) { val s = getItem(pos).senderOnion == myId; h.playIcon(s).setImageResource(R.drawable.play_ic); h.waveform(s).setProgress(0f) } }
+        activeHandler?.removeCallbacksAndMessages(null); activePlayer?.stop(); activePlayer?.release(); activePlayer =
+            null
+        if (resetUi) activeHolder?.let { h ->
+            val pos = h.bindingAdapterPosition; if (pos != -1) {
+            val s = getItem(pos).senderOnion == myId; h.playIcon(s)
+                .setImageResource(R.drawable.play_ic); h.waveform(s).setProgress(0f)
+        }
+        }
         activeUri = null; activeHolder = null
     }
 
     private fun applySpeed(speed: Float) {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) activePlayer?.let { it.playbackParams = it.playbackParams.setSpeed(speed) }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) activePlayer?.let {
+            it.playbackParams = it.playbackParams.setSpeed(speed)
+        }
     }
 
     private fun Float.toLabel() = if (this == 1.0f) "1x" else "${this}x"
 
     private fun decodeAmplitudes(json: String?): List<Float> {
         if (json.isNullOrBlank()) return emptyList()
-        return try { val arr = JSONArray(json); List(arr.length()) { i -> arr.getDouble(i).toFloat() } } catch (_: Exception) { emptyList() }
+        return try {
+            val arr = JSONArray(json); List(arr.length()) { i -> arr.getDouble(i).toFloat() }
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     private fun formatDuration(ms: Int): String {
-        val s = (ms / 1000).coerceAtLeast(0); return String.format(Locale.getDefault(), "%d:%02d", s / 60, s % 60)
+        val s = (ms / 1000).coerceAtLeast(0); return String.format(
+            Locale.getDefault(),
+            "%d:%02d",
+            s / 60,
+            s % 60
+        )
     }
 
     private fun getTotalDuration(context: Context, uriStr: String): Int {
         val r = MediaMetadataRetriever()
-        return try { r.setDataSource(context, uriStr.toUri()); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0 } catch (_: Exception) { 0 } finally { r.release() }
+        return try {
+            r.setDataSource(
+                context,
+                uriStr.toUri()
+            ); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toInt() ?: 0
+        } catch (_: Exception) {
+            0
+        } finally {
+            r.release()
+        }
     }
 
     /**
@@ -777,7 +1015,7 @@ class GroupMessagesAdapter(
 
         // If current viewer is the group creator, show actual name
         if (myId == groupCreatorId) return actualName
-        
+
         // Otherwise, look up the alias from anonymousAliasesJson
         return try {
             val aliasesMap = JSONObject(anonymousAliasesJson)
@@ -803,6 +1041,25 @@ class GroupMessagesAdapter(
     }
 
     private fun convertDatetime(time: String): String {
-        return try { java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(time.toLong())) } catch (_: Exception) { "" }
+        return try {
+            java.text.SimpleDateFormat("hh:mm a", Locale.getDefault())
+                .format(java.util.Date(time.toLong()))
+        } catch (_: Exception) {
+            ""
+        }
     }
+
+    fun countEmojis(text: String): Int {
+        var count = 0
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            i += Character.charCount(cp)
+            if (Character.isWhitespace(cp)) continue
+            count++
+        }
+        return count
+    }
+
+
 }

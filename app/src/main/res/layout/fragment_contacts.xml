@@ -34,7 +34,8 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         tools:listitem="@layout/contact_list_item"
-        android:padding="@dimen/_14sdp"
+        android:paddingHorizontal="@dimen/_5sdp"
+        android:paddingVertical="@dimen/_14sdp"
         android:clipToPadding="false" />
 
 </RelativeLayout>

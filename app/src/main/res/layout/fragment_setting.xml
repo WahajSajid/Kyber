@@ -367,7 +367,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="@dimen/_15sdp"
                             android:layout_weight="1"
-                            android:text="Security"
+                            android:text="Wipe Password"
                             android:textColor="@color/white"
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>

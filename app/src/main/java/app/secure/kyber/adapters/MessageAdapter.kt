@@ -78,6 +78,49 @@ class MessageAdapter(
 
         private val persistentCache = mutableMapOf<Long, String>()
         fun clearPersistentCache() = persistentCache.clear()
+
+        /**
+         * Returns true when [text] is composed entirely of emoji characters
+         * (plus optional whitespace, ZWJ, and variation selectors).
+         *
+         * Uses codepoint-level inspection so it works for all supplementary-
+         * plane emoji (🎉🔥🐶 etc.) which Android stores as surrogate pairs.
+         */
+        fun isEmojiOnly(text: String): Boolean {
+            if (text.isBlank()) return false
+            var i = 0
+            while (i < text.length) {
+                val cp = text.codePointAt(i)
+                i += Character.charCount(cp)
+                // Allow plain whitespace between emojis
+                if (Character.isWhitespace(cp)) continue
+                // Zero-Width Joiner, Variation Selectors, combining keycap
+                if (cp == 0x200D || cp == 0xFE0F || cp == 0xFE0E || cp == 0x20E3) continue
+                // Variation Selector block (U+FE00–U+FE0F)
+                if (cp in 0xFE00..0xFE0F) continue
+                // Tag characters used in flag sequences (U+E0000–U+E007F)
+                if (cp in 0xE0000..0xE007F) continue
+                // Skin-tone / keycap digit modifiers (U+1F3FB–U+1F3FF, 0–9 keycaps)
+                if (cp in 0x1F3FB..0x1F3FF) continue
+                // Supplementary Multilingual Plane – all common emoji live here
+                if (cp in 0x1F000..0x1FFFF) continue
+                // Enclosed alphanumeric supplement / pictographs extension (SMP)
+                if (cp in 0x1F100..0x1F1FF) continue
+                // Misc Symbols and Pictographs, Transport, Map Symbols (BMP)
+                if (cp in 0x2600..0x27BF) continue   // ☀☁⛅⛄♻ etc.
+                if (cp in 0x2300..0x23FF) continue   // ⌚⏰⌛
+                if (cp in 0x2B00..0x2BFF) continue   // ⬅⬆⬇⬛⬜
+                if (cp in 0x2194..0x21FF) continue   // ↔↕↩↪
+                if (cp in 0x25A0..0x27BF) continue   // ▪▫▶◀ + dingbats
+                if (cp in 0x3000..0x303F) continue   // CJK symbols (✨-adjacent)
+                if (cp == 0x00A9 || cp == 0x00AE) continue  // © ®
+                // Character.OTHER_SYMBOL (So) covers many BMP emoji
+                if (Character.getType(cp) == Character.OTHER_SYMBOL.toInt()) continue
+                // Anything else → not emoji-only
+                return false
+            }
+            return true
+        }
     }
 
     private var activePlayer: MediaPlayer? = null
@@ -402,16 +445,18 @@ class MessageAdapter(
                 closeMenu()
                 return@setOnClickListener
             }
-            // Guard: suppress click propagation for media that isn't ready
-            // The actual safe-open logic lives in ChatFragment's onClick lambda.
-            // Here we just prevent the lambda firing at all for downloading media.
             val t = item.type.uppercase(Locale.US)
+            // Guard: do NOT fire onClick for text/emoji messages to avoid
+            // "Media not available" shown by ChatFragment's onClick handler
+            if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
+                return@setOnClickListener  // text/emoji — swallow, nothing to open
+            }
             if (t == "IMAGE" || t == "VIDEO") {
                 val notReady = item.downloadState == "downloading"
                         || item.downloadState == "pending"
                         || item.uploadState == "uploading"
                         || item.uploadState == "pending"
-                if (notReady) return@setOnClickListener  // swallow tap silently; overlay shows progress
+                if (notReady) return@setOnClickListener
             }
             onClick(item)
         }
@@ -561,9 +606,15 @@ class MessageAdapter(
         h.rcvAudio.isVisible = false
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
-        h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
         h.sentMessageTimeLayout?.visibility = View.VISIBLE
         h.receivedMessageTimeLayout?.visibility = View.VISIBLE
+
+        // ── Emoji-only detection ──────────────────────────────────────────────
+        // Only strip the bubble when the message is pure emoji AND has no quoted reply
+        // (the reply block needs a bubble background to remain legible).
+        val emojiOnly = item.replyToText.isEmpty() && isEmojiOnly(item.decryptedMsg)
+        val normalPad = h.itemView.resources
+            .getDimensionPixelSize(R.dimen._2sdp)
 
         if (sent) {
             h.tvSent.isVisible = true
@@ -572,29 +623,51 @@ class MessageAdapter(
             h.tvSent.text = item.decryptedMsg
             h.tvDecryptingRcv?.visibility = View.GONE
 
+            // Apply or restore bubble style
+            if (emojiOnly) {
+                h.rlSent.background = null
+                h.rlSent.setPadding(0, 0, 0, 0)
+                val emojiCount = countEmojis(item.decryptedMsg)
+                h.tvSent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (emojiCount < 6) 36f else 16f)
+            } else {
+                h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+                h.rlSent.setPadding(normalPad, normalPad, normalPad, normalPad)
+                h.tvSent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+            }
+
             // Text retry and pending logic
             h.btnRetrySentText?.isVisible = false
             if (item.uploadState == "pending" || item.uploadState == "uploading") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Or replace with a clock if one exists later
+                h.ivSentStatus?.setImageResource(R.drawable.privacy)
                 h.ivSentStatus?.setColorFilter(android.graphics.Color.GRAY)
             } else if (item.uploadState == "failed") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Or replace with an error if one exists later
+                h.ivSentStatus?.setImageResource(R.drawable.privacy)
                 h.ivSentStatus?.setColorFilter(android.graphics.Color.RED)
                 h.btnRetrySentText?.isVisible = true
             } else {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy) // Default double check/sent
+                h.ivSentStatus?.setImageResource(R.drawable.privacy)
                 h.ivSentStatus?.colorFilter = null
             }
 
-            h.btnRetrySentText?.setOnClickListener {
-                onRetryUpload(item)
-            }
+            h.btnRetrySentText?.setOnClickListener { onRetryUpload(item) }
             return
         }
 
         // ── RECEIVED ─────────────────────────────────────────────────────────
         h.tvRcv.isVisible = true
         h.tvSent.isVisible = false
+
+        // Apply or restore received bubble style
+        if (emojiOnly) {
+            h.rlRcvd.background = null
+            h.rlRcvd.setPadding(0, 0, 0, 0)
+            val emojiCount = countEmojis(item.decryptedMsg)
+            h.tvRcv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, if (emojiCount < 6) 36f else 16f)
+        } else {
+            h.rlRcvd.setBackgroundResource(R.drawable.recv_msg_bg)
+            h.rlRcvd.setPadding(normalPad, normalPad, normalPad, normalPad)
+            h.tvRcv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
+        }
 
         val msgId = item.id
         val cached = decryptedTextCache[msgId]
@@ -618,23 +691,26 @@ class MessageAdapter(
             return
         }
 
-        val encryptedPlaceholder = generateEncryptedPlaceholder(item.decryptedMsg)
 
+        if (emojiOnly) {
+            h.tvRcv.cancelAndShowFinal()
+            h.tvRcv.text = item.decryptedMsg
+            h.tvDecryptingRcv?.visibility = View.GONE
+            decryptedTextCache[msgId] = item.decryptedMsg
+            return
+        }
+
+        val encryptedPlaceholder = generateEncryptedPlaceholder(item.decryptedMsg)
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
-
         h.tvRcv.prepareForAnimation(encryptedPlaceholder)
         h.tvRcv.text = encryptedPlaceholder
-
         animatingIds.add(msgId)
         decryptJobs[msgId]?.cancel()
 
         decryptJobs[msgId] = adapterScope.launch {
             try {
-                // messageDecryptor is still used for the visual animation effect if needed,
-                // but we already have the decrypted text in item.decryptedMsg.
-                // To keep the animation feel, we could delay slightly.
-                delay(500)
+                delay(250)
                 val decrypted = item.decryptedMsg
                 decryptedTextCache[msgId] = decrypted
 
@@ -1227,6 +1303,19 @@ class MessageAdapter(
         val sep = content.indexOf("::")
         if (sep < 0 || sep + 2 > content.length) return raw
         return content.substring(sep + 2)
+    }
+
+
+    fun countEmojis(text: String): Int {
+        var count = 0
+        var i = 0
+        while (i < text.length) {
+            val cp = text.codePointAt(i)
+            i += Character.charCount(cp)
+            if (Character.isWhitespace(cp)) continue
+            count++
+        }
+        return count
     }
 
 }

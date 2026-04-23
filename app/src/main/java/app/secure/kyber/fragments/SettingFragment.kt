@@ -14,15 +14,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.activities.QrCodeDialog
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentSettingBinding
+import app.secure.kyber.roomdb.AppDb
+import app.secure.kyber.roomdb.KeyEntity
 import app.secure.kyber.workers.KeyRotationWorker
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputEditText
+import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 
 class SettingFragment : Fragment(R.layout.fragment_setting) {
@@ -68,6 +73,9 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         setupCardTitles()
         loadSavedValues()
         setupCardListeners()
+        setupRealtimeKeyObserver()
+
+
     }
     // Setup helpers
 
@@ -154,8 +162,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             .setOnClickListener { select("5 Minutes") }
         dialogView.findViewById<LinearLayout>(R.id.layout_15Minutes)
             .setOnClickListener { select("15 Minutes") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_never)
-            .setOnClickListener { select("Never") }
+//        dialogView.findViewById<LinearLayout>(R.id.layout_never)
+//            .setOnClickListener { select("Never") }
 
         dialog.show()
     }
@@ -169,8 +177,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             .setImageDrawable(if (selected == "5 Minutes") checked else unchecked)
         dialogView.findViewById<ImageView>(R.id.radio_15m)
             .setImageDrawable(if (selected == "15 Minutes") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_never)
-            .setImageDrawable(if (selected == "Never") checked else unchecked)
+//        dialogView.findViewById<ImageView>(R.id.radio_never)
+//            .setImageDrawable(if (selected == "Never") checked else unchecked)
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -396,5 +404,43 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             subject?.let { putExtra(Intent.EXTRA_SUBJECT, it) }
         }
         startActivity(Intent.createChooser(intent, "Share via"))
+    }
+
+
+
+    private fun setupRealtimeKeyObserver() {
+        lifecycleScope.launch {
+            val db = AppDb.get(requireContext())
+            // CHANGED: Observe ALWAYS (not tied to STARTED state)
+            // This ensures periodic rotations in background are detected when fragment becomes visible
+            db.keyDao().observeActiveKey().collect { activeKey ->
+                // This block executes whenever the active key changes in DB
+                // Works even if fragment was paused during rotation
+
+                if (activeKey != null) {
+                    // Always display latest activation time
+                    updateTimeDisplay(activeKey)
+                } else {
+                    binding.lastUpdateBadge.text = "Never"
+                }
+            }
+        }
+    }
+
+
+    private fun updateTimeDisplay(activeKey: KeyEntity) {
+        val diff = System.currentTimeMillis() - activeKey.activatedAt
+
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(diff)
+        val hours = TimeUnit.MILLISECONDS.toHours(diff)
+        val days = TimeUnit.MILLISECONDS.toDays(diff)
+
+        val timeStr = when {
+            minutes < 1 -> "just now"
+            minutes < 60 -> "$minutes min ago"
+            hours < 24 -> "$hours hours ago"
+            else -> "$days days ago"
+        }
+        binding.lastUpdateBadge.text = "Updated $timeStr"
     }
 }

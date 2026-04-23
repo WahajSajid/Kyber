@@ -133,7 +133,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private var recordingSeconds = 0
     private var pulseAnimation: AlphaAnimation? = null
 
-    // ── Mic touch tracking ────────────────────────────────────────────────────
+    // Mic touch tracking
     private var micDownRawY = 0f
     private var micDownRawX = 0f
     private val lockThreshold = 120f
@@ -159,6 +159,34 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+
+
+    private val screenStateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            when (intent?.action) {
+                android.content.Intent.ACTION_SCREEN_OFF -> {
+                    // Pause recording if currently active and not already paused
+                    if (isRecordingStarted && audioRecordingManager.isCurrentlyRecording() && !isRecordingPaused) {
+                        isRecordingPaused = true
+                        audioRecordingManager.pauseRecording() // Pause the hardware stream
+                        recordingTimerHandler.removeCallbacks(recordingTimerRunnable)
+                        waveformHandler.removeCallbacks(waveformUpdateRunnable)
+                        stopMicPulse()
+                        if (isRecordingLocked) {
+                            binding.ivRecordPause.setImageResource(R.drawable.pause_icon_1)
+                        }
+                    }
+                }
+
+                android.content.Intent.ACTION_SCREEN_ON -> {
+                    // Do NOT auto-resume — user must manually tap ivRecordPause to resume.
+                    // Nothing to do here. The recording remains paused and ivRecordPause
+                    // is already showing pause_icon_1 (play icon), ready for the user to tap.
+                }
+            }
+        }
+    }
+
 
     private val longPressRunnable = Runnable {
         if (hasAudioPermission()) {
@@ -266,7 +294,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     } else {
                         lifecycleScope.launch {
                             val db = AppDb.get(requireContext())
-                            val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
+                            val contactRepo =
+                                app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                             val isContact = contactRepo.getContact(contactOnion) != null
 
                             // Removed hardcoded size limits to allow universal compression & chunking
@@ -298,7 +327,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         audioRecordingManager = AudioRecordingManager(requireContext())
 
         mediaSender = MediaSender(
-            context    = requireContext(),
+            context = requireContext(),
             messageDao = AppDb.get(requireContext()).messageDao()
         )
 
@@ -381,7 +410,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
         emojiPickerContainer.addView(emojiPickerView)
 
+
+
         binding.tilMsg.setEndIconOnClickListener {
+
+            binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
+
+            binding.contentMenu.isVisible = false
             selectedMsg = null; selectedGroupMsg = null
             if (isEmojiPickerVisible) hideEmojiPicker()
             else {
@@ -389,11 +424,21 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             }
         }
         messageEdit.setOnClickListener {
+            binding.contentMenu.isVisible = false
+            binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
             if (isEmojiPickerVisible) {
                 hideEmojiPicker(); showKeyboard(messageEdit)
             }
+
         }
-        messageEdit.setOnFocusChangeListener { _, hasFocus -> if (hasFocus && isEmojiPickerVisible) hideEmojiPicker() }
+        messageEdit.setOnFocusChangeListener { _, hasFocus ->
+
+            binding.contentMenu.isVisible = false
+            binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
+            if (hasFocus && isEmojiPickerVisible) {
+                hideEmojiPicker()
+            }
+        }
 
         binding.tilMsg.viewTreeObserver.addOnGlobalLayoutListener {
             val r = Rect(); binding.tilMsg.getWindowVisibleDisplayFrame(r)
@@ -442,6 +487,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             })
 
         binding.ivCamera.setOnClickListener {
+            binding.contentMenu.isVisible = false
+            binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
             previewLauncher.launch(
                 Intent(
                     requireContext(),
@@ -453,6 +500,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         binding.ivMic.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    binding.contentMenu.isVisible = false
+                    binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
+
+                    // Scale-up animation feedback on tap
+                    binding.ivMic.animate()
+                        .scaleX(2.0f).scaleY(2.0f)
+                        .setDuration(120)
+                        .start()
+
                     micDownRawY = event.rawY; micDownRawX = event.rawX
                     isRecordingLocked = false; isRecordingPaused = false; isRecordingStarted = false
                     longPressHandler.postDelayed(longPressRunnable, 400); true
@@ -482,6 +538,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
 
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+
+                    // Animate back to original size regardless of recording state
+                    binding.ivMic.animate()
+                        .scaleX(1f).scaleY(1f)
+                        .setDuration(120)
+                        .start()
+
                     longPressHandler.removeCallbacks(longPressRunnable)
                     if (!isRecordingStarted || isRecordingLocked) return@setOnTouchListener true
                     if (audioRecordingManager.isCurrentlyRecording()) stopAndSendAudioRecording(
@@ -500,10 +563,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             if (!isRecordingLocked) return@setOnClickListener
             isRecordingPaused = !isRecordingPaused
             if (isRecordingPaused) {
+                audioRecordingManager.pauseRecording()
                 recordingTimerHandler.removeCallbacks(recordingTimerRunnable)
                 waveformHandler.removeCallbacks(waveformUpdateRunnable)
                 binding.ivRecordPause.setImageResource(R.drawable.pause_icon_1); stopMicPulse()
             } else {
+                audioRecordingManager.resumeRecording()
                 recordingTimerHandler.post(recordingTimerRunnable); waveformHandler.post(
                     waveformUpdateRunnable
                 )
@@ -577,7 +642,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         ?: "Unknown User")
                 binding.ivSend.setOnClickListener {
                     val text = binding.etMsg.text.toString().trim()
-                    if (text.isNotEmpty()) { sendTextMessage(text, onionAddr, name); clearReply() }
+                    if (text.isNotEmpty()) {
+                        sendTextMessage(text, onionAddr, name); clearReply()
+                    }
                 }
                 (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
                 setListMessageAdapter()
@@ -588,10 +655,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 lifecycleScope.launch {
                     // Sync group metadata from Firebase (updates anonymousAliases in local DB)
                     groupManager.syncGroupMetadataFromFirebase(groupId, vm2)
-                    
+
                     val groupEntity = vm2.getGroupById(groupId)
-                    val isAnonymous   = groupEntity?.isAnonymous ?: false
-                    val creatorId     = groupEntity?.createdBy ?: ""
+                    val isAnonymous = groupEntity?.isAnonymous ?: false
+                    val creatorId = groupEntity?.createdBy ?: ""
                     groupManager.listenForMessages(
                         groupId = groupId,
                         mySenderId = onionAddr,
@@ -601,9 +668,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         groupCreatorId = creatorId,
                         context = requireContext()   // needed to decode incoming Base64 to local file
                     )
-                    
+
                     // Initialize adapter AFTER metadata is synced (ensures anonymousAliases are available)
-                    setupGroupMessageAdapter(onionAddr, isAnonymous, creatorId, groupEntity?.anonymousAliases ?: "{}")
+                    setupGroupMessageAdapter(
+                        onionAddr,
+                        isAnonymous,
+                        creatorId,
+                        groupEntity?.anonymousAliases ?: "{}"
+                    )
                 }
                 (requireActivity() as MainActivity).setAppChatUser(groupName)
                 binding.ivSend.setOnClickListener {
@@ -620,7 +692,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         ); binding.etMsg.setText(""); clearReply()
                     }
                 }
-                (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = groupId
+                (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId =
+                    groupId
                 vm2.resetUnread(groupId)
             }
 
@@ -636,19 +709,22 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             adapter = selectedMediaAdapter
         }
         updatePreviewVisibility()
-        
+
         binding.ivCancelReply.setOnClickListener {
             clearReply()
         }
         binding.replyPreviewBar.setOnClickListener {
             jumpToReplyTarget(currentReplyRefRaw)
         }
-        
+
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contactsVm.observeContact(contactOnion).collect { contact ->
                     if (contact != null && !isRequestMode) {
-                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(0, 14) else contact.name
+                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(
+                            0,
+                            14
+                        ) else contact.name
                         (requireActivity() as MainActivity).setAppChatUser(newDisplayName)
                     }
                 }
@@ -660,9 +736,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
 
     private fun sendTextMessage(text: String, onionAddr: String, name: String) {
-        val messageId       = UUID.randomUUID().toString()
-        val sentTimeMs      = System.currentTimeMillis()
-        val timestamp       = sentTimeMs.toString()
+        val messageId = UUID.randomUUID().toString()
+        val sentTimeMs = System.currentTimeMillis()
+        val timestamp = sentTimeMs.toString()
         // ⚠️ Capture BEFORE the coroutine launches — clearReply() is called synchronously right
         // after sendTextMessage() returns, which would race with the coroutine body and clear
         // currentReplyText before the DB insert reads it.
@@ -681,7 +757,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             db.messageDao().insert(
                 MessageEntity(
                     messageId = messageId,
-                    msg = MessageEncryptionManager.encryptLocal(requireContext(), text).encryptedBlob,
+                    msg = MessageEncryptionManager.encryptLocal(
+                        requireContext(),
+                        text
+                    ).encryptedBlob,
                     senderOnion = contactOnion,
                     time = timestamp,
                     isSent = true,
@@ -891,7 +970,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         if (comingFrom == "group_chat_list") {
             if (!::groupMessageAdapter.isInitialized) return
             val idx = findGroupReplyPosition(replyRaw)
-            if (idx != -1) scrollToAndHighlight(recyclerview, idx) { groupMessageAdapter.highlightItem(idx) }
+            if (idx != -1) scrollToAndHighlight(
+                recyclerview,
+                idx
+            ) { groupMessageAdapter.highlightItem(idx) }
         } else {
             if (!::adapterMsg.isInitialized) return
             val idx = findPrivateReplyPosition(replyRaw)
@@ -966,8 +1048,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 "Still downloading… ${msg.downloadProgress}%",
                                 Toast.LENGTH_SHORT
                             ).show()
-                            return@MessageAdapter 
+                            return@MessageAdapter
                         }
+
                         msg.uploadState == "uploading" || msg.uploadState == "pending" -> {
                             Toast.makeText(
                                 requireContext(),
@@ -976,6 +1059,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             ).show()
                             return@MessageAdapter
                         }
+
                         msg.downloadState == "failed" -> {
                             Toast.makeText(
                                 requireContext(),
@@ -997,11 +1081,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             .removePrefix("[VIDEO] ")
                         decodeBase64ToFile(stripped, type) ?: stripped
                     }
+
                     else -> null
                 }
 
                 if (resolvedUri.isNullOrBlank()) {
-                    Toast.makeText(requireContext(), "Media not available", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Media not available", Toast.LENGTH_SHORT)
+                        .show()
                     return@MessageAdapter
                 }
 
@@ -1009,12 +1095,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     if (resolvedUri.startsWith("file://")) {
                         java.io.File(java.net.URI(resolvedUri)).exists()
                     } else {
-                        true 
+                        true
                     }
-                } catch (e: Exception) { false }
+                } catch (e: Exception) {
+                    false
+                }
 
                 if (!fileExists) {
-                    Toast.makeText(requireContext(), "Media file not found", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Media file not found", Toast.LENGTH_SHORT)
+                        .show()
                     return@MessageAdapter
                 }
 
@@ -1027,7 +1116,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             file
                         ).toString()
                     } else resolvedUri
-                } catch (e: Exception) { resolvedUri }
+                } catch (e: Exception) {
+                    resolvedUri
+                }
 
                 startActivity(
                     Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
@@ -1041,7 +1132,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 val clipboard =
                     requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 when (view.id) {
-                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(buildReplyPreviewForPrivate(msg))
+                    R.id.btnReplySent, R.id.btnReplyRcv -> handleReply(
+                        buildReplyPreviewForPrivate(
+                            msg
+                        )
+                    )
+
                     R.id.btnDeleteSent, R.id.btnDeleteRcv -> handleDelete(msg)
                     R.id.btnCopySent, R.id.btnCopyRcv -> clipboard.setPrimaryClip(
                         android.content.ClipData.newPlainText(
@@ -1068,11 +1164,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onRetryUpload = { msg ->
                 lifecycleScope.launch {
                     val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
-                    val myName  = Prefs.getName(requireContext()) ?: ""
+                    val myName = Prefs.getName(requireContext()) ?: ""
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                     val isContact = contactRepo.getContact(contactOnion) != null
-                    
+
                     if (msg.type == "TEXT") {
                         val request = TextUploadWorker.buildRequest(
                             messageId = msg.messageId,
@@ -1084,14 +1180,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             isRequest = !isContact
                         )
                         WorkManager.getInstance(requireContext())
-                            .enqueueUniqueWork("text_upload_${msg.messageId}", ExistingWorkPolicy.REPLACE, request)
+                            .enqueueUniqueWork(
+                                "text_upload_${msg.messageId}",
+                                ExistingWorkPolicy.REPLACE,
+                                request
+                            )
                     } else {
                         mediaSender.retryUpload(
-                            messageId    = msg.messageId,
+                            messageId = msg.messageId,
                             contactOnion = contactOnion,
-                            senderOnion  = myOnion,
-                            senderName   = myName,
-                            isContact    = isContact
+                            senderOnion = myOnion,
+                            senderName = myName,
+                            isContact = isContact
                         )
                     }
                 }
@@ -1107,7 +1207,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     )
                     if (assembled != null) {
                         val updated = entity.copy(
-                            uri = MessageEncryptionManager.encryptLocal(requireContext(), assembled).encryptedBlob,
+                            uri = MessageEncryptionManager.encryptLocal(
+                                requireContext(),
+                                assembled
+                            ).encryptedBlob,
                             downloadState = "done",
                             downloadProgress = 100,
                             localFilePath = assembled.removePrefix("file://")
@@ -1120,10 +1223,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             },
             onReplyQuoteClicked = { replyText ->
                 val idx = findPrivateReplyPosition(replyText)
-                if (idx != -1) scrollToAndHighlight(recyclerview, idx) { adapterMsg.highlightItem(idx) }
+                if (idx != -1) scrollToAndHighlight(recyclerview, idx) {
+                    adapterMsg.highlightItem(
+                        idx
+                    )
+                }
             }
         )
-        adapterMsg.messageDecryptor = { MessageEncryptionManager.decryptLocal(requireContext(), it) }
+        adapterMsg.messageDecryptor =
+            { MessageEncryptionManager.decryptLocal(requireContext(), it) }
 
         // ── Pagination state ─────────────────────────────────────────────────
         // Tracks all messages currently displayed (recent + older batches prepended).
@@ -1147,9 +1255,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 vm.recentMessagesFlow.collect { recent ->
                     // Decrypt on IO so Main thread is never blocked
-                    val newModels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        recent.map { it.toUiModel(requireContext()) }
-                    }
+                    val newModels =
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            recent.map { it.toUiModel(requireContext()) }
+                        }
 
                     // Merge: keep any older pages that were prepended, replace the tail (recent window)
                     val merged = if (displayedList.isEmpty()) {
@@ -1189,17 +1298,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     isLoadingOlder = true
                     val oldestTime = displayedList.first().time.toLongOrNull() ?: return
                     viewLifecycleOwner.lifecycleScope.launch {
-                        val olderEntities = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            vm.loadOlderMessages(oldestTime)
-                        }
+                        val olderEntities =
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                vm.loadOlderMessages(oldestTime)
+                            }
                         if (olderEntities.isEmpty()) {
                             hasMoreOlder = false
                             isLoadingOlder = false
                             return@launch
                         }
-                        val olderModels = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            olderEntities.map { it.toUiModel(requireContext()) }
-                        }
+                        val olderModels =
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                olderEntities.map { it.toUiModel(requireContext()) }
+                            }
                         // Prepend older messages, preserving scroll position
                         val firstVisiblePos = llm.findFirstVisibleItemPosition()
                         val firstVisibleView = llm.findViewByPosition(firstVisiblePos)
@@ -1228,7 +1339,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         )
     }
 
-    private fun setupGroupMessageAdapter(onionAddr: String, isAnonymous: Boolean, groupCreatorId: String, anonymousAliasesJson: String) {
+    private fun setupGroupMessageAdapter(
+        onionAddr: String,
+        isAnonymous: Boolean,
+        groupCreatorId: String,
+        anonymousAliasesJson: String
+    ) {
         recyclerview = binding.rvMsg
         groupMessageAdapter = GroupMessagesAdapter(
             onClick = { msg ->
@@ -1243,7 +1359,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 raw.startsWith("file://") || raw.startsWith("/") -> raw
                                 raw.startsWith("http") -> raw
                                 else -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                    val ext = when (type) { "VIDEO" -> "mp4"; else -> "jpg" }
+                                    val ext = when (type) {
+                                        "VIDEO" -> "mp4"; else -> "jpg"
+                                    }
                                     groupManager.decodeBase64ToFile(requireContext(), raw, ext)
                                 }
                             }
@@ -1254,12 +1372,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                                 val finalUri = if (file != null && file.exists()) {
                                     try {
                                         androidx.core.content.FileProvider.getUriForFile(
-                                            requireContext(), "${requireContext().packageName}.provider", file
+                                            requireContext(),
+                                            "${requireContext().packageName}.provider",
+                                            file
                                         ).toString()
-                                    } catch (e: Exception) { resolvedUri }
+                                    } catch (e: Exception) {
+                                        resolvedUri
+                                    }
                                 } else resolvedUri
                                 startActivity(
-                                    Intent(requireContext(), FullscreenMediaActivity::class.java).apply {
+                                    Intent(
+                                        requireContext(),
+                                        FullscreenMediaActivity::class.java
+                                    ).apply {
                                         putExtra("uri", finalUri)
                                         putExtra("type", type)
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -1300,14 +1425,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     hideKeyboard(messageEdit); messageEdit.postDelayed({ showEmojiPicker() }, 150)
                 }
             },
-            myId = onionAddr, 
+            myId = onionAddr,
             recentEmojis = recentEmojisList,
             isAnonymous = isAnonymous,
             groupCreatorId = groupCreatorId,
             anonymousAliasesJson = anonymousAliasesJson,
             onReplyQuoteClicked = { replyText ->
                 val idx = findGroupReplyPosition(replyText)
-                if (idx != -1) scrollToAndHighlight(recyclerview, idx) { groupMessageAdapter.highlightItem(idx) }
+                if (idx != -1) scrollToAndHighlight(
+                    recyclerview,
+                    idx
+                ) { groupMessageAdapter.highlightItem(idx) }
             }
         )
         val groupLlm = object : LinearLayoutManager(requireContext()) {
@@ -1356,9 +1484,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
      * immediately on the next layout pass.
      */
     private fun scrollToAndHighlight(rv: RecyclerView, idx: Int, highlight: () -> Unit) {
-        val lm    = rv.layoutManager as? LinearLayoutManager ?: return
+        val lm = rv.layoutManager as? LinearLayoutManager ?: return
         val first = lm.findFirstCompletelyVisibleItemPosition()
-        val last  = lm.findLastCompletelyVisibleItemPosition()
+        val last = lm.findLastCompletelyVisibleItemPosition()
         if (idx in first..last) {
             rv.post { highlight() }
         } else {
@@ -1395,7 +1523,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         onReply: (position: Int) -> Unit
     ) {
         val replyIcon = ContextCompat.getDrawable(requireContext(), R.drawable.reply)
-        val triggerFraction  = 0.30f   // 30 % of item width fires the reply
+        val triggerFraction = 0.30f   // 30 % of item width fires the reply
         val maxSwipeFraction = 0.40f   // cap translation at 40 % of item width
         var triggered = false
 
@@ -1426,7 +1554,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 isCurrentlyActive: Boolean
             ) {
                 if (actionState != ItemTouchHelper.ACTION_STATE_SWIPE) {
-                    super.onChildDraw(c, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+                    super.onChildDraw(
+                        c,
+                        recyclerView,
+                        viewHolder,
+                        dX,
+                        dY,
+                        actionState,
+                        isCurrentlyActive
+                    )
                     return
                 }
 
@@ -1434,10 +1570,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (pos == RecyclerView.NO_POSITION) return
 
                 val itemView = viewHolder.itemView
-                val maxDx    = itemView.width * maxSwipeFraction
+                val maxDx = itemView.width * maxSwipeFraction
 
                 // Support right-swipe on both sent and received messages.
-                if (dX < 0f) { itemView.translationX = 0f; return }
+                if (dX < 0f) {
+                    itemView.translationX = 0f; return
+                }
 
                 // Clamp to a smooth right-swipe distance.
                 val effectiveDx = dX.coerceAtMost(maxDx)
@@ -1453,10 +1591,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
                 // Draw reply icon on the left side.
                 replyIcon?.let { icon ->
-                    val alpha    = ((fraction / triggerFraction) * 255).toInt().coerceIn(0, 255)
+                    val alpha = ((fraction / triggerFraction) * 255).toInt().coerceIn(0, 255)
                     val iconSize = (itemView.height * 0.35f).toInt()
-                    val margin   = (itemView.height - iconSize) / 2
-                    val iconTop  = itemView.top + margin
+                    val margin = (itemView.height - iconSize) / 2
+                    val iconTop = itemView.top + margin
                     val iconBottom = iconTop + iconSize
                     val iconLeft = itemView.left + margin
                     val iconRight = iconLeft + iconSize
@@ -1678,10 +1816,18 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     override fun onResume() {
         super.onResume()
+        // Register screen state receiver for recording pause/resume
+        val filter = android.content.IntentFilter().apply {
+            addAction(android.content.Intent.ACTION_SCREEN_OFF)
+            addAction(android.content.Intent.ACTION_SCREEN_ON)
+        }
+        requireContext().registerReceiver(screenStateReceiver, filter)
+
+
         try {
             val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
             val targetId = if (comingFrom == "group_chat_list") groupId else contactOnion
-            
+
             if (comingFrom == "group_chat_list") {
                 myApp.activeGroupId = targetId
                 myApp.activeChatOnion = null
@@ -1689,24 +1835,36 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 myApp.activeChatOnion = targetId
                 myApp.activeGroupId = null
             }
-            
-            val clearIntent = android.content.Intent(requireContext(), app.secure.kyber.onionrouting.UnionService::class.java).apply {
+
+            val clearIntent = android.content.Intent(
+                requireContext(),
+                app.secure.kyber.onionrouting.UnionService::class.java
+            ).apply {
                 action = "CLEAR_NOTIFICATIONS"
                 putExtra("sender_onion", targetId)
             }
             requireContext().startService(clearIntent)
-            
-            val notificationManager = requireContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+            val notificationManager =
+                requireContext().getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
             notificationManager.cancel(targetId.hashCode())
-        } catch(e: Exception) {}
+        } catch (e: Exception) {
+        }
     }
 
     override fun onPause() {
+
+        try {
+            requireContext().unregisterReceiver(screenStateReceiver)
+        } catch (e: Exception) { /* already unregistered */
+        }
+
         try {
             val myApp = requireActivity().application as app.secure.kyber.MyApp.MyApp
             myApp.activeChatOnion = null
             myApp.activeGroupId = null
-        } catch(e: Exception) {}
+        } catch (e: Exception) {
+        }
         if (::adapterMsg.isInitialized) adapterMsg.releasePlayer(); if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer(); super.onPause()
     }
 
@@ -1925,11 +2083,16 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 .getString("pending_name_$contactOnion", null)
                 ?.takeIf { it.isNotBlank() && it != contactOnion }
             val senderName = cachedName ?: contactOnion
-            
-            val publicKey = requireContext().getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-                .getString("pending_key_$contactOnion", null)
-            
-            contactRepo.saveContact(onionAddress = contactOnion, name = senderName, publicKey = publicKey)
+
+            val publicKey =
+                requireContext().getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                    .getString("pending_key_$contactOnion", null)
+
+            contactRepo.saveContact(
+                onionAddress = contactOnion,
+                name = senderName,
+                publicKey = publicKey
+            )
 
             sendPrivateMessage(
                 PrivateMessageTransportDto(

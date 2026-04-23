@@ -132,6 +132,32 @@ class AudioRecordingManager(private val context: Context) {
 
     fun isCurrentlyRecording() = isRecording
 
+    /**
+     * Pauses the current recording if active. (Requires API >= 24, app minSdk is 28).
+     */
+    fun pauseRecording() {
+        if (!isRecording) return
+        try {
+            mediaRecorder?.pause()
+            samplingHandler.removeCallbacks(samplingRunnable)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Resumes a paused recording.
+     */
+    fun resumeRecording() {
+        if (!isRecording) return
+        try {
+            mediaRecorder?.resume()
+            samplingHandler.postDelayed(samplingRunnable, SAMPLE_INTERVAL_MS)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private fun releaseRecorder() {
