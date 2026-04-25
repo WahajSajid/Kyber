@@ -1,0 +1,47 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="66dp"
+    android:height="66dp"
+    android:viewportWidth="66"
+    android:viewportHeight="66">
+
+    <!-- Background fill -->
+    <path
+        android:pathData="M15.5,0.5L50.5,0.5A15,15 0,0 1,65.5 15.5L65.5,50.5A15,15 0,0 1,50.5 65.5L15.5,65.5A15,15 0,0 1,0.5 50.5L0.5,15.5A15,15 0,0 1,15.5 0.5z"
+        android:fillColor="#5CB6F2"
+        android:fillAlpha="0.03"/>
+
+    <!-- Border with gradient stroke -->
+    <path
+        android:strokeWidth="1"
+        android:pathData="M15.5,0.5L50.5,0.5A15,15 0,0 1,65.5 15.5L65.5,50.5A15,15 0,0 1,50.5 65.5L15.5,65.5A15,15 0,0 1,0.5 50.5L0.5,15.5A15,15 0,0 1,15.5 0.5z"
+        android:strokeAlpha="0.3"
+        android:fillColor="#00000000">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="-0.685"
+                android:startY="65.5"
+                android:endX="70.879"
+                android:endY="61.989"
+                android:type="linear">
+                <item android:offset="0" android:color="#FF0047AF"/>
+                <item android:offset="0.5" android:color="#FF354658"/>
+                <item android:offset="0.75" android:color="#FF486284"/>
+                <item android:offset="1" android:color="#FF3362AB"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Trash icon centered in 66x66 viewport (original 24x24 scaled ~1.75x, translated to center) -->
+    <!-- Scale: 66/24 * 0.6 ≈ 1.65, offset: (66 - 24*1.65)/2 ≈ 13.2 -->
+    <group
+        android:translateX="13.2"
+        android:translateY="13.2"
+        android:scaleX="1.65"
+        android:scaleY="1.65">
+        <path
+            android:pathData="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19C6,19.53 6.211,20.039 6.586,20.414C6.961,20.789 7.47,21 8,21H16C16.53,21 17.039,20.789 17.414,20.414C17.789,20.039 18,19.53 18,19V7H6V19Z"
+            android:fillColor="#FF4848"/>
+    </group>
+
+</vector>

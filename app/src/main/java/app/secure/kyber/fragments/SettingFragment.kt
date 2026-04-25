@@ -100,11 +100,13 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         val isOn = prefs.getBoolean("search_privacy_on", true)
 
 
-        binding.autoLockCard.cardValue.text =
-            Prefs.getAutoLockTimeout(requireContext()) ?: "Never"
+        val autoLock = Prefs.getAutoLockTimeout(requireContext()) ?: "1 Minute"
+        val validAutoLock = if (autoLock in listOf("30 Seconds", "1 Minute", "3 Minutes")) autoLock else "1 Minute"
+        binding.autoLockCard.cardValue.text = validAutoLock
 
-        binding.disappearingChatCard.cardValue.text =
-            Prefs.getDisappearingMessageStatus(requireContext()) ?: "Off"
+        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "24 Hours"
+        val validDisChat = if (disChat in listOf("24 Hours", "48 Hours", "7 Days")) disChat else "24 Hours"
+        binding.disappearingChatCard.cardValue.text = validDisChat
 
         binding.searchPrivacyCard.cardValue.text = if (isOn) "On" else "Off"
 
@@ -147,7 +149,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
 
         // Reflect the currently-saved selection
-        val currentSelection = Prefs.getAutoLockTimeout(requireContext()) ?: "Never"
+        val autoLock = Prefs.getAutoLockTimeout(requireContext()) ?: "1 Minute"
+        val currentSelection = if (autoLock in listOf("30 Seconds", "1 Minute", "3 Minutes")) autoLock else "1 Minute"
         refreshAutoLockRadios(dialogView, currentSelection)
 
         fun select(label: String) {
@@ -156,14 +159,12 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             dialog.dismiss()
         }
 
+        dialogView.findViewById<LinearLayout>(R.id.layout_30Seconds)
+            .setOnClickListener { select("30 Seconds") }
         dialogView.findViewById<LinearLayout>(R.id.layout_1Minute)
             .setOnClickListener { select("1 Minute") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_5Minutes)
-            .setOnClickListener { select("5 Minutes") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_15Minutes)
-            .setOnClickListener { select("15 Minutes") }
-//        dialogView.findViewById<LinearLayout>(R.id.layout_never)
-//            .setOnClickListener { select("Never") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_3Minutes)
+            .setOnClickListener { select("3 Minutes") }
 
         dialog.show()
     }
@@ -171,14 +172,12 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
     private fun refreshAutoLockRadios(dialogView: View, selected: String) {
         val checked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_checked)
         val unchecked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_30s)
+            .setImageDrawable(if (selected == "30 Seconds") checked else unchecked)
         dialogView.findViewById<ImageView>(R.id.radio_1m)
             .setImageDrawable(if (selected == "1 Minute") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_5m)
-            .setImageDrawable(if (selected == "5 Minutes") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_15m)
-            .setImageDrawable(if (selected == "15 Minutes") checked else unchecked)
-//        dialogView.findViewById<ImageView>(R.id.radio_never)
-//            .setImageDrawable(if (selected == "Never") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_3m)
+            .setImageDrawable(if (selected == "3 Minutes") checked else unchecked)
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -194,7 +193,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         )
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
 
-        val currentSelection = Prefs.getDisappearingMessageStatus(requireContext()) ?: "Off"
+        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "24 Hours"
+        val currentSelection = if (disChat in listOf("24 Hours", "48 Hours", "7 Days")) disChat else "24 Hours"
         refreshDisappearingRadios(dialogView, currentSelection)
 
         fun select(label: String) {
@@ -205,14 +205,10 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
 
         dialogView.findViewById<LinearLayout>(R.id.layout_24Hours)
             .setOnClickListener { select("24 Hours") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_48Hours)
+            .setOnClickListener { select("48 Hours") }
         dialogView.findViewById<LinearLayout>(R.id.layout_7Days)
             .setOnClickListener { select("7 Days") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_30Days)
-            .setOnClickListener { select("30 Days") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_always)
-            .setOnClickListener { select("Always") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_off)
-            .setOnClickListener { select("Off") }
 
         dialog.show()
     }
@@ -222,14 +218,10 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         val unchecked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_unchecked)
         dialogView.findViewById<ImageView>(R.id.radio_24h)
             .setImageDrawable(if (selected == "24 Hours") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_48h)
+            .setImageDrawable(if (selected == "48 Hours") checked else unchecked)
         dialogView.findViewById<ImageView>(R.id.radio_7Days)
             .setImageDrawable(if (selected == "7 Days") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_30Days)
-            .setImageDrawable(if (selected == "30 Days") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_always)
-            .setImageDrawable(if (selected == "Always") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_off)
-            .setImageDrawable(if (selected == "Off") checked else unchecked)
     }
 
     // 3) SEARCH PRIVACY DIALOG  (Coming Soon — no real backend)

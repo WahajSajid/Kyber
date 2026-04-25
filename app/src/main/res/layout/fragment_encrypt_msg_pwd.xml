@@ -8,10 +8,9 @@
         android:src="@drawable/kyber_bg_new"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType= "centerCrop"
-        />
+        android:scaleType="centerCrop" />
 
-    <RelativeLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@android:color/transparent"
@@ -21,42 +20,44 @@
             android:id="@+id/ivLogo"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/_100sdp"
+            android:layout_marginTop="@dimen/_60sdp"
             android:scaleType="fitXY"
-            android:src="@drawable/logo_trans_bg" />
+            android:src="@drawable/logo_trans_bg"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
             android:id="@+id/appname"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_below="@id/ivLogo"
-            android:layout_centerHorizontal="true"
             android:layout_marginTop="@dimen/_1sdp"
             android:fontFamily="@font/roboto_bold"
             android:text="@string/kyber_chat"
             android:textColor="@color/primary_text_color"
-            android:textSize="@dimen/_26sdp" />
+            android:textSize="@dimen/_26sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/ivLogo" />
 
         <TextView
             android:id="@+id/secondxt"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_below="@id/appname"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/_40sdp"
+            android:layout_marginTop="@dimen/_10sdp"
             android:fontFamily="@font/roboto_regular"
             android:text="End to End Encrypted"
             android:textColor="@color/secondary_text_color"
-            android:textSize="@dimen/_14sdp" />
+            android:textSize="@dimen/_14sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/appname" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilPwd"
             android:layout_width="@dimen/_300sdp"
             android:layout_height="wrap_content"
-            android:layout_below="@id/secondxt"
-            android:layout_centerHorizontal="true"
-            android:layout_marginTop="@dimen/_60sdp"
+            android:layout_marginTop="@dimen/_80sdp"
             android:focusable="true"
             android:focusableInTouchMode="true"
             app:boxBackgroundColor="@color/opacity_10_black_color"
@@ -69,6 +70,9 @@
             app:boxStrokeWidth="@dimen/_1sdp"
             app:errorIconDrawable="@null"
             app:hintEnabled="false"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/secondxt"
             app:passwordToggleEnabled="true"
             app:passwordToggleTint="@color/opacity_70_white_color">
 
@@ -92,10 +96,8 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPwd"
-            android:layout_below="@id/tilPwd"
             android:layout_width="@dimen/_300sdp"
             android:layout_height="@dimen/_56sdp"
-            android:layout_centerHorizontal="true"
             android:layout_marginTop="@dimen/_30sdp"
             android:layout_marginBottom="@dimen/_20sdp"
             android:background="@drawable/btn_gradient"
@@ -104,25 +106,44 @@
             android:textColor="@color/white"
             android:textSize="@dimen/_16sdp"
             app:backgroundTint="@null"
-            app:cornerRadius="@dimen/_10sdp" />
+            app:cornerRadius="@dimen/_10sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tilPwd" />
 
-        <!-- Lockout countdown warning — shown after 3 wrong attempts -->
-        <TextView
-            android:id="@+id/tvLockoutCountdown"
+        <LinearLayout
+            android:id="@+id/llLockoutWarning"
             android:layout_width="@dimen/_300sdp"
             android:layout_height="wrap_content"
-            android:layout_below="@id/btnPwd"
-            android:layout_centerHorizontal="true"
             android:layout_marginTop="@dimen/_5sdp"
-            android:fontFamily="@font/roboto_regular"
-            android:gravity="center"
-            android:lineSpacingExtra="2dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:padding="@dimen/_10sdp"
-            android:text=""
-            android:textColor="#FF6B6B"
-            android:textSize="@dimen/_13sdp"
-            android:visibility="gone" />
+            android:visibility="gone"
+            android:layout_marginBottom="@dimen/_10sdp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintBottom_toTopOf="@id/tilPwd">
 
-    </RelativeLayout>
+            <ImageView
+                android:id="@+id/ivWarningIcon"
+                android:layout_width="@dimen/_20sdp"
+                android:layout_height="@dimen/_20sdp"
+                android:src="@drawable/ic_warning_24"
+                app:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/tvLockoutCountdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_10sdp"
+                android:fontFamily="@font/roboto_medium"
+                android:lineSpacingExtra="2dp"
+                android:text=""
+                android:textColor="@color/white"
+                android:textSize="@dimen/_13sdp" />
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </FrameLayout>

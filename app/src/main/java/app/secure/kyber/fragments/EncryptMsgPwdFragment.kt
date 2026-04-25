@@ -93,16 +93,19 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
 
                 when (attempts) {
                     1 -> {
-                        binding.tvLockoutCountdown.visibility = View.VISIBLE
-                        binding.tvLockoutCountdown.text = "2 login attempts remaining"
+                        binding.llLockoutWarning.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "3 login attempts remaining"
+                        binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_yellow)
                     }
                     2 -> {
-                        binding.tvLockoutCountdown.visibility = View.VISIBLE
-                        binding.tvLockoutCountdown.text = "1 login attempt remaining"
+                        binding.llLockoutWarning.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "2 login attempts remaining"
+                        binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_orange)
                     }
                     3 -> {
-                        binding.tvLockoutCountdown.visibility = View.VISIBLE
-                        binding.tvLockoutCountdown.text = "⚠️ Too many wrong attempts. One more wrong attempt will wipe out the whole app"
+                        binding.llLockoutWarning.visibility = View.VISIBLE
+                        binding.tvLockoutCountdown.text = "⚠️ Final Warning! One more wrong attempt will wipe out the whole app."
+                        binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_red)
                     }
                     else -> {
                         // 4th wrong attempt — WIPE (no UNDO)
@@ -117,7 +120,7 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
 
     private fun performLogin() {
         Prefs.setFailedAttempts(requireContext(), 0)
-        binding.tvLockoutCountdown.visibility = View.GONE
+        binding.llLockoutWarning.visibility = View.GONE
         binding.tvLockoutCountdown.text = ""
 
         val myApp = requireActivity().application as MyApp
@@ -243,13 +246,25 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         val attempts = Prefs.getFailedAttempts(requireContext())
         if (attempts <= 0) return
 
-        val message = when (attempts) {
-            1 -> "2 login attempts remaining"
-            2 -> "1 login attempt remaining"
-            else -> "⚠️ Too many wrong attempts. One more wrong attempt will wipe out the whole app"
-        }
+        binding.llLockoutWarning.visibility = View.VISIBLE
 
-        binding.tvLockoutCountdown.visibility = View.VISIBLE
-        binding.tvLockoutCountdown.text = message
+        when (attempts) {
+            1 -> {
+                binding.tvLockoutCountdown.text = "3 login attempts remaining"
+                binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_yellow)
+            }
+            2 -> {
+                binding.tvLockoutCountdown.text = "2 login attempts remaining"
+                binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_orange)
+            }
+            3 -> {
+                binding.tvLockoutCountdown.text = "⚠️ Final Warning! One more wrong attempt will wipe out the whole app."
+                binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_red)
+            }
+            else -> {
+                binding.tvLockoutCountdown.text = "⚠️ App is wiping out..."
+                binding.llLockoutWarning.setBackgroundResource(R.drawable.bg_warning_red)
+            }
+        }
     }
 }

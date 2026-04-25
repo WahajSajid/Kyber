@@ -478,6 +478,7 @@
                 android:layout_marginBottom="@dimen/_10sdp"
                 android:visibility="gone">
 a
+
                 <LinearLayout
                     android:id="@+id/llGallery"
                     android:layout_width="wrap_content"
@@ -486,8 +487,8 @@ a
                     android:orientation="vertical"
                     app:layout_constraintEnd_toStartOf="@+id/llDocument"
                     app:layout_constraintHorizontal_bias="0.5"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintStart_toStartOf="parent">
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
 
                     <ImageView
                         android:id="@+id/ivGallery"
@@ -516,10 +517,10 @@ a
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/_3sdp"
                     android:orientation="vertical"
-                    app:layout_constraintTop_toTopOf="parent"
                     app:layout_constraintEnd_toStartOf="@+id/llAudio"
                     app:layout_constraintHorizontal_bias="0.5"
-                    app:layout_constraintStart_toEndOf="@+id/llGallery">
+                    app:layout_constraintStart_toEndOf="@+id/llGallery"
+                    app:layout_constraintTop_toTopOf="parent">
 
                     <ImageView
                         android:id="@+id/ivDocument"
@@ -547,10 +548,10 @@ a
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="@dimen/_3sdp"
                     android:orientation="vertical"
-                    app:layout_constraintTop_toTopOf="parent"
-                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintEnd_toStartOf="@+id/llWipeRequest"
                     app:layout_constraintHorizontal_bias="0.5"
-                    app:layout_constraintStart_toEndOf="@+id/llDocument">
+                    app:layout_constraintStart_toEndOf="@+id/llDocument"
+                    app:layout_constraintTop_toTopOf="parent">
 
                     <ImageView
                         android:id="@+id/ivAudio"
@@ -571,6 +572,41 @@ a
                         android:textColor="@color/white"
                         android:textSize="@dimen/_12sdp" />
                 </LinearLayout>
+
+
+                <LinearLayout
+                    android:id="@+id/llWipeRequest"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="@dimen/_3sdp"
+                    android:orientation="vertical"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintHorizontal_bias="0.5"
+                    app:layout_constraintStart_toEndOf="@+id/llAudio"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <ImageView
+                        android:id="@+id/ivWipeRequest"
+                        android:layout_width="@dimen/_70sdp"
+                        android:layout_height="@dimen/_70sdp"
+                        android:layout_gravity="center"
+                        android:padding="@dimen/xXXSmallPadding"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/trash_ic_"
+                        app:tint="@null" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:fontFamily="@font/roboto_medium"
+                        android:text="Request Wipe"
+                        android:textColor="@color/white"
+                        android:textSize="@dimen/_12sdp" />
+                </LinearLayout>
+
+
+
 
             </androidx.constraintlayout.widget.ConstraintLayout>
 

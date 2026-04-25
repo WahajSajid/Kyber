@@ -108,25 +108,25 @@ class GroupDetailsFragment : Fragment() {
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
         dialog.show()
 
-        val options = mapOf(
-            R.id.layout_24Hours to ("24 Hours" to R.id.radio_24h),
-            R.id.layout_7Days to ("7 Days" to R.id.radio_7Days),
-            R.id.layout_30Days to ("30 Days" to R.id.radio_30Days),
-            R.id.layout_always to ("Always" to R.id.radio_always),
-            R.id.layout_off to ("Off" to R.id.radio_off)
-        )
+//        val options = mapOf(
+//            R.id.layout_24Hours to ("24 Hours" to R.id.radio_24h),
+//            R.id.layout_7Days to ("7 Days" to R.id.radio_7Days),
+//            R.id.layout_30Days to ("30 Days" to R.id.radio_30Days),
+//            R.id.layout_always to ("Always" to R.id.radio_always),
+//            R.id.layout_off to ("Off" to R.id.radio_off)
+//        )
 
-        val radioButtons = options.values.map { dialogView.findViewById<ImageView>(it.second) }
-
-        updateSelectionDisappearingMessages(radioButtons)
-
-        options.forEach { (layoutId, pair) ->
-            dialogView.findViewById<LinearLayout>(layoutId).setOnClickListener {
-                Prefs.setDisappearingMessagesStatus(requireContext(), pair.first)
-                updateSelection(pair.second, radioButtons, dialog)
-                binding.disappearingMessagesState.text = pair.first
-            }
-        }
+//        val radioButtons = options.values.map { dialogView.findViewById<ImageView>(it.second) }
+//
+//        updateSelectionDisappearingMessages(radioButtons)
+//
+//        options.forEach { (layoutId, pair) ->
+//            dialogView.findViewById<LinearLayout>(layoutId).setOnClickListener {
+//                Prefs.setDisappearingMessagesStatus(requireContext(), pair.first)
+//                updateSelection(pair.second, radioButtons, dialog)
+//                binding.disappearingMessagesState.text = pair.first
+//            }
+//        }
     }
 
 

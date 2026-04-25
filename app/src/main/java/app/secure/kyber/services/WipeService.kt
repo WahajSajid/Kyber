@@ -40,7 +40,7 @@ class WipeService : Service() {
         private const val NOTIFICATION_ID = 8888
         const val CHANNEL_ID = "kyber_wipe_channel"
 
-        private const val WIPE_COUNTDOWN_SECONDS = 10
+        private const val WIPE_COUNTDOWN_SECONDS = 5
     }
 
     private val handler = Handler(Looper.getMainLooper())
