@@ -49,7 +49,7 @@ class MediaSender(
             }
         } else null
 
-        val disappearTimerMs = app.secure.kyber.backend.common.Prefs.getDisappearingTimerMs(context)
+        val disappearTimerMs = app.secure.kyber.backend.common.Prefs.getEffectiveDisappearingTimerMs(context, contactOnion)
         var localExpiresAt = 0L
         if (disappearTimerMs > 0L) {
             localExpiresAt = sentTimeMs + disappearTimerMs

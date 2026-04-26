@@ -12,11 +12,11 @@ import app.secure.kyber.backend.models.ChatModel
 @Dao
 interface GroupMessageDao {
 
-    @Query("SELECT * FROM group_messages WHERE group_id == :groupId ORDER BY time ASC")
-    fun getGroupMessages(groupId: String): LiveData<List<GroupMessageEntity>>
+    @Query("SELECT * FROM group_messages WHERE group_id == :groupId AND (expiresAt = 0 OR expiresAt > :now) ORDER BY time ASC")
+    fun getGroupMessages(groupId: String, now: Long): LiveData<List<GroupMessageEntity>>
 
-    @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY time ASC")
-    fun observeAllGroupMessages(groupId: String): kotlinx.coroutines.flow.Flow<MutableList<GroupMessageEntity>>
+    @Query("SELECT * FROM group_messages WHERE group_id = :groupId AND (expiresAt = 0 OR expiresAt > :now) ORDER BY time ASC")
+    fun observeAllGroupMessages(groupId: String, now: Long): kotlinx.coroutines.flow.Flow<MutableList<GroupMessageEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGroupMessage(groupMessage: GroupMessageEntity)
@@ -86,8 +86,36 @@ interface GroupMessageDao {
     @Query("DELETE FROM group_messages WHERE group_id = :groupId")
     suspend fun deleteByGroupId(groupId: String)
 
+    @Query(
+        "DELETE FROM group_messages " +
+                "WHERE group_id = :groupId AND (senderOnion = :userA OR senderOnion = :userB)"
+    )
+    suspend fun deleteByGroupIdAndSenderPair(groupId: String, userA: String, userB: String)
+
+    @Query(
+        "DELETE FROM group_messages " +
+                "WHERE group_id = :groupId AND (senderOnion = :userA OR senderOnion = :userB) AND messageId != :exceptId"
+    )
+    suspend fun deleteByGroupIdAndSenderPairExcept(groupId: String, userA: String, userB: String, exceptId: String)
+
     @Query("DELETE FROM group_messages WHERE group_id NOT IN (:groupIds)")
     suspend fun deleteByGroupIdsNotIn(groupIds: List<String>)
+
+    @Query(
+        "UPDATE group_messages SET expiresAt = 1 " +
+                "WHERE group_id = :groupId AND (senderOnion = :userA OR senderOnion = :userB) " +
+                "AND CAST(time AS INTEGER) <= CAST(:cutoffTime AS INTEGER) " +
+                "AND type NOT IN ('WIPE_EVENT_RECEIVED', 'WIPE_SYSTEM', 'WIPE_RESPONSE')"
+    )
+    suspend fun expireByGroupIdAndSenderPair(groupId: String, userA: String, userB: String, cutoffTime: String)
+
+    @Query(
+        "UPDATE group_messages SET expiresAt = 1 " +
+                "WHERE group_id = :groupId AND (senderOnion = :userA OR senderOnion = :userB) " +
+                "AND messageId != :exceptId AND CAST(time AS INTEGER) <= CAST(:cutoffTime AS INTEGER) " +
+                "AND type NOT IN ('WIPE_EVENT_RECEIVED', 'WIPE_SYSTEM', 'WIPE_RESPONSE')"
+    )
+    suspend fun expireByGroupIdAndSenderPairExcept(groupId: String, userA: String, userB: String, exceptId: String, cutoffTime: String)
 
     @Query("UPDATE group_messages SET thumbnailPath = :path WHERE messageId = :messageId")
     suspend fun setThumbnailPath(messageId: String, path: String)

@@ -103,10 +103,8 @@ class UnionService : Service() {
         unionClient.setMessageCallback { message ->
             handleSocketMessage(message)
         }
-
-        startGlobalPolling()
-        serviceScope.launch { performColdStartBackfill() }
     }
+
 
     private fun startGlobalPolling() {
         pollingJob?.cancel()
@@ -320,6 +318,14 @@ class UnionService : Service() {
         if (contact == null && transport.senderName.isNotBlank()) {
             cachePendingContactName(transport.senderOnion, transport.senderName)
         }
+        
+        var effectiveType = transport.type ?: "TEXT"
+        if (transport.type == "WIPE_RESPONSE" && parseWipeResponseAction(decryptedPayloadText) == "ACCEPTED") {
+            val now = System.currentTimeMillis().toString()
+            messageDao.expireAllBySender(transport.senderOnion, now)
+            decryptedPayloadText = "Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}"
+            effectiveType = "WIPE_SYSTEM"
+        }
 
         val existing = messageDao.getMessageByMessageId(transport.messageId)
         if (existing == null) {
@@ -336,7 +342,7 @@ class UnionService : Service() {
                 senderOnion = transport.senderOnion,
                 time = sentMs.toString(),
                 isSent = false,
-                type = transport.type ?: "TEXT",
+                type = effectiveType,
                 uri = encryptedUri,
                 ampsJson = if (transport.ampsJson.isNotBlank())
                     MessageEncryptionManager.encryptLocal(applicationContext, transport.ampsJson).encryptedBlob else "",
@@ -357,7 +363,7 @@ class UnionService : Service() {
                     showPushNotification(transport.senderOnion, "Someone", "New message request")
                 }
             } else {
-                val displayMsg = generateDisplayMessage(decryptedPayloadText, transport.type ?: "TEXT")
+                val displayMsg = generateDisplayMessage(decryptedPayloadText, effectiveType)
                 showPushNotification(transport.senderOnion, "contact", displayMsg)
             }
 
@@ -526,6 +532,28 @@ class UnionService : Service() {
         }
     }
 
+    private fun parseWipeResponseAction(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                return org.json.JSONObject(trimmed).optString("action", "").uppercase(Locale.US)
+            }
+        }
+        return trimmed.uppercase(Locale.US)
+    }
+
+    private fun formatWipeTimestamp(ts: Long): String {
+        val now = java.util.Calendar.getInstance()
+        val then = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+                now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+        return if (sameDay) {
+            java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(ts))
+        } else {
+            java.text.SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(java.util.Date(ts))
+        }
+    }
+
     private fun showPushNotification(sender: String, title: String, messageText: String) {
         try {
             val myApp = applicationContext as app.secure.kyber.MyApp.MyApp
@@ -574,7 +602,10 @@ class UnionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "CLEAR_NOTIFICATIONS") {
+        val action = intent?.action
+        Log.d(TAG, "onStartCommand: action = $action")
+
+        if (action == "CLEAR_NOTIFICATIONS") {
             val sender = intent.getStringExtra("sender_onion")
             if (sender != null) {
                 unreadNotifications.remove(sender)
@@ -593,7 +624,15 @@ class UnionService : Service() {
             Log.d(TAG, "Injected real identity: $myRealOnion")
         }
 
-        startPersistentConnectionLoop(serverHost, serverPort)
+        if (action == ACTION_START_SERVICE) {
+             startPersistentConnectionLoop(serverHost, serverPort)
+             startGlobalPolling()
+             serviceScope.launch { performColdStartBackfill() }
+        } else {
+             // Default start behavior for sticky restarts
+             startPersistentConnectionLoop(serverHost, serverPort)
+             startGlobalPolling()
+        }
 
         return START_STICKY
     }
@@ -747,6 +786,9 @@ class UnionService : Service() {
         if (chunk.index == 0) {
             val existing = messageDao.getByRemoteMediaId(mediaId)
             if (existing == null) {
+                val sentMs = DisappearTime.parseMessageTimestampMs(transport.timestamp)
+                val localExpiresAt = DisappearTime.expiresAtFromSent(sentMs, transport.disappear_ttl)
+
                 val entity = MessageEntity(
                     messageId = originalMessageId,
                     apiMessageId = apiMsg?.id,
@@ -758,7 +800,7 @@ class UnionService : Service() {
                         }
                     }).encryptedBlob,
                     senderOnion = transport.senderOnion,
-                    time = System.currentTimeMillis().toString(),
+                    time = sentMs.toString(),
                     isSent = false,
                     type = chunk.mimeType,
                     uri = null,
@@ -772,7 +814,8 @@ class UnionService : Service() {
                     isRequest = transport.isRequest,
                     keyFingerprint = transport.recipientKeyFingerprint,
                     iv = transport.iv,
-                    replyToText = transport.replyToText
+                    replyToText = transport.replyToText,
+                    expiresAt = localExpiresAt
                 )
                 messageDao.insert(entity)
                 val isAccepted = contactRepo.getContact(transport.senderOnion) != null

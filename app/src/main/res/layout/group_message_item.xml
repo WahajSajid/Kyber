@@ -874,4 +874,182 @@
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
         app:layout_constraintTop_toTopOf="parent" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <!-- WIPE REQUEST SENT -->
+    <LinearLayout
+        android:id="@+id/rlWipeRequestSent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="@dimen/_5sdp"
+        android:layout_marginStart="@dimen/_20sdp"
+        android:layout_marginEnd="@dimen/_5sdp"
+        android:background="@drawable/sent_msg_bg"
+        android:backgroundTint="#2D2D2D"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/_12sdp"
+        android:paddingVertical="@dimen/_8sdp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintTop_toBottomOf="@id/emoji_reaction_bar_sent">
+
+        <ImageView
+            android:layout_width="@dimen/_16sdp"
+            android:layout_height="@dimen/_16sdp"
+            android:layout_marginEnd="@dimen/_8sdp"
+            android:src="@drawable/info_icon"
+            app:tint="#009FFF" />
+
+        <TextView
+            android:id="@+id/tvWipeRequestSentStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/roboto_medium"
+            android:text="Wipe Chat Request Sent"
+            android:textColor="@color/white"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/wipeSentMessageTime"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_3sdp"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="@id/rlWipeRequestSent"
+        app:layout_constraintTop_toBottomOf="@id/rlWipeRequestSent">
+
+        <TextView
+            android:id="@+id/tvWipeSentTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="@dimen/_4sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="10:30 AM"
+            android:textColor="#60FFFFFF"
+            android:textSize="@dimen/_10sdp" />
+
+        <ImageView
+            android:layout_width="@dimen/_10sdp"
+            android:layout_height="@dimen/_10sdp"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/privacy"
+            app:tint="#60FFFFFF" />
+    </LinearLayout>
+
+    <!-- WIPE REQUEST RCVD -->
+    <LinearLayout
+        android:id="@+id/rlWipeRequestRcvd"
+        android:layout_width="@dimen/_220sdp"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="@dimen/_5sdp"
+        android:layout_marginStart="@dimen/_5sdp"
+        android:layout_marginEnd="@dimen/_20sdp"
+        android:background="@drawable/recv_msg_bg"
+        android:backgroundTint="#331A1A1A"
+        android:orientation="vertical"
+        android:paddingHorizontal="@dimen/_12sdp"
+        android:paddingVertical="@dimen/_12sdp"
+        android:visibility="gone"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rlWipeRequestSent">
+
+        <TextView
+            android:id="@+id/tvWipeRequestSenderName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="@dimen/_4sdp"
+            android:fontFamily="@font/roboto_medium"
+            android:text="~Wahaj"
+            android:textColor="#009FFF"
+            android:textSize="13sp"
+            android:visibility="visible" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/roboto_medium"
+            android:text="Wipe Chat Request"
+            android:textColor="@color/white"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/tvWipeRequestRcvdDesc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_4sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="The other user wants to wipe the chat history. Do you accept?"
+            android:textColor="#B0FFFFFF"
+            android:textSize="14sp" />
+
+        <LinearLayout
+            android:id="@+id/llWipeRequestActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_12sdp"
+            android:orientation="horizontal"
+            android:weightSum="2">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRejectWipe"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="@dimen/_4sdp"
+                android:layout_weight="1"
+                android:text="Reject"
+                android:textAllCaps="false"
+                android:textColor="#FF4444"
+                app:backgroundTint="#1AFF4444"
+                app:cornerRadius="@dimen/_8sdp"
+                app:strokeColor="#FF4444"
+                app:strokeWidth="@dimen/_1sdp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAcceptWipe"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:layout_weight="1"
+                android:text="Accept"
+                android:textAllCaps="false"
+                android:textColor="@android:color/white"
+                app:backgroundTint="#FF4444"
+                app:cornerRadius="@dimen/_8sdp" />
+        </LinearLayout>
+        
+        <TextView
+            android:id="@+id/tvWipeRequestRcvdStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:fontFamily="@font/roboto_medium"
+            android:text="Request Rejected"
+            android:textAlignment="center"
+            android:textColor="#FF4444"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tvGroupSystemMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="@dimen/_12sdp"
+        android:layout_marginHorizontal="@dimen/_40sdp"
+        android:background="@drawable/reaction_bg"
+        android:backgroundTint="#20000000"
+        android:paddingHorizontal="@dimen/_16sdp"
+        android:paddingVertical="@dimen/_6sdp"
+        android:gravity="center"
+        android:textColor="#99FFFFFF"
+        android:textSize="11sp"
+        android:fontFamily="@font/roboto_medium"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/rlWipeRequestRcvd"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

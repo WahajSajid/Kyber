@@ -29,6 +29,7 @@ object Prefs {
     private const val KEY_MUTE_NOTIFICATION_STATUS = "mute_notification_status"
     private const val KEY_AUTO_LOCK_TIMEOUT = "auto_lock_timeout"
     private const val KEY_ENCRYPTION_TIMER = "encryption_timer"
+    private const val KEY_CHAT_SPECIFIC_DISAPPEARING_PREFIX = "disappearing_status_"
 
     private const val KEY_WIPE_PASSWORD = "wipe_password"
     private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
@@ -98,6 +99,14 @@ object Prefs {
     fun setDisappearingMessagesStatus(ctx: Context, value: String?){
         prefs(ctx).edit().apply{
             if (value == null) remove(KEY_DISAPPEARING_MESSAGES_STATUS) else putString(KEY_DISAPPEARING_MESSAGES_STATUS, value)
+            apply()
+        }
+    }
+
+    fun setChatSpecificDisappearingStatus(ctx: Context, chatId: String, value: String?) {
+        prefs(ctx).edit().apply {
+            val key = KEY_CHAT_SPECIFIC_DISAPPEARING_PREFIX + chatId
+            if (value == null) remove(key) else putString(key, value)
             apply()
         }
     }
@@ -200,26 +209,44 @@ object Prefs {
     fun getFailedAttempts(ctx: Context): Int = prefs(ctx).getInt(KEY_FAILED_ATTEMPTS, 0)
     fun getWipePending(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_WIPE_PENDING, false)
     fun getLockoutStartTime(ctx: Context): Long = prefs(ctx).getLong(KEY_LOCKOUT_START_TIME, 0L)
-    fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(KEY_DISAPPEARING_MESSAGES_STATUS, null)
+    fun getDisappearingMessageStatus(ctx: Context): String? = prefs(ctx).getString(KEY_DISAPPEARING_MESSAGES_STATUS, "5 Minutes")
+
+    fun getChatSpecificDisappearingStatus(ctx: Context, chatId: String): String? {
+        return prefs(ctx).getString(KEY_CHAT_SPECIFIC_DISAPPEARING_PREFIX + chatId, null)
+    }
     fun getMuteNotificationStatus(ctx: Context): String? = prefs(ctx).getString(KEY_MUTE_NOTIFICATION_STATUS, null)
     fun getAutoLockTimeout(ctx: Context): String? = prefs(ctx).getString(KEY_AUTO_LOCK_TIMEOUT, "Never")
     fun getEncryptionTimer(ctx: Context): String? = prefs(ctx).getString(KEY_ENCRYPTION_TIMER, "24 Hours")
 
     fun getDisappearingTimerMs(ctx: Context): Long {
-        return when (getDisappearingMessageStatus(ctx)) {
-            "24 Hours" -> 24L * 60 * 60 * 1000
-            "7 Days" -> 7L * 24 * 60 * 60 * 1000
-            "30 Days" -> 30L * 24 * 60 * 60 * 1000
-            "Always" -> 60L * 60 * 1000 // 1h — feature always on without the old 1ms instant-delete bug
-            else -> 0L
+        return parseDisappearingLabel(getDisappearingMessageStatus(ctx))
+    }
+
+    fun getEffectiveDisappearingTimerMs(ctx: Context, chatId: String): Long {
+        val specific = getChatSpecificDisappearingStatus(ctx, chatId)
+        return if (specific != null) {
+            parseDisappearingLabel(specific)
+        } else {
+            getDisappearingTimerMs(ctx)
+        }
+    }
+
+    private fun parseDisappearingLabel(label: String?): Long {
+        return when (label) {
+            "5 Minutes" -> 5L * 60 * 1000
+            "15 Minutes" -> 15L * 60 * 1000
+            "1 Hour" -> 60L * 60 * 1000
+            "1 Day" -> 24L * 60 * 60 * 1000
+            "2 Days" -> 48L * 60 * 60 * 1000
+            else -> 5L * 60 * 1000 // Default to 5 mins if unknown or not set
         }
     }
 
     fun getAutoLockTimeoutMs(ctx: Context): Long {
         return when (getAutoLockTimeout(ctx)) {
+            "30 Seconds" -> 30L * 1000
             "1 Minute" -> 60L * 1000
-            "5 Minutes" -> 5L * 60 * 1000
-            "15 Minutes" -> 15L * 60 * 1000
+            "3 Minutes" -> 3L * 60 * 1000
             else -> 0L // Never
         }
     }

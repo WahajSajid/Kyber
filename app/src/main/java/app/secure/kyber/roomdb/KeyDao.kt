@@ -11,7 +11,7 @@ interface KeyDao {
     @Update
     suspend fun update(key: KeyEntity)
 
-    @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' LIMIT 1")
+    @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' ORDER BY activatedAt DESC LIMIT 1")
     suspend fun getActiveKey(): KeyEntity?
 
     // ────────────────────────────────────────────────────────────────────
@@ -19,7 +19,7 @@ interface KeyDao {
     // Emits whenever the active key is inserted, updated, or deleted
     // Enables UI to reflect periodic rotations immediately, even in background
     // ────────────────────────────────────────────────────────────────────
-    @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' LIMIT 1")
+    @Query("SELECT * FROM user_keys WHERE status = 'ACTIVE' ORDER BY activatedAt DESC LIMIT 1")
     fun observeActiveKey(): Flow<KeyEntity?>
 
     @Query("SELECT * FROM user_keys WHERE status = 'OLD_RETENTION' ORDER BY activatedAt DESC")
@@ -33,6 +33,9 @@ interface KeyDao {
 
     @Query("UPDATE user_keys SET status = :newStatus WHERE keyId = :keyId")
     suspend fun updateStatus(keyId: String, newStatus: String)
+    
+    @Query("UPDATE user_keys SET status = 'OLD_RETENTION', activatedAt = :now WHERE status = 'ACTIVE'")
+    suspend fun archiveAllActiveKeys(now: Long)
 
     @Query("SELECT * FROM user_keys ORDER BY createdAt DESC")
     suspend fun getAllKeys(): List<KeyEntity>

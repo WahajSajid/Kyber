@@ -37,6 +37,10 @@ class GroupDetailsFragment : Fragment() {
         requireArguments().getString("creation_date").orEmpty()
     }
 
+    private val groupId by lazy {
+        requireArguments().getString("group_id").orEmpty()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -60,8 +64,9 @@ class GroupDetailsFragment : Fragment() {
         binding.groupCreationDate.text = creationDate
         binding.noOfMembersText.text = "$noOfMembers Members"
 
-        binding.disappearingMessagesState.text =
-            Prefs.getDisappearingMessageStatus(requireContext())
+        val status = Prefs.getChatSpecificDisappearingStatus(requireContext(), groupId) 
+            ?: Prefs.getDisappearingMessageStatus(requireContext())
+        binding.disappearingMessagesState.text = status
         binding.muteNotificationsStatus.text = Prefs.getMuteNotificationStatus(requireContext())
 
 
@@ -96,37 +101,47 @@ class GroupDetailsFragment : Fragment() {
 
 
     private fun showDisappearingMessagesDialog() {
-        val dialogView =
-            LayoutInflater.from(context).inflate(R.layout.disappearing_messages_dialog, null)
+        val dialogView = LayoutInflater.from(context).inflate(R.layout.disappearing_messages_dialog, null)
         val dialog = AlertDialog.Builder(context).setView(dialogView).create()
-        dialog.window?.setBackgroundDrawable(
-            ContextCompat.getDrawable(
-                requireContext(),
-                R.drawable.disappearing_messages_dialog_bg
-            )
-        )
+        dialog.window?.setBackgroundDrawable(ContextCompat.getDrawable(requireContext(), R.drawable.disappearing_messages_dialog_bg))
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        
+        val currentStatus = Prefs.getChatSpecificDisappearingStatus(requireContext(), groupId) 
+            ?: Prefs.getDisappearingMessageStatus(requireContext()) ?: "5 Minutes"
+        
+        val radioButtons = listOf(
+            dialogView.findViewById<ImageView>(R.id.radio_5m),
+            dialogView.findViewById<ImageView>(R.id.radio_15m),
+            dialogView.findViewById<ImageView>(R.id.radio_1h),
+            dialogView.findViewById<ImageView>(R.id.radio_1d),
+            dialogView.findViewById<ImageView>(R.id.radio_2d)
+        )
+        
+        fun refreshRadios(selected: String) {
+            val checked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_checked)
+            val unchecked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_unchecked)
+            radioButtons[0].setImageDrawable(if (selected == "5 Minutes") checked else unchecked)
+            radioButtons[1].setImageDrawable(if (selected == "15 Minutes") checked else unchecked)
+            radioButtons[2].setImageDrawable(if (selected == "1 Hour") checked else unchecked)
+            radioButtons[3].setImageDrawable(if (selected == "1 Day") checked else unchecked)
+            radioButtons[4].setImageDrawable(if (selected == "2 Days") checked else unchecked)
+        }
+        
+        refreshRadios(currentStatus)
+        
+        fun select(label: String) {
+            Prefs.setChatSpecificDisappearingStatus(requireContext(), groupId, label)
+            binding.disappearingMessagesState.text = label
+            dialog.dismiss()
+        }
+        
+        dialogView.findViewById<LinearLayout>(R.id.layout_5Minutes).setOnClickListener { select("5 Minutes") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_15Minutes).setOnClickListener { select("15 Minutes") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_1Hour).setOnClickListener { select("1 Hour") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_1Day).setOnClickListener { select("1 Day") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_2Days).setOnClickListener { select("2 Days") }
+        
         dialog.show()
-
-//        val options = mapOf(
-//            R.id.layout_24Hours to ("24 Hours" to R.id.radio_24h),
-//            R.id.layout_7Days to ("7 Days" to R.id.radio_7Days),
-//            R.id.layout_30Days to ("30 Days" to R.id.radio_30Days),
-//            R.id.layout_always to ("Always" to R.id.radio_always),
-//            R.id.layout_off to ("Off" to R.id.radio_off)
-//        )
-
-//        val radioButtons = options.values.map { dialogView.findViewById<ImageView>(it.second) }
-//
-//        updateSelectionDisappearingMessages(radioButtons)
-//
-//        options.forEach { (layoutId, pair) ->
-//            dialogView.findViewById<LinearLayout>(layoutId).setOnClickListener {
-//                Prefs.setDisappearingMessagesStatus(requireContext(), pair.first)
-//                updateSelection(pair.second, radioButtons, dialog)
-//                binding.disappearingMessagesState.text = pair.first
-//            }
-//        }
     }
 
 
@@ -134,7 +149,7 @@ class GroupDetailsFragment : Fragment() {
 
         val status = Prefs.getDisappearingMessageStatus(requireContext())
         when (status) {
-            "24 Hours" -> {
+            "5 Minutes" -> {
                 radioButtons[0].setImageResource(R.drawable.radio_checked)
                 radioButtons[1].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[2].setImageResource(R.drawable.radio_unchecked)
@@ -142,7 +157,7 @@ class GroupDetailsFragment : Fragment() {
                 radioButtons[4].setImageResource(R.drawable.radio_unchecked)
             }
 
-            "7 Days" -> {
+            "15 Minutes" -> {
                 radioButtons[0].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[1].setImageResource(R.drawable.radio_checked)
                 radioButtons[2].setImageResource(R.drawable.radio_unchecked)
@@ -150,7 +165,7 @@ class GroupDetailsFragment : Fragment() {
                 radioButtons[4].setImageResource(R.drawable.radio_unchecked)
             }
 
-            "30 Days" -> {
+            "1 Hour" -> {
                 radioButtons[0].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[1].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[2].setImageResource(R.drawable.radio_checked)
@@ -158,7 +173,7 @@ class GroupDetailsFragment : Fragment() {
                 radioButtons[4].setImageResource(R.drawable.radio_unchecked)
             }
 
-            "Always" -> {
+            "1 Day" -> {
                 radioButtons[0].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[1].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[2].setImageResource(R.drawable.radio_unchecked)
@@ -166,7 +181,7 @@ class GroupDetailsFragment : Fragment() {
                 radioButtons[4].setImageResource(R.drawable.radio_unchecked)
             }
 
-            "Off" -> {
+            "2 Days" -> {
                 radioButtons[0].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[1].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[2].setImageResource(R.drawable.radio_unchecked)
@@ -175,11 +190,11 @@ class GroupDetailsFragment : Fragment() {
             }
 
             else -> {
-                radioButtons[0].setImageResource(R.drawable.radio_unchecked)
+                radioButtons[0].setImageResource(R.drawable.radio_checked)
                 radioButtons[1].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[2].setImageResource(R.drawable.radio_unchecked)
                 radioButtons[3].setImageResource(R.drawable.radio_unchecked)
-                radioButtons[4].setImageResource(R.drawable.radio_checked)
+                radioButtons[4].setImageResource(R.drawable.radio_unchecked)
             }
 
         }

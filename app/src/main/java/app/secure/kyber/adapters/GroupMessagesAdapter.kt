@@ -48,6 +48,7 @@ class GroupMessagesAdapter(
     private val groupCreatorId: String = "",
     private val anonymousAliasesJson: String = "{}",
     private val onReplyQuoteClicked: (String) -> Unit = {},
+    private val onWipeRequestAction: (GroupMessageEntity, Boolean) -> Unit = { _, _ -> },
 ) : ListAdapter<GroupMessageEntity, GroupMessagesAdapter.VH>(DIFF) {
 
     companion object {
@@ -209,7 +210,8 @@ class GroupMessagesAdapter(
         val tvSendTime: TextView = view.findViewById(R.id.tvSentTime)
         val rlSendMsg: LinearLayout = view.findViewById(R.id.rlMsgSent)
         val rlRecieveMsg: LinearLayout = view.findViewById(R.id.rlMsgRcvd)
-        val receivedMessageTime: LinearLayout = view.findViewById(R.id.receivedMessageTime)
+        val receivedMessageTimeLayout: LinearLayout = view.findViewById(R.id.receivedMessageTime)
+        val receivedMessageTime: TextView = view.findViewById(R.id.tvRcvTime)
         val sentMessageTime: LinearLayout = view.findViewById(R.id.sentMessageTime)
         val senderName: TextView = view.findViewById(R.id.sender_name)
         val senderId: TextView = view.findViewById(R.id.sender_id)
@@ -248,6 +250,19 @@ class GroupMessagesAdapter(
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
         val tvDecryptingRcv: TextView? = view.findViewById(R.id.tvDecryptingRcv)
+        
+        val rlWipeRequestSent: LinearLayout? = view.findViewById(R.id.rlWipeRequestSent)
+        val tvWipeRequestSentStatus: TextView? = view.findViewById(R.id.tvWipeRequestSentStatus)
+        val wipeSentMessageTimeLayout: LinearLayout? = view.findViewById(R.id.wipeSentMessageTime)
+        val tvWipeSentTime: TextView? = view.findViewById(R.id.tvWipeSentTime)
+        val rlWipeRequestRcvd: LinearLayout? = view.findViewById(R.id.rlWipeRequestRcvd)
+        val tvWipeRequestRcvdDesc: TextView? = view.findViewById(R.id.tvWipeRequestRcvdDesc)
+        val tvGroupSystemMessage: TextView? = view.findViewById(R.id.tvGroupSystemMessage)
+        val tvWipeRequestRcvdStatus: TextView? = view.findViewById(R.id.tvWipeRequestRcvdStatus)
+        val tvWipeRequestSenderName: TextView? = view.findViewById(R.id.tvWipeRequestSenderName)
+        val llWipeRequestActions: LinearLayout? = view.findViewById(R.id.llWipeRequestActions)
+        val btnAcceptWipe: View? = view.findViewById(R.id.btnAcceptWipe)
+        val btnRejectWipe: View? = view.findViewById(R.id.btnRejectWipe)
 
         val actionMenuSent: View = view.findViewById(R.id.actionMenuSent)
         val actionMenuReceived: View = view.findViewById(R.id.actionMenuReceived)
@@ -303,8 +318,13 @@ class GroupMessagesAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
-        val showTime =
-            if (pos < itemCount - 1) convertDatetime(item.time) != convertDatetime(getItem(pos + 1).time) else true
+        val nextItem = if (pos < itemCount - 1) getItem(pos + 1) else null
+        val nextType = nextItem?.type?.uppercase(Locale.US) ?: ""
+        val nextIsSystem = nextType.startsWith("WIPE_")
+
+        val showTime = if (nextItem == null) true
+        else if (nextIsSystem) true // Always show time for message followed by system/wipe bubble
+        else convertDatetime(item.time) != convertDatetime(nextItem.time)
         val type = item.type.uppercase(Locale.US)
         val isSent = item.senderOnion == myId
         val isMedia = type == "IMAGE" || type == "VIDEO"
@@ -313,9 +333,9 @@ class GroupMessagesAdapter(
         holder.rlSendMsg.isVisible = isSent
         holder.rlRecieveMsg.isVisible = !isSent
         holder.sentMessageTime.isVisible = isSent && showTime
-        holder.receivedMessageTime.isVisible = !isSent && showTime
+        holder.receivedMessageTimeLayout.isVisible = !isSent && showTime
 
-        // ── Reply Quote Block ─────────────────────────────────────────────
+        //Reply Quote Block
         val replyRaw = item.replyToText
         val replyText = extractReplyPreviewText(replyRaw)
         holder.replyQuote(isSent).isVisible = replyRaw.isNotEmpty()
@@ -362,9 +382,7 @@ class GroupMessagesAdapter(
 
         if (isSent) holder.tvSendTime.text = convertDatetime(item.time)
         else {
-            // ─────────────────────────────────────────────────────────────
             // ANONYMOUS GROUP HANDLING
-            // ─────────────────────────────────────────────────────────────
             val displayName = getDisplayNameForSender(item.senderOnion, item.senderName)
             holder.senderName.text = displayName
             holder.senderId.text = ""
@@ -372,11 +390,18 @@ class GroupMessagesAdapter(
         }
 
         val rv = holder.reaction(isSent)
-        if (item.reaction.isNotEmpty()) {
-            rv.text = item.reaction; rv.visibility = View.VISIBLE
-        } else rv.visibility = View.GONE
+        val isWipeType = type.startsWith("WIPE_")
+        if (!isWipeType && item.reaction.isNotEmpty()) {
+            rv.text = item.reaction
+            rv.visibility = View.VISIBLE
+        } else {
+            rv.visibility = View.GONE
+        }
 
         holder.itemView.setOnLongClickListener {
+            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+                return@setOnLongClickListener false
+            }
             val p =
                 holder.bindingAdapterPosition; if (p != RecyclerView.NO_POSITION) showMenu(p); true
         }
@@ -386,7 +411,7 @@ class GroupMessagesAdapter(
                 return@setOnClickListener
             }
             val t = item.type.uppercase(Locale.US)
-            // Guard: do NOT fire onClick for text/emoji — prevents "Media not available"
+            // Guard: do NOT fire onClick for text/emoji prevents "Media not available"
             if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
                 return@setOnClickListener
             }
@@ -499,14 +524,156 @@ class GroupMessagesAdapter(
         if (scrollDelta != 0) rv.smoothScrollBy(0, scrollDelta)
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // bindText — strict 2-phase sequential animation for received group messages
-    // ─────────────────────────────────────────────────────────────────────────
+    // bindText strict 2-phase sequential animation for received group messages
     private fun bindText(h: VH, item: GroupMessageEntity, sent: Boolean) {
         h.sentAudio.isVisible = false; h.rcvAudio.isVisible = false
         h.flMediaSent.isVisible = false; h.flMediaRcv.isVisible = false
+        h.tvGroupSystemMessage?.isVisible = false
+        
+        val type = item.type.uppercase(Locale.US)
+        if (type == "WIPE_REQUEST") {
+            h.rlSendMsg.isVisible = false
+            h.rlRecieveMsg.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTime.visibility = View.GONE
+            h.receivedMessageTimeLayout.visibility = View.GONE
 
-        // ── Emoji-only detection ──────────────────────────────────────────────
+            h.btnAcceptWipe?.isEnabled = true
+            h.btnRejectWipe?.isEnabled = true
+
+            if (sent) {
+                h.rlWipeRequestSent?.isVisible = true
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.wipeSentMessageTimeLayout?.isVisible = true
+                h.tvWipeSentTime?.text = convertDatetime(item.time)
+                
+                val reqState = item.reaction.uppercase(Locale.US)
+                // USER REQUIREMENT: On Member A side (sender), do NOT update original bubble text
+                h.tvWipeRequestSentStatus?.text = "Wipe Chat Request Sent"
+                h.tvWipeRequestSentStatus?.setTextColor(android.graphics.Color.WHITE)
+            } else {
+                h.rlWipeRequestSent?.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = true
+                h.tvWipeRequestSenderName?.text = getDisplayNameForSender(item.senderOnion, item.senderName)
+                h.tvWipeRequestSenderName?.isVisible = true
+
+                val reqState = item.reaction.uppercase(Locale.US)
+                if (reqState == "REJECTED") {
+                    h.llWipeRequestActions?.isVisible = false
+                    h.tvWipeRequestRcvdStatus?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.text = "Request Rejected"
+                    h.tvWipeRequestRcvdStatus?.setTextColor(android.graphics.Color.parseColor("#FF4444")) // Red
+                } else if (reqState == "ACCEPTED") {
+                    h.llWipeRequestActions?.isVisible = false
+                    h.tvWipeRequestRcvdStatus?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.text = "Request Accepted"
+                    h.tvWipeRequestRcvdStatus?.setTextColor(android.graphics.Color.parseColor("#00C853")) // Green
+                } else {
+                    h.llWipeRequestActions?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.isVisible = false
+                }
+                
+                h.btnAcceptWipe?.setOnClickListener { 
+                    it.isEnabled = false
+                    h.btnRejectWipe?.isEnabled = false
+                    onWipeRequestAction(item, true) 
+                }
+                h.btnRejectWipe?.setOnClickListener { 
+                    it.isEnabled = false
+                    h.btnAcceptWipe?.isEnabled = false
+                    onWipeRequestAction(item, false) 
+                }
+            }
+            return
+        } else if (type == "WIPE_RESPONSE" || type == "WIPE_SYSTEM" || type == "WIPE_EVENT_RECEIVED") {
+            h.rlSendMsg.isVisible = false
+            h.rlRecieveMsg.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTime.visibility = View.GONE
+            h.receivedMessageTimeLayout.visibility = View.GONE
+
+            if (type == "WIPE_RESPONSE") {
+                // USER REQUIREMENT: Hide WIPE_RESPONSE bubbles entirely.
+                // The status is already updated on the original WIPE_REQUEST bubble.
+                h.rlWipeRequestSent?.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = false
+                return
+            }
+
+            if (type == "WIPE_SYSTEM") {
+                h.rlSendMsg.isVisible = false
+                h.rlRecieveMsg.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.rlWipeRequestSent?.isVisible = false
+                h.wipeSentMessageTimeLayout?.isVisible = false
+                
+                h.tvGroupSystemMessage?.isVisible = true
+                h.tvGroupSystemMessage?.text = item.msg
+                return
+            }
+
+            if (type == "WIPE_EVENT_RECEIVED") {
+                h.rlSendMsg.isVisible = false
+                h.rlRecieveMsg.isVisible = true
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.rlWipeRequestSent?.isVisible = false
+                h.tvMsgRcv.isVisible = true
+                h.tvSentMsg.isVisible = false
+                h.tvDecryptingRcv?.isVisible = false
+                
+                h.tvMsgRcv.cancelAndShowFinal()
+                h.tvMsgRcv.text = item.msg
+                
+                // Style to match "Wipe Chat Request Sent" bubble
+                h.rlRecieveMsg.setBackgroundResource(R.drawable.sent_msg_bg)
+                h.rlRecieveMsg.backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#2D2D2D"))
+                
+                val padH = h.itemView.resources.getDimensionPixelSize(R.dimen._12sdp)
+                val padV = h.itemView.resources.getDimensionPixelSize(R.dimen._8sdp)
+                h.rlRecieveMsg.setPadding(padH, padV, padH, padV)
+                
+                h.tvMsgRcv.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+                h.tvMsgRcv.setTextColor(android.graphics.Color.WHITE)
+                
+                h.receivedMessageTime.text = convertDatetime(item.time)
+                h.receivedMessageTimeLayout.visibility = View.VISIBLE
+                return
+            }
+
+            val responseAction = parseWipeResponseAction(item.msg)
+            val statusText = if (responseAction == "ACCEPTED") {
+                "Chat Cleared"
+            } else {
+                "Wipe request was rejected"
+            }
+            if (sent) {
+                h.rlWipeRequestSent?.isVisible = true
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.tvWipeRequestSentStatus?.text = statusText
+                if (responseAction == "ACCEPTED") {
+                    h.tvWipeRequestSentStatus?.setTextColor(android.graphics.Color.parseColor("#00C853"))
+                } else {
+                    h.tvWipeRequestSentStatus?.setTextColor(android.graphics.Color.parseColor("#FF4444"))
+                }
+            } else {
+                h.rlWipeRequestSent?.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = true
+                h.llWipeRequestActions?.isVisible = false
+                h.tvWipeRequestRcvdStatus?.isVisible = false
+                h.tvWipeRequestRcvdDesc?.text = statusText
+                if (responseAction == "ACCEPTED") {
+                    h.tvWipeRequestRcvdDesc?.setTextColor(android.graphics.Color.parseColor("#00C853"))
+                } else {
+                    h.tvWipeRequestRcvdDesc?.setTextColor(android.graphics.Color.parseColor("#FF4444"))
+                }
+            }
+            return
+        } else {
+            h.rlWipeRequestSent?.isVisible = false
+            h.rlWipeRequestRcvd?.isVisible = false
+        }
+
+        // Emoji-only detection
         // Only strip the bubble when the message is pure emoji AND has no quoted reply
         // (the reply block needs a bubble background to remain legible).
         val emojiOnly = item.replyToText.isEmpty() && isEmojiOnly(item.msg)
@@ -574,7 +741,7 @@ class GroupMessagesAdapter(
             return
         }
 
-        // ── Brand new message — strict 2-phase animation ─────────────────────
+        // Brand new message — strict 2-phase animation
         val encryptedPlaceholder = generateEncryptedPlaceholder(item.msg.length)
         h.tvDecryptingRcv?.visibility = View.VISIBLE
         h.tvDecryptingRcv?.text = "Decrypting..."
@@ -637,7 +804,7 @@ class GroupMessagesAdapter(
 
         val ctx = h.itemView.context
 
-        // ── Load image/video thumbnail using thumbnail-priority strategy ──────
+        // Load image/video thumbnail using thumbnail-priority strategy
         // For VIDEO: Glide cannot render frames from .mp4 via normal load().
         // Use thumbnail-priority → frame-extraction fallback → placeholder.
         // For IMAGE: decode the uri (may be Base64 payload from Firebase) to a local file.
@@ -1047,6 +1214,16 @@ class GroupMessagesAdapter(
         } catch (_: Exception) {
             ""
         }
+    }
+
+    private fun parseWipeResponseAction(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                return JSONObject(trimmed).optString("action", "").uppercase(Locale.US)
+            }
+        }
+        return trimmed.uppercase(Locale.US)
     }
 
     fun countEmojis(text: String): Int {

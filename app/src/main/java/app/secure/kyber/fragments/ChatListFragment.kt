@@ -46,10 +46,27 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
+import org.json.JSONObject
 
 @Suppress("DEPRECATION")
 @AndroidEntryPoint
 class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
+    private fun parseWipePreview(raw: String, type: String): String? {
+        val upperType = type.uppercase(Locale.US)
+        if (upperType != "WIPE_REQUEST" && upperType != "WIPE_RESPONSE" && upperType != "WIPE_SYSTEM") {
+            return null
+        }
+        if (upperType == "WIPE_SYSTEM") return "Chat Cleared"
+        val trimmed = raw.trim()
+        if (upperType == "WIPE_REQUEST") return "Wipe Chat Request"
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                val action = JSONObject(trimmed).optString("action", "").uppercase(Locale.US)
+                return if (action == "REJECTED") "Wipe Request Rejected" else "Chat Cleared"
+            }
+        }
+        return if (trimmed.uppercase(Locale.US) == "REJECTED") "Wipe Request Rejected" else "Chat Cleared"
+    }
 
     @Inject
     lateinit var unionClient: UnionClient
@@ -154,6 +171,10 @@ class ChatListFragment : Fragment(R.layout.fragment_chat_list) {
                                 decrypted == "video" -> "🎥 Video"
                                 decrypted.startsWith("Voice Message") -> "🎤 $decrypted"
                                 else -> decrypted
+                            }
+
+                            parseWipePreview(decrypted, msgType)?.let { friendlyWipe ->
+                                formattedMessage = friendlyWipe
                             }
 
                             if (actualEmoji.isNotEmpty()) {

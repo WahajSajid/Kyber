@@ -23,7 +23,6 @@ import app.secure.kyber.MyApp.MyApp
 class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
 
     private lateinit var binding: FragmentEncryptMsgPwdBinding
-    private var shownOfflineDialog = false
 
     // Wipe dialog / service countdown
     private var wipeCountdownTimer: CountDownTimer? = null
@@ -46,9 +45,6 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        if (!NetworkMonitor.isConnected.value) {
-            showOfflineDialog()
-        }
 
         setClickListeners()
         restoreAttemptWarningIfNeeded()
@@ -66,10 +62,6 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         binding.btnPwd.setOnClickListener {
             hideKeyboard()
 
-            if (!NetworkMonitor.isConnected.value) {
-                showOfflineDialog()
-                return@setOnClickListener
-            }
 
             val input = binding.etPwd.text.toString().trim()
             val ctx = requireContext()
@@ -215,19 +207,6 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         startActivity(intent)
     }
 
-    private fun showOfflineDialog() {
-        if (shownOfflineDialog || !isAdded) return
-        shownOfflineDialog = true
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
-            .setMessage("Connection cannot be established")
-            .setPositiveButton("OK") { _, _ ->
-                shownOfflineDialog = false
-            }
-            .setOnDismissListener {
-                shownOfflineDialog = false
-            }
-            .show()
-    }
 
     private fun showSnackbar(message: String) {
         val snackbar = Snackbar.make(binding.root, message, Snackbar.LENGTH_SHORT)

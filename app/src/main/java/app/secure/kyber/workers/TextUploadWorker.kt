@@ -131,7 +131,8 @@ class TextUploadWorker(
                         senderPublicKey = encryptionResult.senderPublicKeyBase64,
                         ampsJson = localMsg?.ampsJson ?: "",
                         disappear_ttl = disappearTtl,
-                        replyToText = localMsg?.replyToText ?: ""
+                        replyToText = localMsg?.replyToText ?: "",
+                        type = localMsg?.type ?: "TEXT"
                     )
 
 

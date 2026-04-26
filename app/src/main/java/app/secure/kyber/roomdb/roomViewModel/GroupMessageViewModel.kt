@@ -46,6 +46,10 @@ class GroupMessagesViewModel(
         }
     }
 
+    suspend fun deleteAllGroupMessages(groupId: String) {
+        repo.deleteAllGroupMessages(groupId)
+    }
+
     suspend fun getLatestMessage(groupId: String): GroupMessageEntity? {
         return repo.getLatestMessage(groupId)
     }

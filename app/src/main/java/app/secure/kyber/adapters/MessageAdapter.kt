@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Locale
 import kotlin.random.Random
 
@@ -50,6 +51,7 @@ class MessageAdapter(
     private val onRetryUpload: (MessageUiModel) -> Unit = {},
     private val onRetryDownload: (MessageUiModel) -> Unit = {},
     private val onReplyQuoteClicked: (String) -> Unit = {},
+    private val onWipeRequestAction: (MessageUiModel, Boolean) -> Unit = { _, _ -> },
 ) : ListAdapter<MessageUiModel, MessageAdapter.VH>(DIFF) {
 
     companion object {
@@ -284,6 +286,19 @@ class MessageAdapter(
         val btnMoreSent: ImageButton = sentEmojiBar.findViewById(R.id.emojiMore)
         val btnMoreReceived: ImageButton = receivedEmojiBar.findViewById(R.id.emojiMore)
 
+        // Wipe Request Views
+        val rlWipeRequestSent: LinearLayout? = view.findViewById(R.id.rlWipeRequestSent)
+        val tvWipeRequestSentStatus: TextView? = view.findViewById(R.id.tvWipeRequestSentStatus)
+        val wipeSentMessageTimeLayout: LinearLayout? = view.findViewById(R.id.wipeSentMessageTime)
+        val tvWipeSentTimeWipe: TextView? = view.findViewById(R.id.tvWipeSentTime)
+
+        val rlWipeRequestRcvd: LinearLayout? = view.findViewById(R.id.rlWipeRequestRcvd)
+        val llWipeRequestActions: LinearLayout? = view.findViewById(R.id.llWipeRequestActions)
+        val btnAcceptWipe: View? = view.findViewById(R.id.btnAcceptWipe)
+        val btnRejectWipe: View? = view.findViewById(R.id.btnRejectWipe)
+        val tvWipeRequestRcvdStatus: TextView? = view.findViewById(R.id.tvWipeRequestRcvdStatus)
+        val tvWipeRequestRcvdDesc: TextView? = view.findViewById(R.id.tvWipeRequestRcvdDesc)
+
 
         // Add in VH class after existing fields:
         val sentMediaProgressOverlay: FrameLayout = view.findViewById(R.id.sentMediaProgressOverlay)
@@ -423,7 +438,8 @@ class MessageAdapter(
 
         // Render the actual parsed emoji
         val activeReactionView = holder.reaction(isSent)
-        if (actualEmoji.isNotEmpty()) {
+        val isWipeType = type.startsWith("WIPE_")
+        if (!isWipeType && actualEmoji.isNotEmpty()) {
             activeReactionView.text = actualEmoji
             activeReactionView.visibility = View.VISIBLE
         } else {
@@ -436,6 +452,9 @@ class MessageAdapter(
         inactiveReactionView.text = ""
 
         holder.itemView.setOnLongClickListener {
+            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+                return@setOnLongClickListener false
+            }
             val p = holder.bindingAdapterPosition
             if (p != RecyclerView.NO_POSITION) showMenu(p)
             true
@@ -606,6 +625,94 @@ class MessageAdapter(
         h.rcvAudio.isVisible = false
         h.sentMedia.isVisible = false
         h.rcvdMedia.isVisible = false
+
+        val type = item.type.uppercase(Locale.US)
+        if (type == "WIPE_REQUEST") {
+            h.rlSent.isVisible = false
+            h.rlRcvd.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTimeLayout?.visibility = View.GONE
+            h.receivedMessageTimeLayout?.visibility = View.GONE
+
+            if (sent) {
+                h.rlWipeRequestSent?.isVisible = true
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.wipeSentMessageTimeLayout?.isVisible = true
+                h.tvWipeSentTimeWipe?.text = convertDatetime(item.time)
+                h.tvWipeRequestSentStatus?.text = "Wipe Chat Request Sent"
+            } else {
+                h.rlWipeRequestSent?.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = true
+
+                val reqState = item.reaction.uppercase(Locale.US)
+                if (reqState == "REJECTED") {
+                    h.llWipeRequestActions?.isVisible = false
+                    h.tvWipeRequestRcvdStatus?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.text = "Request Rejected"
+                } else if (reqState == "ACCEPTED") {
+                    h.llWipeRequestActions?.isVisible = false
+                    h.tvWipeRequestRcvdStatus?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.text = "Request Accepted"
+                } else {
+                    h.llWipeRequestActions?.isVisible = true
+                    h.tvWipeRequestRcvdStatus?.isVisible = false
+                }
+
+                h.btnAcceptWipe?.setOnClickListener { onWipeRequestAction(item, true) }
+                h.btnRejectWipe?.setOnClickListener { onWipeRequestAction(item, false) }
+            }
+            return
+        } else if (type == "WIPE_RESPONSE" || type == "WIPE_SYSTEM") {
+            h.rlSent.isVisible = false
+            h.rlRcvd.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTimeLayout?.visibility = View.GONE
+            h.receivedMessageTimeLayout?.visibility = View.GONE
+
+            if (type == "WIPE_SYSTEM") {
+                // WhatsApp-style centered system message: full-width, center-aligned, neutral look.
+                h.rlSent.isVisible = false
+                h.rlRcvd.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.rlWipeRequestSent?.isVisible = true
+                h.tvWipeRequestSentStatus?.text = item.decryptedMsg
+                // Force the container to fill the whole row and center its content
+                h.rlWipeRequestSent?.let { container ->
+                    val lp = container.layoutParams
+                    if (lp is android.widget.LinearLayout.LayoutParams) {
+                        lp.width = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
+                        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                        container.layoutParams = lp
+                    }
+                    container.gravity = android.view.Gravity.CENTER
+                }
+                h.tvWipeRequestSentStatus?.gravity = android.view.Gravity.CENTER
+                return
+            }
+
+            val responseAction = parseWipeResponseAction(item.decryptedMsg)
+            val statusText = if (responseAction == "ACCEPTED") {
+                "Chat Cleared"
+            } else {
+                "Wipe request was rejected"
+            }
+            if (sent) {
+                h.rlWipeRequestSent?.isVisible = true
+                h.rlWipeRequestRcvd?.isVisible = false
+                h.tvWipeRequestSentStatus?.text = statusText
+            } else {
+                h.rlWipeRequestSent?.isVisible = false
+                h.rlWipeRequestRcvd?.isVisible = true
+                h.llWipeRequestActions?.isVisible = false
+                h.tvWipeRequestRcvdStatus?.isVisible = false
+                h.tvWipeRequestRcvdDesc?.text = statusText
+            }
+            return
+        } else {
+            h.rlWipeRequestSent?.isVisible = false
+            h.rlWipeRequestRcvd?.isVisible = false
+        }
+
         h.sentMessageTimeLayout?.visibility = View.VISIBLE
         h.receivedMessageTimeLayout?.visibility = View.VISIBLE
 
@@ -752,6 +859,16 @@ class MessageAdapter(
                 }
             }
         }
+    }
+
+    private fun parseWipeResponseAction(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                return JSONObject(trimmed).optString("action", "").uppercase(Locale.US)
+            }
+        }
+        return trimmed.uppercase(Locale.US)
     }
 
     private fun findVHForMessage(msgId: Long): VH? {

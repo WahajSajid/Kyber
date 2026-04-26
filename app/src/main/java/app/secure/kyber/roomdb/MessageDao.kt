@@ -23,6 +23,9 @@ interface MessageDao {
     @Query("DELETE FROM messages WHERE senderOnion = :senderOnion")
     suspend fun deleteAllBySender(senderOnion: String)
 
+    @Query("UPDATE messages SET expiresAt = 1 WHERE senderOnion = :senderOnion AND CAST(time AS INTEGER) <= CAST(:cutoffTime AS INTEGER) AND type != 'WIPE_RES'")
+    suspend fun expireAllBySender(senderOnion: String, cutoffTime: String)
+
     @Query("SELECT * FROM messages WHERE messageId = :messageId LIMIT 1")
     suspend fun getMessageByMessageId(messageId: String): MessageEntity?
 

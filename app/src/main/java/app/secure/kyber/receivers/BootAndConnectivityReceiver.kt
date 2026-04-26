@@ -50,20 +50,24 @@ class BootAndConnectivityReceiver : BroadcastReceiver() {
 
                 // 2. Restart UnionService for real-time socket delivery
                 try {
-                    val serviceIntent = Intent(context, UnionService::class.java).apply {
+                    val unionIntent = Intent(context, UnionService::class.java).apply {
                         action = UnionService.ACTION_START_SERVICE
                     }
+                    val globalIntent = Intent(context, app.secure.kyber.services.GlobalSyncService::class.java)
+
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                         try {
-                            context.startForegroundService(serviceIntent)
+                            context.startForegroundService(unionIntent)
+                            context.startForegroundService(globalIntent)
                         } catch (e: Exception) {
                             Log.e("BootReceiver", "ForegroundLaunch blocked by OS: ${e.message}")
                         }
                     } else {
-                        context.startService(serviceIntent)
+                        context.startService(unionIntent)
+                        context.startService(globalIntent)
                     }
                 } catch (e: Exception) {
-                    Log.e("BootReceiver", "Could not start UnionService: ${e.message}")
+                    Log.e("BootReceiver", "Could not restart services: ${e.message}")
                 }
             }
         }

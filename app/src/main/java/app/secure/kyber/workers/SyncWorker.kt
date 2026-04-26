@@ -158,6 +158,14 @@ class SyncWorker(
                         }
                     }
 
+                    var effectiveType = transport.type
+                    if (transport.type == "WIPE_RESPONSE" && parseWipeResponseAction(decryptedPayloadText) == "ACCEPTED") {
+                        val now = System.currentTimeMillis().toString()
+                        messageDao.expireAllBySender(transport.senderOnion, now)
+                        decryptedPayloadText = "Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}"
+                        effectiveType = "WIPE_SYSTEM"
+                    }
+
                     val encryptedUri = if (!transport.uri.isNullOrBlank())
                         MessageEncryptionManager.encryptLocal(context, transport.uri).encryptedBlob else null
 
@@ -171,7 +179,7 @@ class SyncWorker(
                         senderOnion = transport.senderOnion,
                         time = sentMs.toString(),
                         isSent = false,
-                        type = transport.type,
+                        type = effectiveType ?: "TEXT",
                         uri = encryptedUri,
                         ampsJson = if (transport.ampsJson.isNotBlank())
                             MessageEncryptionManager.encryptLocal(context, transport.ampsJson).encryptedBlob else "",
@@ -194,7 +202,7 @@ class SyncWorker(
 
                     val currentContact = contactRepo.getContact(transport.senderOnion)
                     if (currentContact != null) {
-                        showNotification(transport.senderOnion, transport.type ?: "TEXT")
+                        showNotification(transport.senderOnion, effectiveType ?: "TEXT")
                     } else {
                         val msgCount = messageDao.getBySender(transport.senderOnion).size
                         if (msgCount == 1) {
@@ -294,6 +302,28 @@ class SyncWorker(
             notificationManager.notify(sender.hashCode(), notification)
         } catch (e: Exception) {
             Log.e(TAG, "showNotification failed", e)
+        }
+    }
+
+    private fun parseWipeResponseAction(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                return org.json.JSONObject(trimmed).optString("action", "").uppercase(java.util.Locale.US)
+            }
+        }
+        return trimmed.uppercase(java.util.Locale.US)
+    }
+
+    private fun formatWipeTimestamp(ts: Long): String {
+        val now = java.util.Calendar.getInstance()
+        val then = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+                now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+        return if (sameDay) {
+            java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(ts))
+        } else {
+            java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(ts))
         }
     }
 }

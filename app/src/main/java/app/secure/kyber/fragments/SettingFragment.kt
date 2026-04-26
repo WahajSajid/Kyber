@@ -104,8 +104,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         val validAutoLock = if (autoLock in listOf("30 Seconds", "1 Minute", "3 Minutes")) autoLock else "1 Minute"
         binding.autoLockCard.cardValue.text = validAutoLock
 
-        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "24 Hours"
-        val validDisChat = if (disChat in listOf("24 Hours", "48 Hours", "7 Days")) disChat else "24 Hours"
+        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "5 Minutes"
+        val validDisChat = if (disChat in listOf("5 Minutes", "15 Minutes", "1 Hour", "1 Day", "2 Days")) disChat else "5 Minutes"
         binding.disappearingChatCard.cardValue.text = validDisChat
 
         binding.searchPrivacyCard.cardValue.text = if (isOn) "On" else "Off"
@@ -180,9 +180,7 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             .setImageDrawable(if (selected == "3 Minutes") checked else unchecked)
     }
 
-    // ──────────────────────────────────────────────────────────────
     // 2) DISAPPEARING MESSAGES DIALOG
-    // ──────────────────────────────────────────────────────────────
 
     private fun showDisappearingMessagesDialog() {
         val dialogView = LayoutInflater.from(context)
@@ -193,8 +191,8 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         )
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
 
-        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "24 Hours"
-        val currentSelection = if (disChat in listOf("24 Hours", "48 Hours", "7 Days")) disChat else "24 Hours"
+        val disChat = Prefs.getDisappearingMessageStatus(requireContext()) ?: "5 Minutes"
+        val currentSelection = if (disChat in listOf("5 Minutes", "15 Minutes", "1 Hour", "1 Day", "2 Days")) disChat else "5 Minutes"
         refreshDisappearingRadios(dialogView, currentSelection)
 
         fun select(label: String) {
@@ -203,12 +201,16 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             dialog.dismiss()
         }
 
-        dialogView.findViewById<LinearLayout>(R.id.layout_24Hours)
-            .setOnClickListener { select("24 Hours") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_48Hours)
-            .setOnClickListener { select("48 Hours") }
-        dialogView.findViewById<LinearLayout>(R.id.layout_7Days)
-            .setOnClickListener { select("7 Days") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_5Minutes)
+            .setOnClickListener { select("5 Minutes") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_15Minutes)
+            .setOnClickListener { select("15 Minutes") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_1Hour)
+            .setOnClickListener { select("1 Hour") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_1Day)
+            .setOnClickListener { select("1 Day") }
+        dialogView.findViewById<LinearLayout>(R.id.layout_2Days)
+            .setOnClickListener { select("2 Days") }
 
         dialog.show()
     }
@@ -216,12 +218,16 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
     private fun refreshDisappearingRadios(dialogView: View, selected: String) {
         val checked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_checked)
         val unchecked = ContextCompat.getDrawable(requireContext(), R.drawable.radio_unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_24h)
-            .setImageDrawable(if (selected == "24 Hours") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_48h)
-            .setImageDrawable(if (selected == "48 Hours") checked else unchecked)
-        dialogView.findViewById<ImageView>(R.id.radio_7Days)
-            .setImageDrawable(if (selected == "7 Days") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_5m)
+            .setImageDrawable(if (selected == "5 Minutes") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_15m)
+            .setImageDrawable(if (selected == "15 Minutes") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_1h)
+            .setImageDrawable(if (selected == "1 Hour") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_1d)
+            .setImageDrawable(if (selected == "1 Day") checked else unchecked)
+        dialogView.findViewById<ImageView>(R.id.radio_2d)
+            .setImageDrawable(if (selected == "2 Days") checked else unchecked)
     }
 
     // 3) SEARCH PRIVACY DIALOG  (Coming Soon — no real backend)

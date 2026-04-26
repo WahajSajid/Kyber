@@ -86,10 +86,8 @@ class KeyRotationWorker @AssistedInject constructor(
                 throw e // Surface to WorkManager for retry
             }
 
-            // 3. Archive active key — reset activatedAt to rotation time so retention window starts now
-            activeKey?.let {
-                keyDao.update(it.copy(status = "OLD_RETENTION", activatedAt = now))
-            }
+            // 3. Archive all current active keys — reset activatedAt to rotation time so retention window starts now
+            keyDao.archiveAllActiveKeys(now)
 
             // 4. Save new active key
             // expiresAt tracks when this key is due for rotation (informational; WorkManager drives actual rotation)

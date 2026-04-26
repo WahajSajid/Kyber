@@ -164,25 +164,37 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
 
     private fun performManualRotation() {
         binding.generateButton.isEnabled = false
-        lifecycleScope.launch {
+        binding.lastUpdateBadge.text = "Rotating..."
+        
+        viewLifecycleOwner.lifecycleScope.launch {
             try {
                 // SAVE TIMESTAMP BEFORE ROTATION
-                // This ensures when Flow observer triggers after DB changes,
-                // updateButtonState() sees the cooldown is active
                 val prefs = requireContext().getSharedPreferences("key_rotation_prefs", android.content.Context.MODE_PRIVATE)
                 prefs.edit().putLong("last_manual_rotation_time", System.currentTimeMillis()).apply()
                 
-                // Now perform the rotation
-                // force=true bypasses the 23h guard since this is an explicit user action
+                // Perform the rotation
                 KeyRotationWorker.rotateKeys(requireContext(), repository, force = true)
-                KeyRotationWorker.schedule(requireContext()) // Reset the 24h periodic timer
+                KeyRotationWorker.schedule(requireContext()) // Reset the periodic timer
 
-                // NOTE: No need to manually call setupKeyDisplay() anymore
-                // The Flow observer will automatically detect the DB change and update UI
+                // Force immediate UI update with fresh data
+                val db = AppDb.get(requireContext())
+                val newActiveKey = db.keyDao().getActiveKey()
+                if (newActiveKey != null) {
+                    binding.publicKeyField.text = truncatePublicKey(newActiveKey.publicKey)
+                    binding.lastUpdateBadge.text = "Updated just now" // Explicitly reset to zero
+                    updateButtonState(newActiveKey)
+                    
+                    android.util.Log.d("NetworkFragment", "Manual rotation UI forced update success")
+                }
+
                 Toast.makeText(requireContext(), "Keys rotated successfully", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Rotation failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 binding.generateButton.isEnabled = true
+                
+                // Revert badge if failed (re-fetch current key)
+                val db = AppDb.get(requireContext())
+                db.keyDao().getActiveKey()?.let { updateTimeDisplay(it) }
             }
         }
     }

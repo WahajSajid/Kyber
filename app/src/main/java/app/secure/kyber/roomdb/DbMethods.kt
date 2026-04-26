@@ -118,21 +118,25 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
         dao.deleteGroupMessage(message)
     }
 
+    suspend fun deleteAllGroupMessages(groupId: String) {
+        dao.deleteByGroupId(groupId)
+    }
+
     suspend fun getLatestMessage(groupId: String): GroupMessageEntity? {
         return dao.getLatestMessage(groupId)
     }
 
-    suspend fun getAllGroupMessages(groupId: String): androidx.lifecycle.LiveData<List<GroupMessageEntity>> =
-        dao.getGroupMessages(groupId = groupId)
+    suspend fun getAllGroupMessages(groupId: String, now: Long = System.currentTimeMillis()): androidx.lifecycle.LiveData<List<GroupMessageEntity>> =
+        dao.getGroupMessages(groupId = groupId, now = now)
 
-    fun observeAll(groupId: String): Flow<MutableList<GroupMessageEntity>> =
-        dao.observeAllGroupMessages(groupId = groupId)
+    fun observeAll(groupId: String, now: Long = System.currentTimeMillis()): Flow<MutableList<GroupMessageEntity>> =
+        dao.observeAllGroupMessages(groupId = groupId, now = now)
 
     /**
      * Observes all group messages as a Flow (for paginated Fragment use).
      */
-    fun observeFlow(groupId: String): Flow<List<GroupMessageEntity>> =
-        dao.observeAllGroupMessages(groupId = groupId)
+    fun observeFlow(groupId: String, now: Long = System.currentTimeMillis()): Flow<List<GroupMessageEntity>> =
+        dao.observeAllGroupMessages(groupId = groupId, now = now)
 
     fun observeAllLastMsgs(): Flow<List<ChatModel>> =
         dao.observeAllLastMsgs()

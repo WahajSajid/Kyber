@@ -90,6 +90,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
@@ -102,6 +103,12 @@ import app.secure.kyber.workers.TextUploadWorker
 @Suppress("UNCHECKED_CAST")
 @AndroidEntryPoint
 class ChatFragment : Fragment(R.layout.fragment_chat) {
+    private companion object {
+        private const val WIPE_REQ = "WIPE_REQUEST"
+        private const val WIPE_RES = "WIPE_RESPONSE"
+        private const val WIPE_ACTION_ACCEPTED = "ACCEPTED"
+        private const val WIPE_ACTION_REJECTED = "REJECTED"
+    }
 
     @Inject
     lateinit var repository: KyberRepository
@@ -150,15 +157,79 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private var isRecordingStarted = false
     private val longPressHandler = Handler(Looper.getMainLooper())
 
+    // Set to true right after a chat wipe so the next Flow emission fully replaces
+    // the in-memory displayedList instead of merging with stale cached items.
+    private var wipePending = false
+
     private var selectedMsg: MessageUiModel? = null
     private var selectedGroupMsg: GroupMessageEntity? = null
     private var currentReplyText: String = ""
     private var currentReplyRefRaw: String = ""
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
+    private var displayedList = mutableListOf<MessageUiModel>()
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+
+    private data class WipeMeta(
+        val action: String,
+        val requesterOnion: String?,
+        val responderOnion: String?,
+        val requestId: String?
+    )
+
+    private fun buildWipeRequestPayload(requesterOnion: String, requestId: String): String {
+        return JSONObject()
+            .put("action", WIPE_REQ)
+            .put("requesterOnion", requesterOnion)
+            .put("requestId", requestId)
+            .toString()
+    }
+
+    private fun buildWipeResponsePayload(
+        action: String,
+        requesterOnion: String,
+        responderOnion: String,
+        requestId: String
+    ): String {
+        return JSONObject()
+            .put("action", action)
+            .put("requesterOnion", requesterOnion)
+            .put("responderOnion", responderOnion)
+            .put("requestId", requestId)
+            .toString()
+    }
+
+    private fun parseWipeMeta(raw: String): WipeMeta {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                val obj = JSONObject(trimmed)
+                return WipeMeta(
+                    action = obj.optString("action", "").ifBlank { WIPE_REQ },
+                    requesterOnion = obj.optString("requesterOnion", null),
+                    responderOnion = obj.optString("responderOnion", null),
+                    requestId = obj.optString("requestId", null)
+                )
+            }
+        }
+        return WipeMeta(
+            action = trimmed.uppercase(Locale.US),
+            requesterOnion = null,
+            responderOnion = null,
+            requestId = null
+        )
+    }
+
+    private suspend fun wipeGroupMessagesForUserPair(groupId: String, userA: String, userB: String, exceptId: String? = null, cutoffTime: String) {
+        val dao = AppDb.get(requireContext()).groupsMessagesDao()
+        if (exceptId != null) {
+            dao.expireByGroupIdAndSenderPairExcept(groupId, userA, userB, exceptId, cutoffTime)
+        } else {
+            dao.expireByGroupIdAndSenderPair(groupId, userA, userB, cutoffTime)
+        }
+    }
 
 
     private val screenStateReceiver = object : android.content.BroadcastReceiver() {
@@ -364,6 +435,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 groupCreationDate = formatTimestamp(result)
                 if (::noOfMembers.isInitialized)
                     (activity as? MainActivity)?.onGroupChatDetailsClick(
+                        groupId,
                         groupName,
                         groupCreationDate,
                         noOfMembers
@@ -373,6 +445,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 noOfMembers = result.toString()
                 if (::groupCreationDate.isInitialized)
                     (activity as? MainActivity)?.onGroupChatDetailsClick(
+                        groupId,
                         groupName,
                         groupCreationDate,
                         noOfMembers
@@ -587,8 +660,33 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 binding.contentMenu.isVisible =
                     false; binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
             } else {
+                if (isEmojiPickerVisible) hideEmojiPicker()
+                hideKeyboard(messageEdit)
                 binding.bottomSheet.setBackgroundResource(R.drawable.bottom_sheet); binding.contentMenu.isVisible =
                     true
+            }
+        }
+        
+        binding.llWipeRequest.setOnClickListener {
+            binding.contentMenu.isVisible = false
+            binding.bottomSheet.setBackgroundResource(R.drawable.bottom_nav_bar_bg_png)
+            val requestId = UUID.randomUUID().toString()
+            val text = buildWipeRequestPayload(onionAddr, requestId)
+            if (comingFrom == "group_chat_list") {
+                lifecycleScope.launch {
+                    groupManager.sendMessage(
+                        groupId,
+                        onionAddr,
+                        name,
+                        text,
+                        vm1,
+                        replyToText = "",
+                        context = requireContext(),
+                        type = WIPE_REQ
+                    )
+                }
+            } else {
+                sendTextMessage(text, onionAddr, name, WIPE_REQ)
             }
         }
         binding.ivGallery.setOnClickListener {
@@ -735,7 +833,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun resolveDisplayName(): String =
         contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
 
-    private fun sendTextMessage(text: String, onionAddr: String, name: String) {
+    private fun sendTextMessage(text: String, onionAddr: String, name: String, msgType: String = "TEXT") {
         val messageId = UUID.randomUUID().toString()
         val sentTimeMs = System.currentTimeMillis()
         val timestamp = sentTimeMs.toString()
@@ -748,7 +846,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val contactRepo = ContactRepository(db.contactDao())
             val isContact = contactRepo.getContact(contactOnion) != null
             val isRequest = !isContact
-            val disappearTimerMs = Prefs.getDisappearingTimerMs(requireContext())
+            val disappearTimerMs = if (comingFrom == "group_chat_list") {
+                Prefs.getEffectiveDisappearingTimerMs(requireContext(), groupId)
+            } else {
+                Prefs.getEffectiveDisappearingTimerMs(requireContext(), contactOnion)
+            }
             var localExpiresAt = 0L
             if (disappearTimerMs > 0L) {
                 localExpiresAt = sentTimeMs + disappearTimerMs
@@ -764,7 +866,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     senderOnion = contactOnion,
                     time = timestamp,
                     isSent = true,
-                    type = "TEXT",
+                    type = msgType,
                     uploadState = "pending",
                     uploadProgress = 0,
                     expiresAt = localExpiresAt,
@@ -894,6 +996,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             "IMAGE" -> "Photo"
             "VIDEO" -> "Video"
             "AUDIO" -> "Voice message"
+            // Never expose raw wipe JSON in the reply preview bar or quote blocks
+            "WIPE_REQUEST"  -> "Wipe Chat Request"
+            "WIPE_RESPONSE" -> "Wipe Response"
+            "WIPE_SYSTEM"   -> "System Message"
             else -> msg.decryptedMsg.ifBlank { "Message" }
         }
         return encodeReplyRef(msg.messageId, preview)
@@ -904,6 +1010,10 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             "IMAGE" -> "Photo"
             "VIDEO" -> "Video"
             "AUDIO" -> "Voice message"
+            // Never expose raw wipe JSON in the reply preview bar or quote blocks
+            "WIPE_REQUEST"  -> "Wipe Chat Request"
+            "WIPE_RESPONSE" -> "Wipe Response"
+            "WIPE_SYSTEM"   -> "System Message"
             else -> msg.msg.ifBlank { "Message" }
         }
         return encodeReplyRef(msg.messageId, preview)
@@ -938,9 +1048,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val preview = extractReplyPreviewText(replyRaw)
         return adapterMsg.currentList.indexOfFirst {
             val candidate = when (it.type.uppercase(Locale.getDefault())) {
-                "IMAGE" -> "Photo"
-                "VIDEO" -> "Video"
-                "AUDIO" -> "Voice message"
+                "IMAGE"         -> "Photo"
+                "VIDEO"         -> "Video"
+                "AUDIO"         -> "Voice message"
+                "WIPE_REQUEST"  -> "Wipe Chat Request"
+                "WIPE_RESPONSE" -> "Wipe Response"
+                "WIPE_SYSTEM"   -> "System Message"
                 else -> it.decryptedMsg
             }
             candidate == preview
@@ -956,9 +1069,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         val preview = extractReplyPreviewText(replyRaw)
         return groupMessageAdapter.currentList.indexOfFirst {
             val candidate = when (it.type.uppercase(Locale.getDefault())) {
-                "IMAGE" -> "Photo"
-                "VIDEO" -> "Video"
-                "AUDIO" -> "Voice message"
+                "IMAGE"         -> "Photo"
+                "VIDEO"         -> "Video"
+                "AUDIO"         -> "Voice message"
+                "WIPE_REQUEST"  -> "Wipe Chat Request"
+                "WIPE_RESPONSE" -> "Wipe Response"
+                "WIPE_SYSTEM"   -> "System Message"
                 else -> it.msg
             }
             candidate == preview
@@ -1005,7 +1121,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     groupId,
                     msg.messageId
                 ); updateLastMessageForGroup(groupId)
-            } else if (msg is MessageUiModel) vm.deleteMessage(msg.entity)
+            } else if (msg is MessageUiModel) {
+                vm.deleteMessage(msg.entity)
+                // Manual removal for immediate feedback
+                displayedList.removeAll { it.id == msg.id }
+                if (::adapterMsg.isInitialized) adapterMsg.submitList(displayedList.toList())
+            }
             Toast.makeText(requireContext(), "Message deleted", Toast.LENGTH_SHORT).show()
         }
     }
@@ -1025,6 +1146,179 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 updatedGroup.timeSpan.toString(),
                 latest?.senderOnion ?: ""
             )
+        }
+    }
+
+    private suspend fun insertSystemMessage(text: String) {
+        val db = AppDb.get(requireContext())
+        val messageId = UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis().toString()
+        if (comingFrom == "group_chat_list") {
+             val sysMsg = GroupMessageEntity(
+                 messageId = messageId,
+                 group_id = groupId,
+                 msg = text,
+                 senderOnion = "system",
+                 senderName = "System",
+                 time = timestamp,
+                 type = "WIPE_SYSTEM",
+                 isSent = false
+             )
+             db.groupsMessagesDao().insertGroupMessage(sysMsg)
+        } else {
+             val sysMsg = app.secure.kyber.roomdb.MessageEntity(
+                 messageId = messageId,
+                 msg = MessageEncryptionManager.encryptLocal(requireContext(), text).encryptedBlob,
+                 senderOnion = contactOnion,
+                 time = timestamp,
+                 isSent = false,
+                 type = "WIPE_SYSTEM",
+                 uploadState = "done",
+                 uploadProgress = 100
+             )
+             db.messageDao().insert(sysMsg)
+        }
+    }
+
+    private fun handleWipeRequestAction(messageId: String, wipeRequesterOnion: String, isAccepted: Boolean) {
+        if (!isAccepted) {
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+            val payload = buildWipeResponsePayload(
+                action = WIPE_ACTION_REJECTED,
+                requesterOnion = wipeRequesterOnion,
+                responderOnion = myOnion,
+                requestId = messageId
+            )
+            if (comingFrom == "group_chat_list") {
+                lifecycleScope.launch {
+                    groupManager.sendMessage(
+                        groupId,
+                        myOnion,
+                        Prefs.getName(requireContext()) ?: "",
+                        payload,
+                        vm1,
+                        replyToText = "",
+                        context = requireContext(),
+                        type = WIPE_RES
+                    )
+                }
+            } else {
+                sendPrivateMessage(
+                    PrivateMessageTransportDto(
+                        messageId = UUID.randomUUID().toString(),
+                        msg = payload,
+                        senderOnion = myOnion,
+                        senderName = Prefs.getName(requireContext()) ?: "",
+                        timestamp = System.currentTimeMillis().toString(),
+                        type = WIPE_RES,
+                        senderPublicKey = Prefs.getPublicKey(requireContext())
+                    )
+                )
+            }
+            // Update local message reaction so action buttons are hidden after response.
+            lifecycleScope.launch {
+                val db = AppDb.get(requireContext())
+                if (comingFrom == "group_chat_list") {
+                    db.groupsMessagesDao().updateReaction(messageId, WIPE_ACTION_REJECTED)
+                } else {
+                    val entity = db.messageDao().getMessageByMessageId(messageId)
+                    if (entity != null) {
+                        db.messageDao().update(entity.copy(reaction = WIPE_ACTION_REJECTED))
+                    }
+                }
+            }
+        } else {
+            // Show confirmation dialog
+            val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_wipe_request_confirm, null)
+            val dialog = android.app.AlertDialog.Builder(requireContext())
+                .setView(dialogView)
+                .create()
+            
+            dialogView.findViewById<android.widget.TextView>(R.id.tvCancel).setOnClickListener {
+                dialog.dismiss()
+            }
+            
+            dialogView.findViewById<android.widget.TextView>(R.id.tvAccept).setOnClickListener {
+                dialog.dismiss()
+                performWipeChat(messageId, wipeRequesterOnion)
+            }
+            dialog.show()
+        }
+    }
+
+    private fun performWipeChat(requestId: String, wipeRequesterOnion: String) {
+        lifecycleScope.launch {
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+            val myName = Prefs.getName(requireContext()) ?: ""
+            val payload = buildWipeResponsePayload(
+                action = WIPE_ACTION_ACCEPTED,
+                requesterOnion = wipeRequesterOnion,
+                responderOnion = myOnion,
+                requestId = requestId
+            )
+            if (comingFrom == "group_chat_list") {
+                groupManager.sendMessage(
+                    groupId,
+                    myOnion,
+                    myName,
+                    payload,
+                    vm1,
+                    replyToText = "",
+                    context = requireContext(),
+                    type = WIPE_RES
+                )
+                // For groups: only wipe requester<->responder messages for this accepter.
+                wipePending = true
+                val now = System.currentTimeMillis().toString()
+                wipeGroupMessagesForUserPair(groupId, wipeRequesterOnion, myOnion, requestId, now)
+            } else {
+                // Send the acceptance signal over the network ONLY — do NOT insert it into
+                // the local DB via sendTextMessage, which would create a spurious
+                // "Chat cleared" WIPE_RES bubble alongside the WIPE_SYSTEM bubble.
+                sendPrivateMessage(
+                    PrivateMessageTransportDto(
+                        messageId = UUID.randomUUID().toString(),
+                        msg = payload,
+                        senderOnion = myOnion,
+                        senderName = myName,
+                        timestamp = System.currentTimeMillis().toString(),
+                        type = WIPE_RES,
+                        senderPublicKey = Prefs.getPublicKey(requireContext())
+                    )
+                )
+                // Mark wipe pending so the next Flow emission fully replaces
+                // the in-memory displayedList instead of merging with stale items.
+                wipePending = true
+                val db = AppDb.get(requireContext())
+                val now = System.currentTimeMillis().toString()
+                db.messageDao().expireAllBySender(contactOnion, now)
+                insertSystemMessage("Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}")
+            }
+            
+            // Update local message reaction so action buttons are hidden after response.
+            val db = AppDb.get(requireContext())
+            if (comingFrom == "group_chat_list") {
+                db.groupsMessagesDao().updateReaction(requestId, WIPE_ACTION_ACCEPTED)
+            } else {
+                val entity = db.messageDao().getMessageByMessageId(requestId)
+                if (entity != null) {
+                    db.messageDao().update(entity.copy(reaction = WIPE_ACTION_ACCEPTED))
+                }
+            }
+
+            Toast.makeText(requireContext(), "Chat history wiped", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun formatWipeTimestamp(ts: Long): String {
+        val now = java.util.Calendar.getInstance()
+        val then = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val sameDay = now.get(java.util.Calendar.YEAR) == then.get(java.util.Calendar.YEAR) &&
+                now.get(java.util.Calendar.DAY_OF_YEAR) == then.get(java.util.Calendar.DAY_OF_YEAR)
+        return if (sameDay) {
+            java.text.SimpleDateFormat("hh:mm a", Locale.getDefault()).format(java.util.Date(ts))
+        } else {
+            java.text.SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(java.util.Date(ts))
         }
     }
 
@@ -1169,7 +1463,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
                     val isContact = contactRepo.getContact(contactOnion) != null
 
-                    if (msg.type == "TEXT") {
+                    val normalizedType = msg.type.uppercase(Locale.US)
+                    if (normalizedType != "IMAGE" && normalizedType != "VIDEO" && normalizedType != "AUDIO") {
                         val request = TextUploadWorker.buildRequest(
                             messageId = msg.messageId,
                             text = msg.decryptedMsg,
@@ -1228,6 +1523,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         idx
                     )
                 }
+            },
+            onWipeRequestAction = { item, isAccepted ->
+                val reqMeta = parseWipeMeta(item.decryptedMsg)
+                val requester = reqMeta.requesterOnion ?: contactOnion
+                handleWipeRequestAction(item.messageId, requester, isAccepted)
             }
         )
         adapterMsg.messageDecryptor =
@@ -1235,7 +1535,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
         // ── Pagination state ─────────────────────────────────────────────────
         // Tracks all messages currently displayed (recent + older batches prepended).
-        var displayedList = mutableListOf<MessageUiModel>()
         var isLoadingOlder = false
         var hasMoreOlder = true  // assume there may be older until a batch returns empty
 
@@ -1260,15 +1559,38 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             recent.map { it.toUiModel(requireContext()) }
                         }
 
-                    // Merge: keep any older pages that were prepended, replace the tail (recent window)
-                    val merged = if (displayedList.isEmpty()) {
+                    // After a wipe, discard the stale in-memory cache entirely so the
+                    // adapter clears in real-time without requiring a nav back/forward.
+                    // Also discard when a NEW WIPE_SYSTEM message arrives from the network
+                    // (meaning the other user accepted the wipe).
+                    val hasNewWipeSystem = newModels.any { newMsg ->
+                        newMsg.type.uppercase() == "WIPE_SYSTEM" && displayedList.none { it.id == newMsg.id }
+                    }
+                    
+                    val freshStart = wipePending || hasNewWipeSystem ||
+                        (displayedList.isNotEmpty() && newModels.isEmpty() &&
+                         displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
+
+                    val merged = if (displayedList.isEmpty() || freshStart) {
+                        wipePending = false
                         newModels.toMutableList()
                     } else {
                         // The recent window always covers the newest MSG_PAGE_SIZE messages.
-                        // Remove items already in the recent window from displayedList, then append the fresh window.
                         val recentIds = newModels.map { it.id }.toSet()
-                        val olderOnly = displayedList.filter { it.id !in recentIds }.toMutableList()
-                        (olderOnly + newModels).toMutableList()
+                        val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
+                        
+                        if (newModels.size < MSG_PAGE_SIZE) {
+                            // If the recent window is not full, it means the entire chat history fits in it.
+                            // Fully replace to handle deletions accurately.
+                            newModels.toMutableList()
+                        } else {
+                            // Keep older items that are NOT in the recent window.
+                            // Use timestamp to ensure we don't keep items that SHOULD be in the recent window but aren't (meaning they were deleted).
+                            val filteredOlder = displayedList.filter { 
+                                it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime 
+                            }
+                            (filteredOlder + newModels).toMutableList()
+                        }
                     }
                     displayedList = merged
 
@@ -1436,6 +1758,11 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     recyclerview,
                     idx
                 ) { groupMessageAdapter.highlightItem(idx) }
+            },
+            onWipeRequestAction = { item, isAccepted ->
+                val reqMeta = parseWipeMeta(item.msg)
+                val requester = reqMeta.requesterOnion ?: item.senderOnion
+                handleWipeRequestAction(item.messageId, requester, isAccepted)
             }
         )
         val groupLlm = object : LinearLayoutManager(requireContext()) {
@@ -1570,6 +1897,12 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (pos == RecyclerView.NO_POSITION) return
 
                 val itemView = viewHolder.itemView
+                val canSwipeReply = canSwipeReplyAt(pos)
+                if (!canSwipeReply) {
+                    itemView.translationX = 0f
+                    return
+                }
+
                 val maxDx = itemView.width * maxSwipeFraction
 
                 // Support right-swipe on both sent and received messages.
@@ -1617,6 +1950,26 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
 
         ItemTouchHelper(callback).attachToRecyclerView(rv)
+    }
+
+    private fun canSwipeReplyAt(position: Int): Boolean {
+        return if (comingFrom == "group_chat_list") {
+            val item = groupMessageAdapter.currentList.getOrNull(position) ?: return false
+            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            if (!isWipe) return true
+            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+                    item.senderOnion != (Prefs.getOnionAddress(requireContext()) ?: "") &&
+                    item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
+            actionable
+        } else {
+            val item = adapterMsg.currentList.getOrNull(position) ?: return false
+            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            if (!isWipe) return true
+            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+                    !item.isSent &&
+                    item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
+            actionable
+        }
     }
 
     private fun startAudioRecording() {

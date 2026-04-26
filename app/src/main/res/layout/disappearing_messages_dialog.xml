@@ -64,8 +64,9 @@
                     android:layout_marginTop="@dimen/_10sdp"
                     android:background="#26263A" />
 
+                <!-- Option 1: 5 Minutes -->
                 <LinearLayout
-                    android:id="@+id/layout_24Hours"
+                    android:id="@+id/layout_5Minutes"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/_56sdp"
                     android:gravity="center_vertical"
@@ -74,16 +75,16 @@
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/opt_24h"
+                        android:id="@+id/opt_5m"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="24 Hours"
+                        android:text="5 Minutes"
                         android:textColor="#E6F7FF"
                         android:textSize="@dimen/_16sdp" />
 
                     <ImageView
-                        android:id="@+id/radio_24h"
+                        android:id="@+id/radio_5m"
                         android:layout_width="@dimen/_25sdp"
                         android:layout_height="@dimen/_25sdp"
                         android:src="@drawable/radio_unchecked"
@@ -95,11 +96,11 @@
                     android:id="@+id/divider2"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/_1sdp"
-                    android:layout_marginTop="@dimen/_10sdp"
                     android:background="#26263A" />
 
+                <!-- Option 2: 15 Minutes -->
                 <LinearLayout
-                    android:id="@+id/layout_48Hours"
+                    android:id="@+id/layout_15Minutes"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/_56sdp"
                     android:gravity="center_vertical"
@@ -108,16 +109,16 @@
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/opt_48h"
+                        android:id="@+id/opt_15m"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="48 Hours"
+                        android:text="15 Minutes"
                         android:textColor="#E6F7FF"
                         android:textSize="@dimen/_16sdp" />
 
                     <ImageView
-                        android:id="@+id/radio_48h"
+                        android:id="@+id/radio_15m"
                         android:layout_width="@dimen/_25sdp"
                         android:layout_height="@dimen/_25sdp"
                         android:src="@drawable/radio_unchecked"
@@ -129,11 +130,11 @@
                     android:id="@+id/divider3"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/_1sdp"
-                    android:layout_marginTop="@dimen/_10sdp"
                     android:background="#26263A" />
 
+                <!-- Option 3: 1 Hour -->
                 <LinearLayout
-                    android:id="@+id/layout_7Days"
+                    android:id="@+id/layout_1Hour"
                     android:layout_width="match_parent"
                     android:layout_height="@dimen/_56sdp"
                     android:gravity="center_vertical"
@@ -142,16 +143,84 @@
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/opt_7d"
+                        android:id="@+id/opt_1h"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:text="7 Days"
+                        android:text="1 Hour"
                         android:textColor="#E6F7FF"
                         android:textSize="@dimen/_16sdp" />
 
                     <ImageView
-                        android:id="@+id/radio_7Days"
+                        android:id="@+id/radio_1h"
+                        android:layout_width="@dimen/_25sdp"
+                        android:layout_height="@dimen/_25sdp"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider4"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:background="#26263A" />
+
+                <!-- Option 4: 1 Day -->
+                <LinearLayout
+                    android:id="@+id/layout_1Day"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_1d"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="1 Day"
+                        android:textColor="#E6F7FF"
+                        android:textSize="@dimen/_16sdp" />
+
+                    <ImageView
+                        android:id="@+id/radio_1d"
+                        android:layout_width="@dimen/_25sdp"
+                        android:layout_height="@dimen/_25sdp"
+                        android:src="@drawable/radio_unchecked"
+                        android:buttonTint="@null" />
+                </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:id="@+id/divider5"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_1sdp"
+                    android:background="#26263A" />
+
+                <!-- Option 5: 2 Days -->
+                <LinearLayout
+                    android:id="@+id/layout_2Days"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/_56sdp"
+                    android:gravity="center_vertical"
+                    android:paddingRight="@dimen/_20sdp"
+                    android:paddingLeft="@dimen/_20sdp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/opt_2d"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="2 Days"
+                        android:textColor="#E6F7FF"
+                        android:textSize="@dimen/_16sdp" />
+
+                    <ImageView
+                        android:id="@+id/radio_2d"
                         android:layout_width="@dimen/_25sdp"
                         android:layout_height="@dimen/_25sdp"
                         android:src="@drawable/radio_unchecked"

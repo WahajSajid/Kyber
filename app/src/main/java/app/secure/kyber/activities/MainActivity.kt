@@ -105,8 +105,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var networkObserverJob: Job? = null
-    private var networkDialogVisible = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -198,6 +196,38 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    }
+
+    private fun requestBatteryOptimizationBypass() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(POWER_SERVICE) as android.os.PowerManager
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                showBatteryOptimizationDialog()
+            }
+        }
+    }
+
+    private fun showBatteryOptimizationDialog() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_battery_optimization, null)
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialogView.findViewById<View>(R.id.btnDisableOptimization).setOnClickListener {
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                intent.data = android.net.Uri.parse("package:$packageName")
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Failed to open battery optimization settings", e)
+            }
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     private val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
@@ -386,7 +416,7 @@ class MainActivity : AppCompatActivity() {
 
 
         args = bundleOf(
-            "contact_id" to contactID,
+            "contact_onion" to contactID,
             "contact_name" to contactName
         )
         binding.chatTittle.setOnClickListener {
@@ -401,11 +431,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     public fun onGroupChatDetailsClick(
+        groupId: String,
         groupName: String,
         creationDate: String,
         noOfMembers: String
     ) {
         args = bundleOf(
+            "group_id" to groupId,
             "group_name" to groupName,
             "creation_date" to creationDate,
             "no_of_members" to noOfMembers
@@ -473,9 +505,13 @@ class MainActivity : AppCompatActivity() {
                 immediateSync
             )
 
+        requestBatteryOptimizationBypass()
         checkAppLock()
         lockHandler.postDelayed(lockRunnable, 10000L)
     }
+
+    private var networkDialogVisible = false
+    private var networkObserverJob: Job? = null
 
     private fun observeInternetDisconnect() {
         networkObserverJob?.cancel()
@@ -483,23 +519,52 @@ class MainActivity : AppCompatActivity() {
             NetworkMonitor.isConnected.collectLatest { connected ->
                 if (connected) {
                     networkDialogVisible = false
+                    connectionErrorDialog?.dismiss()
+                    connectionErrorDialog = null
                     return@collectLatest
                 }
+                
                 if (networkDialogVisible || isFinishing || isDestroyed) return@collectLatest
-                networkDialogVisible = true
-                AlertDialog.Builder(this@MainActivity)
-                    .setMessage("Secure Connection Lost")
-                    .setPositiveButton("OK") { _, _ ->
-                        myApp.isAppLocked = true
-                        val intent = Intent(this@MainActivity, ValidatePasswordActivity::class.java)
-                        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        startActivity(intent)
-                        finish()
+                
+                // Connection Lost logic
+                try {
+                    // 1. Navigate to lock screen and clear backstack
+                    if (controller.currentDestination?.id != R.id.encryptMsgPwdFragment2) {
+                        val navOptions = androidx.navigation.NavOptions.Builder()
+                            .setPopUpTo(R.id.activity_main_graph, true)
+                            .build()
+                        controller.navigate(R.id.encryptMsgPwdFragment2, null, navOptions)
                     }
-                    .setCancelable(false)
-                    .show()
+                    
+                    // 2. Show styled dialog
+                    showConnectionErrorDialog()
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Disconnect handling failed", e)
+                }
             }
         }
+    }
+
+    private var connectionErrorDialog: AlertDialog? = null
+
+    private fun showConnectionErrorDialog() {
+        if (connectionErrorDialog?.isShowing == true) return
+        
+        val dialogView = layoutInflater.inflate(R.layout.dialog_connection_error, null)
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialogView.findViewById<View>(R.id.btnOk).setOnClickListener {
+            dialog.dismiss()
+            connectionErrorDialog = null
+        }
+
+        connectionErrorDialog = dialog
+        dialog.show()
     }
 
     /**

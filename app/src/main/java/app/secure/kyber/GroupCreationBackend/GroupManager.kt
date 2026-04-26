@@ -20,6 +20,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 class GroupManager {
     private val database =
@@ -337,11 +341,14 @@ class GroupManager {
         return try {
             val messageId = groupMessagesRef.child(groupId).push().key ?: return false
 
-            val isMedia = type != "TEXT"
+            // Wipe signal messages (WIPE_REQUEST / WIPE_RESPONSE) carry no media payload
+            // and must be written to Firebase synchronously, exactly like TEXT messages.
+            val isSignalMessage = type.uppercase().startsWith("WIPE_")
+            val isMedia = type != "TEXT" && !isSignalMessage
             val initialUploadState = if (isMedia) "uploading" else "done"
             val initialUploadProgress = if (isMedia) 0 else 100
 
-            val disappearTimerMs = context?.let { app.secure.kyber.backend.common.Prefs.getDisappearingTimerMs(it) } ?: 0L
+            val disappearTimerMs = context?.let { app.secure.kyber.backend.common.Prefs.getEffectiveDisappearingTimerMs(it, groupId) } ?: 0L
             val localExpiresAt = if (disappearTimerMs > 0L) System.currentTimeMillis() + disappearTimerMs else 0L
 
             // Room entity — always use the local file path (uri).
@@ -382,7 +389,13 @@ class GroupManager {
                 )
                 groupMessagesRef.child(groupId).child(messageId).setValue(firebasePayload).await()
                 
-                val lastMsg = "$senderName: $messageText"
+                val lastMsg = when (type.uppercase()) {
+                    "WIPE_REQUEST"  -> "$senderName: Wipe Chat Request"
+                    "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
+                    "WIPE_SYSTEM"   -> "Chat history updated"
+                    "WIPE_EVENT_RECEIVED" -> messageText
+                    else            -> "$senderName: $messageText"
+                }
                 val updates = hashMapOf<String, Any>(
                     "lastMessage"       to lastMsg,
                     "lastMessageTime"   to roomEntity.time,
@@ -407,6 +420,8 @@ class GroupManager {
             
             // ALWAYS update local preview immediately for all message types
             val localLastMsg = when (type.uppercase()) {
+                "WIPE_REQUEST" -> "$senderName: Wipe Request Sent"
+                "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
                 "IMAGE" -> "$senderName: sent an image"
                 "VIDEO" -> "$senderName: sent a video"
                 "AUDIO" -> "$senderName: sent a voice message"
@@ -505,6 +520,10 @@ class GroupManager {
                                 resolvedUri = resolveIncomingUri(context, rawUri, type)
                             }
 
+                            val disappearTtl = messageSnapshot.child("disappear_ttl").getValue(Long::class.java) ?: 0L
+                            val sentMs = timeStamp.toLongOrNull() ?: System.currentTimeMillis()
+                            val localExpiresAt = if (disappearTtl > 0L) sentMs + disappearTtl else 0L
+
                             val message = GroupMessageEntity(
                                 messageId   = messageId,
                                 group_id    = group_id,
@@ -518,8 +537,112 @@ class GroupManager {
                                 ampsJson    = ampsJson,
                                 reaction    = reaction,
                                 downloadState = if (rawType == "CHUNKED_MEDIA") "pending" else "done",
+                                expiresAt   = localExpiresAt, // Enforce Sender Authority
                                 replyToText = replyToText
                             )
+
+                            if (type == "WIPE_RESPONSE") {
+                                val wipeMeta = parseGroupWipeResponseMeta(messageText)
+                                val dao = AppDb.get(context ?: return@launch).groupsMessagesDao()
+                                val requester = wipeMeta.requesterOnion
+                                val responder = wipeMeta.responderOnion ?: sender_id
+                                val isParticipant = !requester.isNullOrBlank() && !responder.isNullOrBlank() &&
+                                        (mySenderId == requester || mySenderId == responder)
+                                val isObserver = !requester.isNullOrBlank() && !responder.isNullOrBlank() &&
+                                        mySenderId != requester && mySenderId != responder
+
+                                if (isGroupAnonymous && isObserver) {
+                                    continue
+                                }
+
+                                // Resolve real member names from the stored WIPE_REQUEST message.
+                                // The responder's name is already in displayName (computed above for this message).
+                                // The requester's name is stored in the original WIPE_REQUEST row.
+                                val wipeReqRow = if (!wipeMeta.requestId.isNullOrBlank())
+                                    dao.getMessageById(wipeMeta.requestId) else null
+                                val requesterName: String = if (wipeReqRow != null) {
+                                    resolveAnonymousDisplayName(
+                                        context = context,
+                                        groupId = groupId,
+                                        senderId = wipeReqRow.senderOnion,
+                                        rawName = wipeReqRow.senderName,
+                                        isGroupAnonymous = isGroupAnonymous,
+                                        groupCreatorId = groupCreatorId,
+                                        mySenderId = mySenderId
+                                    )
+                                } else "Member"
+                                // Responder's display name is already resolved by the outer block
+                                val responderName = displayName
+
+                                if (
+                                    wipeMeta.action == "ACCEPTED" &&
+                                    !requester.isNullOrBlank() &&
+                                    !responder.isNullOrBlank() &&
+                                    isParticipant
+                                ) {
+                                    // ── Pairwise wipe: expire only messages between these two members up to current event time ──
+                                    dao.expireByGroupIdAndSenderPairExcept(group_id, requester, responder, wipeMeta.requestId ?: "", timeStamp)
+                                }
+
+                                // ── USER REQUIREMENT: Isolate Reactions in Non-Anonymous Groups ──
+                                // Only update the bubble's reaction state (Accepted/Rejected) for the responder 
+                                // who actually clicked it. For others in a non-anonymous group, the bubble 
+                                // should stay active or be replaced by a system message.
+                                if (!wipeMeta.requestId.isNullOrBlank() &&
+                                    (wipeMeta.action == "ACCEPTED" || wipeMeta.action == "REJECTED")
+                                ) {
+                                    if (isGroupAnonymous || mySenderId == responder || mySenderId == requester) {
+                                        dao.updateReaction(wipeMeta.requestId, wipeMeta.action)
+                                    }
+                                }
+
+                                // ── Requester (Member A) side: notify about acceptance/rejection ──
+                                if (mySenderId == requester) {
+                                    val actionText = if (wipeMeta.action == "ACCEPTED") "accepted" else "rejected"
+                                    val evtMsgId = "wipe_evt_${messageId}_${mySenderId}"
+                                    val existingEvt = dao.getMessageById(evtMsgId)
+                                    if (existingEvt == null) {
+                                        dao.insertGroupMessage(
+                                            GroupMessageEntity(
+                                                messageId = evtMsgId,
+                                                group_id = group_id,
+                                                msg = "$responderName $actionText your wipe request",
+                                                senderOnion = responder, // Show on the received side
+                                                senderName = responderName,
+                                                time = timeStamp, // Use original message timestamp to prevent jumping
+                                                type = "WIPE_EVENT_RECEIVED",
+                                                isSent = false
+                                            )
+                                        )
+                                    }
+                                }
+
+                                // ── Observer (non-participant) side ──
+                                if (isObserver && !isGroupAnonymous) {
+                                    val observerMsg = if (wipeMeta.action == "REJECTED") {
+                                        "$responderName rejected the wipe request of $requesterName"
+                                    } else {
+                                        "$responderName accepted the wipe request of $requesterName"
+                                    }
+                                    val sysMsgId = "wipe_evt_${messageId}_${mySenderId}"
+                                    val existingSys = dao.getMessageById(sysMsgId)
+                                    if (existingSys == null) {
+                                        dao.insertGroupMessage(
+                                            GroupMessageEntity(
+                                                messageId = sysMsgId,
+                                                group_id = group_id,
+                                                msg = observerMsg,
+                                                senderOnion = "system",
+                                                senderName = "System",
+                                                time = timeStamp, // Use original message timestamp to prevent jumping
+                                                type = "WIPE_SYSTEM",
+                                                isSent = false
+                                            )
+                                        )
+                                    }
+                                }
+                                continue
+                            }
 
                             // DEEP MERGE: Preserve local file/upload data
                             val dao = AppDb.get(context ?: return@launch).groupsMessagesDao()
@@ -534,14 +657,15 @@ class GroupManager {
                                 if (hasLocalData) {
                                     val updated = existing.copy(
                                         msg = messageText,
-                                        reaction = reaction,
+                                        reaction = if (reaction.isNotEmpty()) reaction else existing.reaction,
                                         senderName = displayName,
                                         downloadProgress = existing.downloadProgress,
                                         uploadProgress = existing.uploadProgress,
                                         localFilePath = existing.localFilePath,
                                         uri = existing.uri,
                                         downloadState = existing.downloadState,
-                                        uploadState = existing.uploadState
+                                        uploadState = existing.uploadState,
+                                        expiresAt = existing.expiresAt // PRESERVE local expiration (e.g. from Wipe)
                                     )
                                     dao.insertGroupMessage(updated)
                                 } else {
@@ -703,9 +827,10 @@ class GroupManager {
                     // Update only metadata/reactions, PRESERVE everything else
                     val updated = existing.copy(
                         msg = messageText,
-                        reaction = reaction,
+                        reaction = if (reaction.isNotEmpty()) reaction else existing.reaction,
                         senderName = displayName,
-                        downloadProgress = existing.downloadProgress // Keep current progress
+                        downloadProgress = existing.downloadProgress, // Keep current progress
+                        expiresAt = existing.expiresAt // PRESERVE local expiration
                     )
                     dao.insertGroupMessage(updated)
                 } else {
@@ -744,16 +869,109 @@ class GroupManager {
                 expiresAt   = localExpiresAt,
                 replyToText = replyToText
             )
+            
+            if (type == "WIPE_RESPONSE") {
+                val wipeMeta = parseGroupWipeResponseMeta(messageText)
+                val requester = wipeMeta.requesterOnion
+                val responder = wipeMeta.responderOnion ?: sender_id
+                val isParticipant = !requester.isNullOrBlank() && !responder.isNullOrBlank() &&
+                        (mySenderId == requester || mySenderId == responder)
+                val isObserver = !requester.isNullOrBlank() && !responder.isNullOrBlank() &&
+                        mySenderId != requester && mySenderId != responder
+                if (isGroupAnonymous && isObserver) {
+                    return
+                }
+
+                // Look up real names from the stored WIPE_REQUEST row.
+                val wipeReqRow = if (!wipeMeta.requestId.isNullOrBlank())
+                    dao.getMessageById(wipeMeta.requestId) else null
+                val requesterName: String = if (wipeReqRow != null) {
+                    resolveAnonymousDisplayName(
+                        context, groupId, wipeReqRow.senderOnion, wipeReqRow.senderName,
+                        isGroupAnonymous, groupCreatorId, mySenderId
+                    )
+                } else "Member"
+                // displayName here is the responder (sender of the WIPE_RESPONSE)
+                val responderName = displayName
+
+                if (
+                    wipeMeta.action == "ACCEPTED" &&
+                    !requester.isNullOrBlank() &&
+                    !responder.isNullOrBlank() &&
+                    isParticipant
+                ) {
+                    dao.expireByGroupIdAndSenderPairExcept(groupId, requester, responder, wipeMeta.requestId ?: "", timeStamp)
+                }
+
+                if (!wipeMeta.requestId.isNullOrBlank() &&
+                    (wipeMeta.action == "ACCEPTED" || wipeMeta.action == "REJECTED")
+                ) {
+                    if (isGroupAnonymous || mySenderId == responder || mySenderId == requester) {
+                        dao.updateReaction(wipeMeta.requestId, wipeMeta.action)
+                    }
+                }
+
+                // Requester (Member A) side: notify about acceptance/rejection
+                if (mySenderId == requester) {
+                    val actionText = if (wipeMeta.action == "ACCEPTED") "accepted" else "rejected"
+                    val evtMsgId = "wipe_evt_${messageId}_${mySenderId}"
+                    val existingEvt = dao.getMessageById(evtMsgId)
+                    if (existingEvt == null) {
+                        dao.insertGroupMessage(
+                            GroupMessageEntity(
+                                messageId = evtMsgId,
+                                group_id = groupId,
+                                msg = "$responderName $actionText your wipe request",
+                                senderOnion = responder, // Show on the received side
+                                senderName = responderName,
+                                time = timeStamp, // Use original message timestamp to prevent jumping
+                                type = "WIPE_EVENT_RECEIVED",
+                                isSent = false
+                            )
+                        )
+                    }
+                }
+
+                // Observers (non-participants) in non-anonymous groups
+                if (isObserver && !isGroupAnonymous) {
+                    val observerMsg = if (wipeMeta.action == "REJECTED") {
+                        "$responderName rejected the wipe request of $requesterName"
+                    } else {
+                        "$responderName accepted the wipe request of $requesterName"
+                    }
+                    val sysMsgId = "wipe_evt_${messageId}_${mySenderId}"
+                    val existingSys = dao.getMessageById(sysMsgId)
+                    if (existingSys == null) {
+                        dao.insertGroupMessage(
+                            GroupMessageEntity(
+                                messageId = sysMsgId,
+                                group_id = groupId,
+                                msg = observerMsg,
+                                senderOnion = "system",
+                                senderName = "System",
+                                time = timeStamp, // Use original message timestamp to prevent jumping
+                                type = "WIPE_SYSTEM",
+                                isSent = false
+                            )
+                        )
+                    }
+                }
+                return
+            }
             dao.insertGroupMessage(message)
         }
 
-        // Sync metadata (Last Message Preview)
+        // Sync metadata (Last Message Preview) — never expose raw wipe JSON
         val lastMsg = when (type.uppercase()) {
-            "IMAGE" -> "$displayName: sent an image"
-            "VIDEO" -> "$displayName: sent a video"
-            "AUDIO" -> "$displayName: sent a voice message"
+            "IMAGE"         -> "$displayName: sent an image"
+            "VIDEO"         -> "$displayName: sent a video"
+            "AUDIO"         -> "$displayName: sent a voice message"
             "CHUNKED_MEDIA" -> "$displayName: sent a media file"
-            else -> "$displayName: $messageText"
+            "WIPE_REQUEST"  -> "$displayName: Wipe Chat Request"
+            "WIPE_RESPONSE" -> "$displayName: Wipe Request Update"
+            "WIPE_SYSTEM"   -> "Chat history updated"
+            "WIPE_EVENT_RECEIVED" -> messageText
+            else            -> "$displayName: $messageText"
         }
         db.groupsDao().updateLastMessage(groupId, lastMsg, msgTime)
 
@@ -1013,5 +1231,45 @@ class GroupManager {
         if (raw.isBlank()) return "_"
         val sanitized = raw.replace(invalidFirebaseKeyChars, ",")
         return if (sanitized.isBlank()) "_" else sanitized
+    }
+
+    private fun formatWipeTimestamp(ts: Long): String {
+        val now = Calendar.getInstance()
+        val then = Calendar.getInstance().apply { timeInMillis = ts }
+        val sameDay = now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+                now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+        return if (sameDay) {
+            SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(ts))
+        } else {
+            SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(ts))
+        }
+    }
+
+    private data class GroupWipeResponseMeta(
+        val action: String,
+        val requesterOnion: String?,
+        val responderOnion: String?,
+        val requestId: String?
+    )
+
+    private fun parseGroupWipeResponseMeta(raw: String): GroupWipeResponseMeta {
+        val trimmed = raw.trim()
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            runCatching {
+                val obj = org.json.JSONObject(trimmed)
+                return GroupWipeResponseMeta(
+                    action = obj.optString("action", "").uppercase(Locale.US),
+                    requesterOnion = obj.optString("requesterOnion", null),
+                    responderOnion = obj.optString("responderOnion", null),
+                    requestId = obj.optString("requestId", null)
+                )
+            }
+        }
+        return GroupWipeResponseMeta(
+            action = trimmed.uppercase(Locale.US),
+            requesterOnion = null,
+            responderOnion = null,
+            requestId = null
+        )
     }
 }

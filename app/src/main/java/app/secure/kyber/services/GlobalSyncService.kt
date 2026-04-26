@@ -23,6 +23,7 @@ import app.secure.kyber.workers.KeyRotationWorker
 import app.secure.kyber.workers.MessageCleanupWorker
 import app.secure.kyber.workers.SyncWorker
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -53,6 +54,7 @@ class GlobalSyncService : LifecycleService() {
     lateinit var repository: KyberRepository
 
     private var periodicJobCoroutine: Job? = null
+    private var disappearingCleanupJob: Job? = null
     private var networkObserverJob: Job? = null
 
     companion object {
@@ -60,6 +62,7 @@ class GlobalSyncService : LifecycleService() {
         private const val NOTIFICATION_ID = 9999
         private const val NOTIFICATION_CHANNEL = "kyber_sync_service"
         private const val PERIODIC_JOB_INTERVAL_MS = 5 * 60 * 1000L  // 5 minutes
+        private const val DISAPPEARING_CLEANUP_INTERVAL_MS = 1000L // 1 second for "absolute" precision
     }
 
     override fun onCreate() {
@@ -82,6 +85,9 @@ class GlobalSyncService : LifecycleService() {
 
         // 4. Start periodic job scheduler (every 5 minutes)
         startPeriodicJobScheduler()
+
+        // 4b. Start precise disappearing message cleanup (every 5 seconds)
+        startDisappearingMessagePreciseCleanup()
 
         // 5. Register receiver for package replacement (service restart on app update)
         registerPackageReplacedReceiver()
@@ -173,6 +179,69 @@ class GlobalSyncService : LifecycleService() {
      * 
      * Only executes if network is available.
      */
+    /**
+     * ═══════════════════════════════════════════════════════════════════
+     * DISAPPEARING MESSAGE PRECISE CLEANUP - Runs Every 5 Seconds
+     * ═══════════════════════════════════════════════════════════════════
+     * 
+     * Performs "Hard-Deletion" of expired messages from the local database.
+     * Triggers UI updates automatically via Room Flow observers.
+     */
+    private fun startDisappearingMessagePreciseCleanup() {
+        disappearingCleanupJob = lifecycleScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val db = AppDb.get(this@GlobalSyncService)
+                    val now = System.currentTimeMillis()
+                    
+                    // 1. Cleanup Private Messages (Hard-Delete)
+                    val expiredPrivate = db.messageDao().getExpiredMessages(now)
+                    if (expiredPrivate.isNotEmpty()) {
+                        Log.d(TAG, "Absolute Deletion: Purging ${expiredPrivate.size} expired private messages")
+                        expiredPrivate.forEach { msg ->
+                            deleteMediaFiles(msg.localFilePath, msg.thumbnailPath)
+                        }
+                        db.messageDao().deleteExpiredMessages(now)
+                    }
+
+                    // 2. Cleanup Group Messages (Hard-Delete)
+                    val expiredGroups = db.groupsMessagesDao().getExpiredGroupMessages(now)
+                    if (expiredGroups.isNotEmpty()) {
+                        Log.d(TAG, "Absolute Deletion: Purging ${expiredGroups.size} expired group messages")
+                        expiredGroups.forEach { msg ->
+                            deleteMediaFiles(msg.localFilePath, msg.thumbnailPath)
+                        }
+                        db.groupsMessagesDao().deleteExpiredGroupMessages(now)
+                    }
+
+                    delay(DISAPPEARING_CLEANUP_INTERVAL_MS)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in disappearing message cleanup", e)
+                    delay(DISAPPEARING_CLEANUP_INTERVAL_MS)
+                }
+            }
+        }
+    }
+
+    private fun deleteMediaFiles(localPath: String?, thumbnailPath: String?) {
+        localPath?.let { path ->
+            try {
+                val file = java.io.File(path)
+                if (file.exists()) file.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete media file: $path")
+            }
+        }
+        thumbnailPath?.let { path ->
+            try {
+                val file = java.io.File(path)
+                if (file.exists()) file.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete thumbnail file: $path")
+            }
+        }
+    }
+
     private fun startPeriodicJobScheduler() {
         periodicJobCoroutine = lifecycleScope.launch {
             while (isActive) {
@@ -318,6 +387,7 @@ class GlobalSyncService : LifecycleService() {
 
         // Cancel coroutines
         periodicJobCoroutine?.cancel()
+        disappearingCleanupJob?.cancel()
         networkObserverJob?.cancel()
 
         // START_STICKY will auto-restart service
