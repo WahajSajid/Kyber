@@ -333,6 +333,21 @@ class MainActivity : AppCompatActivity() {
 
             }
 
+            R.id.encryptMsgPwdFragment2 -> {
+                ivAddContact.visibility = View.GONE
+                ivDotsContact.visibility = View.GONE
+                ivAdd.visibility = View.GONE
+                ivVpn.visibility = View.GONE
+                ivBackBtn.visibility = View.GONE
+                binding.chatTittle.visibility = View.GONE
+                binding.titletoolbar.visibility = View.GONE
+                ivCall.visibility = View.GONE
+                ivVideo.visibility = View.GONE
+                ivLogo.visibility = View.GONE
+                appBarLayout.visibility = View.GONE
+                bottomBar.visibility = View.GONE
+            }
+
             R.id.sharedMediaFragment -> {
                 ivAddContact.visibility = View.GONE
                 ivDotsContact.visibility = View.GONE
@@ -547,7 +562,7 @@ class MainActivity : AppCompatActivity() {
 
     private var connectionErrorDialog: AlertDialog? = null
 
-    private fun showConnectionErrorDialog() {
+    public fun showConnectionErrorDialog() {
         if (connectionErrorDialog?.isShowing == true) return
         
         val dialogView = layoutInflater.inflate(R.layout.dialog_connection_error, null)

@@ -62,6 +62,11 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         binding.btnPwd.setOnClickListener {
             hideKeyboard()
 
+            if (!NetworkMonitor.isConnected.value) {
+                (activity as? MainActivity)?.showConnectionErrorDialog()
+                return@setOnClickListener
+            }
+
 
             val input = binding.etPwd.text.toString().trim()
             val ctx = requireContext()
