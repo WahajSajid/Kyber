@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/actionMenuReceived"
+    android:layout_width="@dimen/_200sdp"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="@dimen/_14sdp"
+    android:background="@drawable/delete_chat_dialog_bg"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:elevation="@dimen/_8sdp"
+    android:orientation="vertical"
+    android:visibility="visible"
+    app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
+    app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd">
+
+
+    <LinearLayout
+        android:id="@+id/btnDeleteRcv"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_48sdp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/_16sdp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_16sdp"
+            android:layout_weight="1"
+            android:fontFamily="@font/roboto_regular"
+            android:text="Delete"
+            android:textColor="#FF4444"
+            android:textSize="@dimen/_16sdp" />
+
+        <ImageView
+            android:layout_width="@dimen/_24sdp"
+            android:layout_height="@dimen/_24sdp"
+            android:contentDescription="delete"
+            android:src="@drawable/trash_icon"
+            app:tint="#FF4444" />
+    </LinearLayout>
+</LinearLayout>
+
+
+
+

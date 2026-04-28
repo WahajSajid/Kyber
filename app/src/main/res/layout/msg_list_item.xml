@@ -126,7 +126,7 @@
             android:paddingTop="@dimen/_8sdp"
             android:paddingEnd="@dimen/_8sdp"
             android:paddingBottom="@dimen/_4sdp"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
@@ -408,7 +408,7 @@
         android:clipToPadding="false"
         android:elevation="@dimen/_8sdp"
         android:orientation="vertical"
-        android:visibility="gone"
+        android:visibility="visible"
         app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
         app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd">
 
@@ -600,7 +600,7 @@
             android:id="@+id/sent_message_media"
             android:layout_width="@dimen/_200sdp"
             android:layout_height="@dimen/_200sdp"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/ivSentMedia"
@@ -841,6 +841,7 @@
                         android:textSize="@dimen/_10sdp" />
 
                     <ImageView
+                        android:id="@+id/voice_sent_status"
                         android:layout_width="@dimen/_10sdp"
                         android:layout_height="@dimen/_11sdp"
                         android:layout_gravity="center_vertical"
@@ -884,7 +885,7 @@
             android:layout_marginEnd="@dimen/_8sdp"
             android:gravity="end|center_vertical"
             android:orientation="horizontal"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <TextView
                 android:id="@+id/tvSentTime"

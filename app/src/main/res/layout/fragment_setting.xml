@@ -56,7 +56,6 @@
                     android:id="@+id/details_layout"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/_8sdp"
                     app:layout_constraintBottom_toBottomOf="@id/profile_picture"
                     app:layout_constraintStart_toEndOf="@id/profile_picture"
                     app:layout_constraintTop_toTopOf="@id/profile_picture">
@@ -65,7 +64,7 @@
                         android:id="@+id/tvNameDis"
                         android:layout_width="@dimen/_190sdp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/_15sdp"
+                        android:layout_marginStart="@dimen/_8sdp"
                         android:ellipsize="end"
                         android:fontFamily="@font/roboto_regular"
                         android:maxLines="1"
@@ -80,7 +79,7 @@
                         android:id="@+id/tvName"
                         android:layout_width="@dimen/_160sdp"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/_15sdp"
+                        android:layout_marginStart="@dimen/_8sdp"
                         android:ellipsize="end"
                         android:fontFamily="@font/roboto_regular"
                         android:maxLines="1"
@@ -94,7 +93,7 @@
                         android:id="@+id/last_update_group"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="@dimen/_15sdp"
+                        android:layout_marginStart="@dimen/_8sdp"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
                         app:layout_constraintStart_toStartOf="parent"
@@ -336,16 +335,31 @@
                         android:textSize="@dimen/_14sdp" />
                 </LinearLayout>
 
+                <TextView
+                    android:id="@+id/SecuritySection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Security"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_22sdp"
+                    android:layout_marginStart="@dimen/_10sdp"
+                    app:layout_constraintTop_toBottomOf="@id/subscription_card"
+                    app:layout_constraintStart_toStartOf="@id/subscription_card"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    />
+
+
+
                 <LinearLayout
                     android:id="@+id/list_container"
                     android:layout_width="0dp"
-                    android:layout_height="@dimen/_95sdp"
+                    android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/_10sdp"
                     android:background="@drawable/settings_card_bg"
                     android:orientation="vertical"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@id/subscription_card">
+                    app:layout_constraintTop_toBottomOf="@id/SecuritySection">
 
                     <LinearLayout
                         android:id="@+id/item_security"
@@ -372,6 +386,63 @@
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>
 
+
+                    <LinearLayout
+                        android:id="@+id/item_wipe_other_phone"
+                        android:layout_width="match_parent"
+                        android:layout_height="@dimen/_44sdp"
+                        android:layout_marginBottom="@dimen/_5sdp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingHorizontal="@dimen/_18sdp">
+
+                        <ImageView
+                            android:layout_width="@dimen/_19sdp"
+                            android:layout_height="@dimen/_20sdp"
+                            android:contentDescription="@null"
+                            android:src="@drawable/wipe_other_phone_ic"
+                            app:tint="@color/white" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="@dimen/_15sdp"
+                            android:layout_weight="1"
+                            android:text="Wipe Other Phone"
+                            android:textColor="@color/white"
+                            android:textSize="@dimen/_18sdp" />
+                    </LinearLayout>
+
+
+                </LinearLayout>
+
+
+                <TextView
+                    android:id="@+id/GeneralSection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="General"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/_22sdp"
+                    android:layout_marginStart="@dimen/_10sdp"
+                    app:layout_constraintTop_toBottomOf="@id/list_container"
+                    app:layout_constraintStart_toStartOf="@id/list_container"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    />
+
+
+                <LinearLayout
+                    android:id="@+id/list2_container"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/_10sdp"
+                    android:background="@drawable/settings_card_bg"
+                    android:orientation="vertical"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toBottomOf="@id/GeneralSection">
+
+
                     <LinearLayout
                         android:id="@+id/item_notifications"
                         android:layout_width="match_parent"
@@ -397,18 +468,6 @@
                             android:textSize="@dimen/_18sdp" />
                     </LinearLayout>
 
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/list2_container"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="@dimen/_10sdp"
-                    android:background="@drawable/settings_card_bg"
-                    android:orientation="vertical"
-                    app:layout_constraintEnd_toEndOf="parent"
-                    app:layout_constraintStart_toStartOf="parent"
-                    app:layout_constraintTop_toBottomOf="@id/list_container">
 
                     <LinearLayout
                         android:id="@+id/item_help"

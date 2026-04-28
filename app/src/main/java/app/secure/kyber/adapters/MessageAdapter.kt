@@ -329,6 +329,9 @@ class MessageAdapter(
         // Text specific
         val ivSentStatus: ImageView? = view.findViewById(R.id.ivSentStatus)
         val btnRetrySentText: android.widget.Button? = view.findViewById(R.id.btnRetrySentText)
+        
+        // Voice specific status
+        val ivVoiceSentStatus: ImageView? = view.findViewById(R.id.voice_sent_status)
 
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
@@ -620,6 +623,33 @@ class MessageAdapter(
         }
     }
 
+    private fun applyStatusIndicator(imageView: ImageView?, item: MessageUiModel) {
+        if (imageView == null) return
+        imageView.setImageResource(R.drawable.privacy)
+        when {
+            item.seenAt > 0L -> {
+                // 🟢 Seen
+                imageView.setColorFilter(android.graphics.Color.parseColor("#4CAF50"))
+            }
+            item.deliveredAt > 0L -> {
+                // 🔵 Delivered
+                imageView.setColorFilter(android.graphics.Color.parseColor("#2196F3"))
+            }
+            item.uploadState == "done" -> {
+                // 🟡 Sent
+                imageView.setColorFilter(android.graphics.Color.parseColor("#FFC107"))
+            }
+            item.uploadState == "failed" -> {
+                // 🔴 Failed
+                imageView.setColorFilter(android.graphics.Color.parseColor("#F44336"))
+            }
+            else -> {
+                // 🔴 Sending (pending / uploading)
+                imageView.setColorFilter(android.graphics.Color.parseColor("#F44336"))
+            }
+        }
+    }
+
     private fun bindText(h: VH, item: MessageUiModel, sent: Boolean) {
         h.sentAudio.isVisible = false
         h.rcvAudio.isVisible = false
@@ -742,19 +772,9 @@ class MessageAdapter(
                 h.tvSent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
             }
 
-            // Text retry and pending logic
-            h.btnRetrySentText?.isVisible = false
-            if (item.uploadState == "pending" || item.uploadState == "uploading") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.setColorFilter(android.graphics.Color.GRAY)
-            } else if (item.uploadState == "failed") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.setColorFilter(android.graphics.Color.RED)
-                h.btnRetrySentText?.isVisible = true
-            } else {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.colorFilter = null
-            }
+            // ── 4-State message status indicator ─────────────────────────────────
+            applyStatusIndicator(h.ivSentStatus, item)
+            h.btnRetrySentText?.isVisible = item.uploadState == "failed"
 
             h.btnRetrySentText?.setOnClickListener { onRetryUpload(item) }
             return
@@ -788,13 +808,17 @@ class MessageAdapter(
         }
 
         if (animatingIds.contains(msgId)) {
-            h.tvDecryptingRcv?.visibility = View.GONE
-            h.tvRcv.cancelAndShowFinal()
-            h.tvRcv.text = item.decryptedMsg
-            decryptedTextCache[msgId] = item.decryptedMsg
-            animatingIds.remove(msgId)
-            decryptJobs[msgId]?.cancel()
-            decryptJobs.remove(msgId)
+            // Already animating in a background coroutine. 
+            // Ensure the UI state is consistent (showing 'Decrypting' and scramble)
+            // while we wait for the coroutine to progress to the reveal phase.
+            h.tvDecryptingRcv?.visibility = View.VISIBLE
+            h.tvDecryptingRcv?.text = "Decrypting..."
+            
+            // If the view was recycled, it might have final text from another message.
+            // Reset it to the scramble state so it looks correct while waiting.
+            val placeholder = generateEncryptedPlaceholder(item.decryptedMsg)
+            h.tvRcv.prepareForAnimation(placeholder)
+            h.tvRcv.text = placeholder
             return
         }
 
@@ -822,23 +846,27 @@ class MessageAdapter(
                 decryptedTextCache[msgId] = decrypted
 
                 withContext(Dispatchers.Main) {
-                    val liveVH = findVHForMessage(msgId) ?: run {
-                        animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext
+                    // Update cache even if VH is not visible, so when we scroll back it's already decrypted.
+                    decryptedTextCache[msgId] = decrypted
+                    
+                    val liveVH = findVHForMessage(msgId)
+                    if (liveVH == null) {
+                        animatingIds.remove(msgId)
+                        decryptJobs.remove(msgId)
+                        return@withContext
                     }
 
+                    liveVH.tvDecryptingRcv?.visibility = View.VISIBLE
                     liveVH.tvRcv.startPhase1(
                         decrypted = decrypted,
                         onPhase1Done = {
                             val vh2 = findVHForMessage(msgId)
                             if (vh2 != null) {
-                                vh2.tvRcv.beginPhase2(
-                                    onDone = {
-                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility =
-                                            View.GONE
-                                        animatingIds.remove(msgId)
-                                        decryptJobs.remove(msgId)
-                                    }
-                                )
+                                vh2.tvDecryptingRcv?.visibility = View.GONE
+                                vh2.tvRcv.beginPhase2(onDone = {
+                                    animatingIds.remove(msgId)
+                                    decryptJobs.remove(msgId)
+                                })
                             } else {
                                 animatingIds.remove(msgId)
                                 decryptJobs.remove(msgId)
@@ -886,6 +914,9 @@ class MessageAdapter(
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
         h.tvRcv.cancelAndShowFinal()
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+        // ── Fix: explicitly hide time layouts so recycled text-message views don't bleed ──
+        h.sentMessageTimeLayout?.visibility = View.GONE
+        h.receivedMessageTimeLayout?.visibility = View.GONE
 
         val ctx = h.itemView.context
 
@@ -1087,10 +1118,17 @@ class MessageAdapter(
             val sentReady = item.uploadState == "done"
             h.ivSentMedia.isClickable = sentReady
             h.ivSentPlay.isClickable = sentReady
+            
+            // ── Show Time and Status for Sent Media ──
+            h.sentMessageTimeLayout?.visibility = View.VISIBLE
+            applyStatusIndicator(h.ivSentStatus, item)
         } else {
             val rcvReady = item.downloadState == "done"
             h.ivRcvMedia.isClickable = rcvReady
             h.ivRcvPlay.isClickable = rcvReady
+            
+            // ── Show Time for Received Media ──
+            h.receivedMessageTimeLayout?.visibility = View.VISIBLE
         }
     }
 
@@ -1248,6 +1286,10 @@ class MessageAdapter(
             activeSpeedIdx = if (activeUri == uriStr) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
             val speed = SPEED_STEPS[activeSpeedIdx]; h.speedBadge(sent).text = speed.toLabel()
             if (activeUri == uriStr) applySpeed(speed)
+        }
+        
+        if (sent) {
+            applyStatusIndicator(h.ivVoiceSentStatus, item)
         }
     }
 

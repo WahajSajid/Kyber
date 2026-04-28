@@ -78,7 +78,8 @@ class ContactsFragment : Fragment(R.layout.fragment_contacts) {
             val args = bundleOf(
                 "contact_onion" to contactEntity.onionAddress,
                 "contact_name" to contactEntity.name,
-                "coming_from" to "chat_list"
+                "coming_from" to "chat_list",
+                "shortId" to contactEntity.shortId
             )
             findNavController().navigate(R.id.contactDetailsFragment, args)
 

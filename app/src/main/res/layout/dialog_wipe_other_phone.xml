@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="@dimen/_280sdp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/disappearing_messages_dialog_bg">
+
+    <LinearLayout
+        android:id="@+id/wipe_other_root"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="@dimen/_20sdp"
+        android:paddingBottom="@dimen/_20sdp"
+        android:paddingHorizontal="@dimen/_20sdp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- Icon -->
+        <ImageView
+            android:id="@+id/wipe_other_icon"
+            android:layout_width="@dimen/_44sdp"
+            android:layout_height="@dimen/_44sdp"
+            android:layout_gravity="center_horizontal"
+            android:src="@drawable/security_ic"
+            app:tint="@color/white" />
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/wipe_other_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_10sdp"
+            android:text="Wipe Other Phone"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_18sdp"
+            android:textStyle="bold" />
+
+        <!-- Description -->
+        <TextView
+            android:id="@+id/wipe_other_desc"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="@dimen/_8sdp"
+            android:gravity="center"
+            android:lineSpacingExtra="@dimen/_2sdp"
+            android:text="Enter the target user's Short ID and\ntheir wipe password to remotely\nwipe their app data."
+            android:textColor="#CDE6FF"
+            android:textSize="@dimen/_12sdp" />
+
+        <!-- Divider -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/_1sdp"
+            android:layout_marginTop="@dimen/_14sdp"
+            android:background="#26263A" />
+
+        <!-- ===== INPUT SECTION ===== -->
+        <LinearLayout
+            android:id="@+id/section_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+            <!-- Short ID field -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_target_short_id"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_12sdp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                app:boxBackgroundColor="@color/opacity_10_black_color"
+                app:boxBackgroundMode="outline"
+                app:boxCornerRadiusBottomEnd="@dimen/_12sdp"
+                app:boxCornerRadiusBottomStart="@dimen/_12sdp"
+                app:boxCornerRadiusTopEnd="@dimen/_12sdp"
+                app:boxCornerRadiusTopStart="@dimen/_12sdp"
+                app:boxStrokeColor="@color/inputfield_outline_color"
+                app:boxStrokeWidth="@dimen/_1sdp"
+                app:endIconMode="none"
+                app:errorIconDrawable="@null"
+                app:hintEnabled="false">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_target_short_id"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/roboto_regular"
+                    android:hint="Target's Short ID"
+                    android:imeOptions="actionNext"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:textColor="@color/white"
+                    android:textColorHint="@color/opacity_70_white_color"
+                    android:textSize="@dimen/_14sdp">
+                    <requestFocus />
+                </com.google.android.material.textfield.TextInputEditText>
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Wipe Password field -->
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/til_target_wipe_password"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_10sdp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                app:boxBackgroundColor="@color/opacity_10_black_color"
+                app:boxBackgroundMode="outline"
+                app:boxCornerRadiusBottomEnd="@dimen/_12sdp"
+                app:boxCornerRadiusBottomStart="@dimen/_12sdp"
+                app:boxCornerRadiusTopEnd="@dimen/_12sdp"
+                app:boxCornerRadiusTopStart="@dimen/_12sdp"
+                app:boxStrokeColor="@color/inputfield_outline_color"
+                app:boxStrokeWidth="@dimen/_1sdp"
+                app:errorIconDrawable="@null"
+                app:hintEnabled="false"
+                app:passwordToggleEnabled="true"
+                app:passwordToggleTint="@color/opacity_70_white_color">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/et_target_wipe_password"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="@font/roboto_regular"
+                    android:hint="Target's Wipe Password"
+                    android:imeOptions="actionDone"
+                    android:inputType="textPassword"
+                    android:maxLines="1"
+                    android:textColor="@color/white"
+                    android:textColorHint="@color/opacity_70_white_color"
+                    android:textSize="@dimen/_14sdp" />
+
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <!-- Error message -->
+            <TextView
+                android:id="@+id/tv_wipe_other_error"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:text=""
+                android:textColor="#FF6B6B"
+                android:textSize="@dimen/_12sdp"
+                android:visibility="gone" />
+
+            <!-- Proceed button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_wipe_other_proceed"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_50sdp"
+                android:layout_marginTop="@dimen/_16sdp"
+                android:background="@drawable/btn_gradient"
+                android:text="Proceed"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/_14sdp"
+                android:textStyle="bold"
+                app:backgroundTint="@null"
+                app:cornerRadius="@dimen/_10sdp" />
+
+        </LinearLayout>
+
+        <!-- ===== LOADING SECTION ===== -->
+        <LinearLayout
+            android:id="@+id/section_loading"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="@dimen/_20sdp"
+            android:paddingBottom="@dimen/_10sdp"
+            android:visibility="gone">
+
+            <com.google.android.material.progressindicator.CircularProgressIndicator
+                android:id="@+id/progress_wipe_other"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:indicatorColor="@color/white"
+                app:indicatorSize="@dimen/_36sdp"
+                android:indeterminate="true"
+                app:trackColor="#26263A"
+                app:trackThickness="@dimen/_3sdp" />
+
+            <TextView
+                android:id="@+id/tv_loading_status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_14sdp"
+                android:gravity="center"
+                android:text="Looking up user..."
+                android:textColor="#CDE6FF"
+                android:textSize="@dimen/_13sdp" />
+
+        </LinearLayout>
+
+        <!-- ===== RESULT SECTION ===== -->
+        <LinearLayout
+            android:id="@+id/section_result"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:paddingTop="@dimen/_16sdp"
+            android:paddingBottom="@dimen/_8sdp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/iv_result_icon"
+                android:layout_width="@dimen/_48sdp"
+                android:layout_height="@dimen/_48sdp"
+                android:layout_gravity="center_horizontal"
+                android:src="@drawable/security_ic"
+                app:tint="@color/white" />
+
+            <TextView
+                android:id="@+id/tv_result_message"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_12sdp"
+                android:gravity="center"
+                android:lineSpacingExtra="@dimen/_3sdp"
+                android:text=""
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/_14sdp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tv_result_sub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_6sdp"
+                android:gravity="center"
+                android:text=""
+                android:textColor="#CDE6FF"
+                android:textSize="@dimen/_12sdp"
+                android:visibility="gone" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_result_close"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/_46sdp"
+                android:layout_marginTop="@dimen/_20sdp"
+                android:background="@drawable/btn_gradient"
+                android:text="Close"
+                android:textColor="#FFFFFF"
+                android:textSize="@dimen/_14sdp"
+                android:textStyle="bold"
+                app:backgroundTint="@null"
+                app:cornerRadius="@dimen/_10sdp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

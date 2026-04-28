@@ -274,6 +274,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private val groupId by lazy { requireArguments().getString("group_id").orEmpty() }
     private val groupName by lazy { requireArguments().getString("group_name").orEmpty() }
 
+    private val shortId by lazy { requireArguments().getString("shortId").orEmpty() }
+
     private var isRequestMode: Boolean = false
 
     private val vm: MessagesViewModel by viewModels {
@@ -744,7 +746,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         sendTextMessage(text, onionAddr, name); clearReply()
                     }
                 }
-                (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
+                (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName, shortId)
                 setListMessageAdapter()
             }
 
@@ -819,19 +821,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contactsVm.observeContact(contactOnion).collect { contact ->
                     if (contact != null && !isRequestMode) {
-                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(
-                            0,
-                            14
-                        ) else contact.name
+                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(0, 14) else contact.name
                         (requireActivity() as MainActivity).setAppChatUser(newDisplayName)
+                        (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contact.name, contact.shortId ?: "")
                     }
                 }
             }
         }
     }
 
-    private fun resolveDisplayName(): String =
-        contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
+    private fun resolveDisplayName(): String {
+        // For message requests, always hide the actual name until accepted
+        return "Unknown User"
+    }
 
     private fun sendTextMessage(text: String, onionAddr: String, name: String, msgType: String = "TEXT") {
         val messageId = UUID.randomUUID().toString()
@@ -844,7 +846,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
             val contactRepo = ContactRepository(db.contactDao())
-            val isContact = contactRepo.getContact(contactOnion) != null
+            val contact = contactRepo.getContact(contactOnion)
+            val isContact = contact?.isContact == true
             val isRequest = !isContact
             val disappearTimerMs = if (comingFrom == "group_chat_list") {
                 Prefs.getEffectiveDisappearingTimerMs(requireContext(), groupId)
@@ -1461,7 +1464,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val myName = Prefs.getName(requireContext()) ?: ""
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                    val isContact = contactRepo.getContact(contactOnion) != null
+                    val contact = contactRepo.getContact(contactOnion)
+                    val isContact = contact?.isContact == true
 
                     val normalizedType = msg.type.uppercase(Locale.US)
                     if (normalizedType != "IMAGE" && normalizedType != "VIDEO" && normalizedType != "AUDIO") {
@@ -1552,7 +1556,61 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         // ── Collect the recent window (live-updates on new messages) ─────────
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // ── Mark all our sent messages as SEEN when the chat is opened ────────
+                // This fires every time the fragment becomes visible (resume/re-navigate).
+                // Only updates rows where seenAt is still 0 (i.e., not already seen).
+                launch(kotlinx.coroutines.Dispatchers.IO) {
+                    val db = AppDb.get(requireContext())
+                    val contact = db.contactDao().get(contactOnion)
+                    if (contact?.isContact == true) {
+                        val unreadCount = db.messageDao().getUnreadReceivedCount(contactOnion)
+                        if (unreadCount > 0) {
+                            val now = System.currentTimeMillis()
+                            db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                            sendPrivateMessage(
+                                PrivateMessageTransportDto(
+                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    msg = "",
+                                    senderOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: "",
+                                    timestamp = now.toString(),
+                                    type = "SEEN_RECEIPT"
+                                )
+                            )
+                        }
+                    }
+                }
+
                 vm.recentMessagesFlow.collect { recent ->
+                    // Real-time Seen: If we're actively viewing the chat, mark new incoming messages as seen.
+                    val unreadReceived = recent.filter { !it.isSent && it.seenAt == 0L }
+                    if (unreadReceived.isNotEmpty()) {
+                        viewLifecycleOwner.lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val db = app.secure.kyber.roomdb.AppDb.get(requireContext())
+                            
+                            // Privacy: Only mark as seen if the contact exists and is accepted
+                            val contact = db.contactDao().get(contactOnion)
+                            val isAccepted = contact?.isContact == true
+                            if (!isAccepted) return@launch
+
+                            // Delay slightly so the decryption animation has time to show before the re-bind
+                            delay(1500)
+                            
+                            val now = System.currentTimeMillis()
+                            db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                            
+                            val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                            sendPrivateMessage(
+                                PrivateMessageTransportDto(
+                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    msg = "",
+                                    senderOnion = myOnion,
+                                    timestamp = now.toString(),
+                                    type = "SEEN_RECEIPT"
+                                )
+                            )
+                        }
+                    }
+
                     // Decrypt on IO so Main thread is never blocked
                     val newModels =
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -2051,7 +2109,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             lifecycleScope.launch {
                 val db = AppDb.get(requireContext())
                 val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                val isContact = contactRepo.getContact(contactOnion) != null
+                val contact = contactRepo.getContact(contactOnion)
+                val isContact = contact?.isContact == true
                 mediaSender.sendMedia(
                     contactOnion = contactOnion,
                     senderOnion = onionAddr,
@@ -2218,7 +2277,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             myApp.activeGroupId = null
         } catch (e: Exception) {
         }
-        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer(); if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer(); super.onPause()
+        if (::adapterMsg.isInitialized) {
+            adapterMsg.releasePlayer()
+            // Save last seen message ID for decryption animation logic
+            val maxId = adapterMsg.currentList.maxOfOrNull { it.id } ?: 0L
+            if (maxId > 0) {
+                val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+                sharedPrefs.edit().putLong("last_seen_id_$contactOnion", maxId).apply()
+            }
+        }
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer()
+        super.onPause()
     }
 
     override fun onDestroyView() {
@@ -2328,7 +2397,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                    val isContact = contactRepo.getContact(contactOnion) != null
+                    val contact = contactRepo.getContact(contactOnion)
+                    val isContact = contact?.isContact == true
 
                     mediaSender.sendMedia(
                         contactOnion = contactOnion,
@@ -2447,6 +2517,25 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 publicKey = publicKey
             )
 
+            // Retroactively mark all previously read messages from this new contact as "seen"
+            launch(kotlinx.coroutines.Dispatchers.IO) {
+                val db = AppDb.get(requireContext())
+                val unreadCount = db.messageDao().getUnreadReceivedCount(contactOnion)
+                if (unreadCount > 0) {
+                    val now = System.currentTimeMillis()
+                    db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                    sendPrivateMessage(
+                        PrivateMessageTransportDto(
+                            messageId = UUID.randomUUID().toString(),
+                            msg = "",
+                            senderOnion = myOnion,
+                            timestamp = now.toString(),
+                            type = "SEEN_RECEIPT"
+                        )
+                    )
+                }
+            }
+
             sendPrivateMessage(
                 PrivateMessageTransportDto(
                     messageId = UUID.randomUUID().toString(),
@@ -2473,7 +2562,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val displayName =
                 if (senderName.length > 15) senderName.substring(0, 14) else senderName
             (requireActivity() as MainActivity).setAppChatUser(displayName)
-            (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, senderName)
+            (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, senderName, shortId)
 
             binding.ivSend.setOnClickListener {
                 val text = binding.etMsg.text.toString().trim()

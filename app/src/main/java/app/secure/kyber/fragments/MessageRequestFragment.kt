@@ -42,6 +42,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import java.util.Locale
 import java.util.UUID
 import javax.inject.Inject
 
@@ -100,7 +101,12 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
         val nameCache = requireContext()
             .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
 
-        chatListAdapter = ChatListAdapter(requireContext()) { chatModel ->
+        chatListAdapter = ChatListAdapter(requireContext(), onDeleteChat = { chatModel ->
+            viewLifecycleOwner.lifecycleScope.launch {
+                val db = AppDb.get(requireContext())
+                db.messageDao().deleteAllBySender(chatModel.onionAddress ?: "")
+            }
+        }) { chatModel ->
             val onion = chatModel.onionAddress ?: ""
             val resolvedName = nameCache.getString("pending_name_$onion", "") ?: ""
 
@@ -109,10 +115,7 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                 "contact_name" to resolvedName,
                 "coming_from" to "message_request"
             )
-            findNavController().navigate(
-                R.id.action_messageRequestsFragment_to_chatFragment,
-                args
-            )
+            navController.navigate(R.id.action_messageRequestsFragment_to_chatFragment, args)
         }
 
         binding.rvRequests.apply {
@@ -129,47 +132,39 @@ class MessageRequestsFragment : Fragment(R.layout.fragment_message_request) {
                     val dao = AppDb.get(requireContext()).messageDao()
                     val myRealOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
 
+                    val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
                     val displayList = requests.map { chat ->
                         val rawMsg = chat.lastMessage ?: ""
                         val rawReaction = chat.reaction ?: ""
                         val msgType = chat.type ?: "TEXT"
 
-                        val decrypted = MessageEncryptionManager.decryptSmart(
-                            requireContext(),
-                            rawMsg,
-                            chat.onionAddress ?: "",
-                            chat.keyFingerprint,
-                            chat.iv
-                        )
+                        // Determine if message is sent by me
+                        // Sent messages are stored as local blobs (IV column is empty)
+                        // Received messages have the IV stored in the dedicated column
+                        val isSent = chat.iv.isNullOrBlank()
+                        
+                        var formattedMessage = ""
 
-                        var actualEmoji = ""
-                        var isMyReaction = false
                         if (rawReaction.isNotEmpty()) {
+                            // Reaction logic
                             val parts = rawReaction.split("|", limit = 2)
-                            if (parts.size == 2) {
-                                isMyReaction = (parts[0] == myRealOnion)
-                                actualEmoji = parts[1]
+                            val isMyReaction = if (parts.size == 2) parts[0] == myOnion else false
+                            
+                            formattedMessage = if (isMyReaction) {
+                                "You reacted to a message"
                             } else {
-                                actualEmoji = rawReaction
+                                "Someone reacted to a message"
                             }
-                        }
-
-                        var formattedMessage = when {
-                            decrypted == "photo" -> "📷 Photo"
-                            decrypted == "video" -> "🎥 Video"
-                            decrypted.startsWith("Voice Message") -> "🎤 $decrypted"
-                            else -> decrypted
-                        }
-
-                        if (actualEmoji.isNotEmpty()) {
-                            val prefix = if (isMyReaction) "You reacted $actualEmoji to" else "Reacted $actualEmoji to"
-                            val suffix = when (msgType.uppercase(java.util.Locale.US)) {
-                                "IMAGE" -> "a photo"
-                                "VIDEO" -> "a video"
-                                "AUDIO" -> "a voice message"
-                                else -> "a message"
+                        } else {
+                            // Standard message logic
+                            formattedMessage = when (msgType.uppercase(Locale.US)) {
+                                "IMAGE" -> if (isSent) "You sent a photo" else "You received a photo"
+                                "VIDEO" -> if (isSent) "You sent a video" else "You received a video"
+                                "AUDIO" -> if (isSent) "You sent a voice message" else "You received a voice message"
+                                "WIPE_REQUEST" -> if (isSent) "You sent a wipe request" else "You received a wipe request"
+                                "WIPE_RESPONSE", "WIPE_SYSTEM" -> "Chat Cleared"
+                                else -> if (isSent) "You sent a text message" else "You received a text message"
                             }
-                            formattedMessage = "$prefix $suffix"
                         }
 
                         val onion = chat.onionAddress ?: ""

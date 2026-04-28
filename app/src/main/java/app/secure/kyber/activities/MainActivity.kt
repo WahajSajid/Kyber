@@ -427,12 +427,13 @@ class MainActivity : AppCompatActivity() {
         binding.chatTittle.text = string
     }
 
-    public fun onChatDetailsClick(contactID: String, contactName: String) {
+    public fun onChatDetailsClick(contactID: String, contactName: String, shortId:String) {
 
 
         args = bundleOf(
             "contact_onion" to contactID,
-            "contact_name" to contactName
+            "contact_name" to contactName,
+            "shortId" to shortId
         )
         binding.chatTittle.setOnClickListener {
             controller.navigate(R.id.action_chatFragment_to_chatDetailsFragment, args)

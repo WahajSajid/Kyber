@@ -108,8 +108,41 @@ class GroupChatListFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
                 vm.groupChatFlow.collect { groups ->
-                    Log.d("### Groups ###", groups.size.toString())
-                    groupChatListAdapter.submitList(groups)
+                    val db = AppDb.get(requireContext())
+                    val myOnion = Prefs.getOnionAddress(requireContext()) ?: ""
+                    val displayList = groups.map { group ->
+                        val latest = db.groupsMessagesDao().getLatestMessage(group.groupId)
+                        if (latest != null) {
+                            val isSent = latest.senderOnion == myOnion
+                            val formatted = when {
+                                latest.reaction.isNotEmpty() -> {
+                                    if (isSent) "You reacted to a message"
+                                    else "${latest.senderName} reacted to a message"
+                                }
+                                latest.type.uppercase(java.util.Locale.US) == "IMAGE" -> {
+                                    if (isSent) "You sent a photo" else "You received a photo"
+                                }
+                                latest.type.uppercase(java.util.Locale.US) == "VIDEO" -> {
+                                    if (isSent) "You sent a video" else "You received a video"
+                                }
+                                latest.type.uppercase(java.util.Locale.US) == "AUDIO" -> {
+                                    if (isSent) "You sent a voice message" else "You received a voice message"
+                                }
+                                latest.type.uppercase(java.util.Locale.US) == "WIPE_REQUEST" -> {
+                                    if (isSent) "You sent a wipe request" else "You received a wipe request"
+                                }
+                                latest.type.uppercase(java.util.Locale.US) == "WIPE_RESPONSE" -> "Chat history updated"
+                                latest.type.uppercase(java.util.Locale.US) == "WIPE_SYSTEM" -> "Chat history updated"
+                                else -> {
+                                    if (isSent) "You sent a text message" else "You received a text message"
+                                }
+                            }
+                            group.copy(lastMessage = formatted)
+                        } else {
+                            group
+                        }
+                    }
+                    groupChatListAdapter.submitList(displayList)
                 }
             }
         }

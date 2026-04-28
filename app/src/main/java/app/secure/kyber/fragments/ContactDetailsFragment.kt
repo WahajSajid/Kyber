@@ -18,6 +18,7 @@ class ContactDetailsFragment : Fragment() {
     private val contactName by lazy { requireArguments().getString("contact_name").orEmpty() }
     private val contactOnion by lazy { requireArguments().getString("contact_onion").orEmpty() }
     private val comingFrom by lazy { requireArguments().getString("coming_from").orEmpty() }
+    private val shortId by lazy { requireArguments().getString("shortId").orEmpty() }
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -39,6 +40,14 @@ class ContactDetailsFragment : Fragment() {
         val firstLetter = if (contactName.isNotEmpty()) contactName[0] else '?'
         binding.avatar.text = firstLetter.toString()
         binding.tvName.text = contactName
+
+        // Show shortId as @handle if available
+        if (shortId.isNotBlank()) {
+            binding.tvHandle.text = "@$shortId"
+            binding.tvHandle.visibility = View.VISIBLE
+        } else {
+            binding.tvHandle.visibility = View.GONE
+        }
 
         binding.messageUser.setOnClickListener {
             val args = bundleOf(

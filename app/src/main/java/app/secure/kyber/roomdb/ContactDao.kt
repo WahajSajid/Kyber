@@ -9,16 +9,21 @@ interface ContactDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(contact: ContactEntity): Long
 
-    @Query("SELECT * FROM contacts ORDER BY name")
+    @Query("SELECT * FROM contacts WHERE isContact = 1 ORDER BY name")
     fun observeAll(): Flow<List<ContactEntity>>
 
     @Query("SELECT * FROM contacts WHERE onionAddress = :onionAddress LIMIT 1")
     suspend fun get(onionAddress: String): ContactEntity?
 
+
+    @Query("SELECT shortId from contacts WHERE onionAddress = :onionAddress")
+    suspend fun getShortId(onionAddress:String): String?
+
+
     @Query("SELECT * FROM contacts WHERE onionAddress = :onionAddress LIMIT 1")
     fun observeContact(onionAddress: String): Flow<ContactEntity?>
 
-    @Query("SELECT * FROM contacts ORDER BY name ASC")
+    @Query("SELECT * FROM contacts WHERE isContact = 1 ORDER BY name ASC")
     suspend fun getAll(): List<ContactEntity>
 
     @Delete

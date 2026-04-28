@@ -85,6 +85,7 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
         val etId      = view.findViewById<TextInputEditText>(R.id.etId)
         val btnSave   = view.findViewById<View>(R.id.btnSave)
         val btnCancel = view.findViewById<View>(R.id.btnCancel)
+        val pbLoading = view.findViewById<android.widget.ProgressBar>(R.id.pbLoading)
 
         database = FirebaseDatabase.getInstance(
             "https://kyber-b144e-default-rtdb.asia-southeast1.firebasedatabase.app/"
@@ -97,9 +98,20 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             if (query.isNullOrEmpty()) {
                 scanLauncher.launch(Intent(requireContext(), ScannerActivity::class.java))
             } else {
-                lookupAndVerify(query, onSuccess = { onionAddress ->
-                    showToast("Onion address verified ✓")
-                })
+                lookupAndVerify(
+                    query,
+                    onStart = {
+                        pbLoading.visibility = View.VISIBLE
+                        btnSave.isEnabled = false
+                    },
+                    onFinish = {
+                        pbLoading.visibility = View.GONE
+                        btnSave.isEnabled = true
+                    },
+                    onSuccess = { onionAddress ->
+                        showToast("Onion address verified ✓")
+                    }
+                )
             }
         }
 
@@ -126,49 +138,70 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
             val inputId = etId.text!!.toString().trim()
 
             // Step 1 & 2: Firebase lookup → API search
-            lookupAndVerify(inputId, onSuccess = { onionAddress ->
-                // Step 3: User found — fetch public key and navigate
-                lifecycleScope.launch {
-                    try {
-                        val response = repository.getPublicKey(onionAddress)
-                        if (response.isSuccessful && response.body() != null) {
-                            val publicKey = response.body()!!.publicKey
-                            Log.d(TAG, "Fetched public key for $onionAddress")
+            lookupAndVerify(
+                inputId,
+                onStart = {
+                    pbLoading.visibility = View.VISIBLE
+                    btnSave.isEnabled = false
+                },
+                onFinish = {
+                    pbLoading.visibility = View.GONE
+                    btnSave.isEnabled = true
+                },
+                onSuccess = { onionAddress ->
+                    // Step 3: User found — fetch public key and navigate
+                    lifecycleScope.launch {
+                        try {
+                            pbLoading.visibility = View.VISIBLE
+                            btnSave.isEnabled = false
+                            
+                            val response = repository.getPublicKey(onionAddress)
+                            if (response.isSuccessful && response.body() != null) {
+                                val publicKey = response.body()!!.publicKey
+                                Log.d(TAG, "Fetched public key for $onionAddress")
 
-                            // Cache the public key for the upcoming message request flow
-                            requireContext()
-                                .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-                                .edit()
-                                .putString("pending_key_$onionAddress", publicKey)
-                                .apply()
+                                // Cache the public key for the upcoming message request flow
+                                requireContext()
+                                    .getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putString("pending_key_$onionAddress", publicKey)
+                                    .apply()
 
-                            // If already a contact, update their public key if it changed
-                            val existingContact = vm.getContact(onionAddress)
-                            if (existingContact != null && existingContact.publicKey != publicKey) {
-                                val contactRepo =
-                                    ContactRepository(AppDb.get(requireContext()).contactDao())
-                                contactRepo.saveContact(inputId, existingContact.name, publicKey)
+                                // Always save/update contact with the discovered info to store the shortId (inputId)
+                                val existingContact = vm.getContact(onionAddress)
+//                                val contactRepo = ContactRepository(AppDb.get(requireContext()).contactDao())
+//                                contactRepo.saveContact(
+//                                    onionAddress = onionAddress,
+//                                    name = existingContact?.name ?: "Unknown User",
+//                                    publicKey = publicKey,
+//                                    shortId = inputId,
+//                                    isContact = false
+//                                )
+
+                                val args = bundleOf(
+                                    "contact_onion" to onionAddress,
+                                    "contact_name" to (existingContact?.name ?: ""),
+                                    "coming_from" to "chat_list",
+                                    "shortId" to inputId
+                                )
+                                requireActivity()
+                                    .findNavController(R.id.main_fragment)
+                                    .navigate(R.id.chatFragment, args)
+                                dismiss()
+
+                            } else {
+                                showToast("User not found or has no public key")
                             }
-
-                            val args = bundleOf(
-                                "contact_onion" to onionAddress,
-                                "contact_name" to (existingContact?.name ?: ""),
-                                "coming_from" to "chat_list"
-                            )
-                            requireActivity()
-                                .findNavController(R.id.main_fragment)
-                                .navigate(R.id.chatFragment, args)
-                            dismiss()
-
-                        } else {
-                            showToast("User not found or has no public key")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error fetching public key", e)
+                            showToast("Error connecting to discovery service")
+                        } finally {
+                            pbLoading.visibility = View.GONE
+                            btnSave.isEnabled = true
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error fetching public key", e)
-                        showToast("Error connecting to discovery service")
                     }
                 }
-            })
+            )
         }
     }
 
@@ -178,12 +211,19 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
      * 2. Search that onion address via the discovery API.
      * 3. Call [onSuccess] with the resolved onion address if found, otherwise show a toast.
      */
-    private fun lookupAndVerify(userId: String, onSuccess: (onionAddress: String) -> Unit) {
+    private fun lookupAndVerify(
+        userId: String,
+        onStart: () -> Unit = {},
+        onFinish: () -> Unit = {},
+        onSuccess: (onionAddress: String) -> Unit
+    ) {
+        onStart()
         // Step 1: Firebase — get onion address from user ID
         databaseReference.child(userId).child("onion_address").get()
             .addOnSuccessListener { snapshot ->
                 val onionFromFirebase = snapshot.value as? String
                 if (onionFromFirebase.isNullOrBlank()) {
+                    onFinish()
                     showToast("User not found")
                     return@addOnSuccessListener
                 }
@@ -207,10 +247,13 @@ class ContactBottomSheet : BottomSheetDialogFragment() {
                     } catch (e: Exception) {
                         Log.e(TAG, "Discovery search failed", e)
                         showToast("Verification failed. Please try again.")
+                    } finally {
+                        onFinish()
                     }
                 }
             }
             .addOnFailureListener { error ->
+                onFinish()
                 Log.e(TAG, "Firebase lookup failed", error)
                 showToast("Lookup failed: ${error.message}")
             }

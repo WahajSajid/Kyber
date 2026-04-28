@@ -10,12 +10,20 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.activities.MainActivity
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
+import app.secure.kyber.roomdb.AppDb
+import app.secure.kyber.roomdb.ContactRepository
+import app.secure.kyber.roomdb.roomViewModel.ContactsViewModel
+import kotlin.getValue
 
 class ChatDetailsFragment : Fragment() {
     private lateinit var binding: FragmentChatDetailsBinding
@@ -27,7 +35,24 @@ class ChatDetailsFragment : Fragment() {
         requireArguments().getString("contact_name").orEmpty()
     }
 
+    private val shortId by lazy {
+        requireArguments().getString("shortId").orEmpty()
+    }
+
     private lateinit var navController: NavController
+
+
+
+    private val vm: ContactsViewModel by viewModels {
+        // quick factory — wire up Room
+        val db = AppDb.get(requireContext())
+        val repo = ContactRepository(db.contactDao())
+        object : ViewModelProvider.Factory {
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                ContactsViewModel(repo) as T
+        }
+    }
+
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -38,8 +63,17 @@ class ChatDetailsFragment : Fragment() {
 
         (requireActivity() as MainActivity).setAppChatUser("Chat Details")
         binding.tvName.text = contactName
-        binding.tvHandle.text = contactOnion
         binding.avatar.text = if (contactName.isNotEmpty()) contactName.first().toString() else "?"
+
+        // Bind shortId to the @handle TextView
+        if (shortId.isNotBlank()) {
+            binding.c.text = "@$shortId"
+            binding.c.visibility = View.VISIBLE
+        } else {
+            binding.c.visibility = View.GONE
+        }
+
+
         
         val status = Prefs.getChatSpecificDisappearingStatus(requireContext(), contactOnion) 
             ?: Prefs.getDisappearingMessageStatus(requireContext())

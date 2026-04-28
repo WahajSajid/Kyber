@@ -35,7 +35,9 @@ data class MessageEntity(
     val keyFingerprint: String? = null,  // Fingerprint of the key used to encrypt/decrypt
     val iv: String? = null,              // IV for AES-GCM decryption
     val expiresAt: Long = 0L,             // Timestamp when the message expires (0 = no expiry)
-    val replyToText: String = ""           // Text of the message this is replying to (empty = not a reply)
+    val replyToText: String = "",          // Text of the message this is replying to (empty = not a reply)
+    val deliveredAt: Long = 0L,            // Timestamp when the recipient device pulled the message (0 = not yet)
+    val seenAt: Long = 0L                  // Timestamp when the recipient opened the conversation (0 = not yet)
 )
 
 /**
@@ -68,6 +70,8 @@ data class MessageUiModel(
     val keyFingerprint: String? get() = entity.keyFingerprint
     val iv: String? get() = entity.iv
     val expiresAt: Long get() = entity.expiresAt
+    val deliveredAt: Long get() = entity.deliveredAt
+    val seenAt: Long get() = entity.seenAt
 
     // FIX: Safely route to the decrypted metadata payload
     val ampsJson: String get() = decryptedAmpsJson

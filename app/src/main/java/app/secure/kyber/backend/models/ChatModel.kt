@@ -14,5 +14,6 @@ data class ChatModel(
     @Ignore
     var unreadCount: Int? = null,
     @Ignore
-    var avatarRes: String? = null
+    var avatarRes: String? = null,
+    var contactId:String? = null
 )
