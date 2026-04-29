@@ -123,7 +123,7 @@ class GlobalSyncService : LifecycleService() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setContentTitle("Kyber")
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.app_ic)
             .setContentIntent(getPendingIntentToApp())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

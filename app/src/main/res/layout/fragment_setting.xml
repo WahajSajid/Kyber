@@ -341,7 +341,7 @@
                     android:layout_height="wrap_content"
                     android:text="Security"
                     android:textColor="@color/white"
-                    android:textSize="@dimen/_22sdp"
+                    android:textSize="@dimen/_18sdp"
                     android:layout_marginStart="@dimen/_10sdp"
                     app:layout_constraintTop_toBottomOf="@id/subscription_card"
                     app:layout_constraintStart_toStartOf="@id/subscription_card"
@@ -371,8 +371,8 @@
                         android:paddingHorizontal="@dimen/_18sdp">
 
                         <ImageView
-                            android:layout_width="@dimen/_19sdp"
-                            android:layout_height="@dimen/_20sdp"
+                            android:layout_width="@dimen/_17sdp"
+                            android:layout_height="@dimen/_18sdp"
                             android:contentDescription="@null"
                             android:src="@drawable/security_ic" />
 
@@ -381,9 +381,9 @@
                             android:layout_height="wrap_content"
                             android:layout_marginStart="@dimen/_15sdp"
                             android:layout_weight="1"
-                            android:text="Wipe Password"
+                            android:text="Set wipe password"
                             android:textColor="@color/white"
-                            android:textSize="@dimen/_18sdp" />
+                            android:textSize="@dimen/_16sdp" />
                     </LinearLayout>
 
 
@@ -397,8 +397,8 @@
                         android:paddingHorizontal="@dimen/_18sdp">
 
                         <ImageView
-                            android:layout_width="@dimen/_19sdp"
-                            android:layout_height="@dimen/_20sdp"
+                            android:layout_width="@dimen/_17sdp"
+                            android:layout_height="@dimen/_18sdp"
                             android:contentDescription="@null"
                             android:src="@drawable/wipe_other_phone_ic"
                             app:tint="@color/white" />
@@ -410,7 +410,7 @@
                             android:layout_weight="1"
                             android:text="Wipe Other Phone"
                             android:textColor="@color/white"
-                            android:textSize="@dimen/_18sdp" />
+                            android:textSize="@dimen/_16sdp" />
                     </LinearLayout>
 
 
@@ -423,7 +423,7 @@
                     android:layout_height="wrap_content"
                     android:text="General"
                     android:textColor="@color/white"
-                    android:textSize="@dimen/_22sdp"
+                    android:textSize="@dimen/_18sdp"
                     android:layout_marginStart="@dimen/_10sdp"
                     app:layout_constraintTop_toBottomOf="@id/list_container"
                     app:layout_constraintStart_toStartOf="@id/list_container"
@@ -453,8 +453,8 @@
                         android:paddingHorizontal="@dimen/_16sdp">
 
                         <ImageView
-                            android:layout_width="@dimen/_24sdp"
-                            android:layout_height="@dimen/_24sdp"
+                            android:layout_width="@dimen/_18sdp"
+                            android:layout_height="@dimen/_19sdp"
                             android:contentDescription="@null"
                             android:src="@drawable/notification_icon" />
 
@@ -465,7 +465,7 @@
                             android:layout_weight="1"
                             android:text="Notifications"
                             android:textColor="@color/white"
-                            android:textSize="@dimen/_18sdp" />
+                            android:textSize="@dimen/_16sdp" />
                     </LinearLayout>
 
 
@@ -504,8 +504,8 @@
                         android:paddingHorizontal="@dimen/_20sdp">
 
                         <ImageView
-                            android:layout_width="@dimen/_20sdp"
-                            android:layout_height="@dimen/_16sdp"
+                            android:layout_width="@dimen/_17sdp"
+                            android:layout_height="@dimen/_18sdp"
                             android:contentDescription="@null"
                             android:src="@drawable/mail_ic" />
 
@@ -516,7 +516,7 @@
                             android:layout_weight="1"
                             android:text="Invite friends"
                             android:textColor="@color/white"
-                            android:textSize="@dimen/_18sdp" />
+                            android:textSize="@dimen/_16sdp" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -540,7 +540,7 @@
                             android:layout_weight="1"
                             android:text="Delete Account"
                             android:textColor="#FF4848"
-                            android:textSize="@dimen/_18sdp" />
+                            android:textSize="@dimen/_16sdp" />
                     </LinearLayout>
                 </LinearLayout>
 
