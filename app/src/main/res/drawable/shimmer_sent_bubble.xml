@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sent bubble shimmer: matches sent_msg_bg.xml exactly
+     topLeft + topRight + bottomLeft radii, bottomRight = 0 (the "tail") -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1A2D6A" />   <!-- muted #009FFF tint, dark -->
+    <corners
+        android:topLeftRadius="14dp"
+        android:topRightRadius="14dp"
+        android:bottomLeftRadius="14dp"
+        android:bottomRightRadius="3dp" />
+</shape>

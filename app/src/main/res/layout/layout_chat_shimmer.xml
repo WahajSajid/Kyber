@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Professional chat shimmer skeleton.
+    Closely mirrors the real message layout:
+      - Received rows: avatar circle + bubble (text stubs inside) + timestamp pill
+      - Sent rows:     bubble (text stubs inside) + timestamp pill (right-aligned)
+    No external library needed — the pulse animation is applied in code.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:paddingHorizontal="14dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="8dp"
+    android:clipChildren="false">
+
+    <!-- ── Row 1: RECEIVED — short message ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom"
+        android:layout_marginBottom="4dp">
+
+        <!-- Avatar circle -->
+        <View
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="@drawable/shimmer_rcv_bubble"
+            android:backgroundTint="#2A2A2A"
+            android:layout_marginEnd="8dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Bubble -->
+            <LinearLayout
+                android:layout_width="190dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_rcv_bubble"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="8dp">
+                <!-- Text stub line 1 -->
+                <View android:layout_width="140dp" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill" android:layout_marginBottom="6dp"/>
+                <!-- Text stub line 2 (shorter = natural look) -->
+                <View android:layout_width="100dp" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <!-- Timestamp pill -->
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Row 2: SENT — medium message ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom|end"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end">
+
+            <LinearLayout
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_sent_bubble"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="8dp">
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill" android:layout_marginBottom="6dp"/>
+                <View android:layout_width="160dp" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Row 3: SENT — single line ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom|end"
+        android:layout_marginBottom="12dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end">
+
+            <LinearLayout
+                android:layout_width="140dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_sent_bubble"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp">
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Date chip (e.g. "Today") -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp">
+        <View
+            android:layout_width="72dp"
+            android:layout_height="20dp"
+            android:background="@drawable/shimmer_pill"
+            android:alpha="0.35"
+            android:layout_gravity="center_horizontal"/>
+    </FrameLayout>
+
+    <!-- ── Row 4: RECEIVED — 3-line long message ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom"
+        android:layout_marginBottom="4dp">
+
+        <View android:layout_width="32dp" android:layout_height="32dp"
+            android:background="@drawable/shimmer_rcv_bubble"
+            android:backgroundTint="#2A2A2A"
+            android:layout_marginEnd="8dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="240dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_rcv_bubble"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="8dp">
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill" android:layout_marginBottom="6dp"/>
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill" android:layout_marginBottom="6dp"/>
+                <View android:layout_width="170dp" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Row 5: SENT — medium ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom|end"
+        android:layout_marginBottom="4dp">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="end">
+
+            <LinearLayout
+                android:layout_width="175dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_sent_bubble"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="8dp"
+                android:orientation="vertical">
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill" android:layout_marginBottom="6dp"/>
+                <View android:layout_width="110dp" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ── Row 6: RECEIVED — single line ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="bottom">
+
+        <View android:layout_width="32dp" android:layout_height="32dp"
+            android:background="@drawable/shimmer_rcv_bubble"
+            android:backgroundTint="#2A2A2A"
+            android:layout_marginEnd="8dp"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="155dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/shimmer_rcv_bubble"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp">
+                <View android:layout_width="match_parent" android:layout_height="11dp"
+                    android:background="@drawable/shimmer_pill"/>
+            </LinearLayout>
+
+            <View android:layout_width="48dp" android:layout_height="8dp"
+                android:background="@drawable/shimmer_pill"
+                android:layout_marginTop="4dp" android:alpha="0.5"/>
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

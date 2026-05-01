@@ -85,10 +85,15 @@ import com.google.android.material.textfield.TextInputEditText
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.view.animation.LinearInterpolator
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -168,6 +173,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
     private var displayedList = mutableListOf<MessageUiModel>()
+
+    // ── Shimmer animation ─────────────────────────────────────────────────────
+    private var shimmerAnimator: ObjectAnimator? = null
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
@@ -1553,13 +1561,14 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             clipToPadding = false
         }
 
+        // ── Start shimmer immediately so the user never sees a blank screen ────
+        startShimmer()
+
         // ── Collect the recent window (live-updates on new messages) ─────────
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // ── Mark all our sent messages as SEEN when the chat is opened ────────
-                // This fires every time the fragment becomes visible (resume/re-navigate).
-                // Only updates rows where seenAt is still 0 (i.e., not already seen).
-                launch(kotlinx.coroutines.Dispatchers.IO) {
+                launch(Dispatchers.IO) {
                     val db = AppDb.get(requireContext())
                     val contact = db.contactDao().get(contactOnion)
                     if (contact?.isContact == true) {
@@ -1581,23 +1590,17 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 }
 
                 vm.recentMessagesFlow.collect { recent ->
-                    // Real-time Seen: If we're actively viewing the chat, mark new incoming messages as seen.
+                    // Real-time Seen: mark new incoming messages as seen while chat is open.
                     val unreadReceived = recent.filter { !it.isSent && it.seenAt == 0L }
                     if (unreadReceived.isNotEmpty()) {
-                        viewLifecycleOwner.lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
                             val db = app.secure.kyber.roomdb.AppDb.get(requireContext())
-                            
-                            // Privacy: Only mark as seen if the contact exists and is accepted
                             val contact = db.contactDao().get(contactOnion)
                             val isAccepted = contact?.isContact == true
                             if (!isAccepted) return@launch
-
-                            // Delay slightly so the decryption animation has time to show before the re-bind
                             delay(1500)
-                            
                             val now = System.currentTimeMillis()
                             db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
-                            
                             val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
                             sendPrivateMessage(
                                 PrivateMessageTransportDto(
@@ -1611,60 +1614,69 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         }
                     }
 
-                    // Decrypt on IO so Main thread is never blocked
-                    val newModels =
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            recent.map { it.toUiModel(requireContext()) }
-                        }
-
-                    // After a wipe, discard the stale in-memory cache entirely so the
-                    // adapter clears in real-time without requiring a nav back/forward.
-                    // Also discard when a NEW WIPE_SYSTEM message arrives from the network
-                    // (meaning the other user accepted the wipe).
-                    val hasNewWipeSystem = newModels.any { newMsg ->
-                        newMsg.type.uppercase() == "WIPE_SYSTEM" && displayedList.none { it.id == newMsg.id }
+                    // ── TWO-PHASE RENDER ───────────────────────────────────────────────
+                    // Determine wipe / fresh-start condition using raw entities (no decrypt needed)
+                    val hasNewWipeSystem = recent.any { newEntity ->
+                        newEntity.type.uppercase() == "WIPE_SYSTEM" &&
+                            displayedList.none { it.id == newEntity.id }
                     }
-                    
                     val freshStart = wipePending || hasNewWipeSystem ||
-                        (displayedList.isNotEmpty() && newModels.isEmpty() &&
-                         displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
+                        (displayedList.isNotEmpty() && recent.isEmpty() &&
+                            displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
 
-                    val merged = if (displayedList.isEmpty() || freshStart) {
-                        wipePending = false
-                        newModels.toMutableList()
-                    } else {
-                        // The recent window always covers the newest MSG_PAGE_SIZE messages.
-                        val recentIds = newModels.map { it.id }.toSet()
-                        val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
-                        
-                        if (newModels.size < MSG_PAGE_SIZE) {
-                            // If the recent window is not full, it means the entire chat history fits in it.
-                            // Fully replace to handle deletions accurately.
+                    // PHASE 1: Decrypt in batches of 5 on IO — submit each batch as it completes
+                    // so the UI fills in progressively rather than waiting for the full page.
+                    val BATCH = 5
+                    var isFirstBatch = true
+
+                    val newModels = mutableListOf<MessageUiModel>()
+                    for (batch in recent.chunked(BATCH)) {
+                        val decryptedBatch = withContext(Dispatchers.IO) {
+                            batch.map { it.toUiModel(requireContext()) }
+                        }
+                        newModels.addAll(decryptedBatch)
+
+                        // Build the merged list after each batch
+                        val merged = if (displayedList.isEmpty() || freshStart) {
+                            if (freshStart && isFirstBatch) wipePending = false
                             newModels.toMutableList()
                         } else {
-                            // Keep older items that are NOT in the recent window.
-                            // Use timestamp to ensure we don't keep items that SHOULD be in the recent window but aren't (meaning they were deleted).
-                            val filteredOlder = displayedList.filter { 
-                                it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime 
+                            val recentIds = newModels.map { it.id }.toSet()
+                            val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
+                            if (newModels.size < MSG_PAGE_SIZE) {
+                                newModels.toMutableList()
+                            } else {
+                                val filteredOlder = displayedList.filter {
+                                    it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime
+                                }
+                                (filteredOlder + newModels).toMutableList()
                             }
-                            (filteredOlder + newModels).toMutableList()
                         }
-                    }
-                    displayedList = merged
+                        displayedList = merged
 
-                    adapterMsg.submitList(displayedList.toList()) {
-                        // Only auto-scroll to bottom if user is near bottom (new message) or first load
-                        val lastVisible = llm.findLastVisibleItemPosition()
-                        val total = adapterMsg.itemCount
-                        if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
-                            recyclerview.scrollToPosition(total - 1)
+                        val isLastBatch = newModels.size >= recent.size
+                        adapterMsg.submitList(displayedList.toList()) {
+                            val lastVisible = llm.findLastVisibleItemPosition()
+                            val total = adapterMsg.itemCount
+                            if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
+                                recyclerview.scrollToPosition(total - 1)
+                            }
+                            if (isLastBatch) {
+                                val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
+                                if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
+                                    sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
+                                }
+                            }
                         }
-                        // Update last-seen bookmark
-                        val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
-                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
-                            sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
+
+                        // PHASE 2: Hide shimmer as soon as the first batch is submitted
+                        if (isFirstBatch) {
+                            isFirstBatch = false
+                            hideShimmer()
                         }
                     }
+                    // Ensure shimmer is hidden even if recent was empty
+                    if (recent.isEmpty()) hideShimmer()
                 }
             }
         }
@@ -1717,6 +1729,47 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (item != null) handleReply(buildReplyPreviewForPrivate(item))
             }
         )
+    }
+
+    // ── Shimmer helpers ───────────────────────────────────────────────────────
+
+    private fun startShimmer() {
+        val container = binding.shimmerContainer
+        val highlight = binding.shimmerHighlight
+        container.visibility = android.view.View.VISIBLE
+        container.alpha = 1f
+
+        // Measure after layout so we know the real width
+        container.post {
+            val width = container.width.toFloat()
+            if (width <= 0f) return@post
+            val highlightWidth = highlight.width.toFloat().coerceAtLeast(1f)
+
+            shimmerAnimator = ObjectAnimator.ofFloat(
+                highlight,
+                "translationX",
+                -highlightWidth,
+                width + highlightWidth
+            ).apply {
+                duration = 1200
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.RESTART
+                interpolator = LinearInterpolator()
+                start()
+            }
+        }
+    }
+
+    private fun hideShimmer() {
+        shimmerAnimator?.cancel()
+        shimmerAnimator = null
+        val container = binding.shimmerContainer
+        if (container.visibility == android.view.View.GONE) return
+        container.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction { container.visibility = android.view.View.GONE }
+            .start()
     }
 
     private fun setupGroupMessageAdapter(
@@ -2294,12 +2347,6 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         super.onPause()
     }
 
-    override fun onDestroyView() {
-        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
-        (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = null
-        super.onDestroyView()
-    }
 
     override fun onDestroy() {
         recordingTimerHandler.removeCallbacks(recordingTimerRunnable); waveformHandler.removeCallbacks(
@@ -2594,4 +2641,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
+
+    override fun onDestroyView() {
+
+        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
+        (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = null
+
+        super.onDestroyView()
+        shimmerAnimator?.cancel()
+        shimmerAnimator = null
+    }
 }

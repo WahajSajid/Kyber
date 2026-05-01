@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** Page size: initial visible batch + each "load older" batch. */
-const val MSG_PAGE_SIZE = 30
+const val MSG_PAGE_SIZE = 15
 
 class MessagesViewModel(private val repo: MessageRepository, private val onionAddress: String) : ViewModel() {
 
