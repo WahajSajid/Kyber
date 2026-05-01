@@ -1506,25 +1506,45 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onRetryDownload = { msg ->
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
-                    db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
                     val entity = db.messageDao().getByMessageId(msg.messageId) ?: return@launch
                     val mediaId = entity.remoteMediaId ?: return@launch
-                    val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunksFromDisk(
-                        requireContext(), mediaId, entity.type
-                    )
-                    if (assembled != null) {
-                        val updated = entity.copy(
-                            uri = MessageEncryptionManager.encryptLocal(
-                                requireContext(),
-                                assembled
-                            ).encryptedBlob,
-                            downloadState = "done",
-                            downloadProgress = 100,
-                            localFilePath = assembled.removePrefix("file://")
+                    val totalChunks = entity.totalChunksExpected
+                    
+                    if (totalChunks <= 0) {
+                        // Old format or missing metadata - try direct assembly
+                        db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
+                        val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunksFromDisk(
+                            requireContext(), mediaId, entity.type
                         )
-                        db.messageDao().update(updated)
+                        if (assembled != null) {
+                            db.messageDao().setDownloadDone(msg.messageId, "done", assembled)
+                        } else {
+                            db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
+                        }
                     } else {
-                        db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
+                        // New chunk-based format - reset download state and re-enqueue worker
+                        db.messageDao().update(
+                            entity.copy(
+                                downloadState = "downloading",
+                                downloadProgress = 0,
+                                downloadedChunkIndices = ""
+                            )
+                        )
+                        
+                        // Re-enqueue PrivateMediaDownloadWorker
+                        val assemblyRequest = app.secure.kyber.workers.PrivateMediaDownloadWorker.buildRequest(
+                            messageId = msg.messageId,
+                            mediaId = mediaId,
+                            totalChunks = totalChunks,
+                            mimeType = entity.type,
+                            disappearTtl = 0L
+                        )
+                        androidx.work.WorkManager.getInstance(requireContext()).enqueueUniqueWork(
+                            "download_${msg.messageId}",
+                            androidx.work.ExistingWorkPolicy.REPLACE,
+                            assemblyRequest
+                        )
+                        Log.d("ChatFragment", "Re-enqueued download for messageId=${msg.messageId}")
                     }
                 }
             },

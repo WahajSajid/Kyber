@@ -81,25 +81,50 @@ class PrivateMediaDownloadWorker(
             Log.d(TAG, "Starting assembly for messageId=$messageId, mediaId=$mediaId, totalChunks=$totalChunks")
             setForeground(notifier.buildDownloadForegroundInfo(messageId, mimeType, 0))
 
-            // Wait for all chunks to be saved
-            val maxWaitTime = 120_000L // 2 minutes max
+            // Wait for all chunks to be saved with intelligent progress timeout
+            val maxWaitTime = 120_000L        // 2 minutes absolute max
+            val progressTimeoutMs = 60_000L   // If no progress for 60s, fail
+            val checkInterval = 500L
+            
             val startTime = System.currentTimeMillis()
+            var lastProgressTime = System.currentTimeMillis()
+            var lastSavedCount = 0
             var chunksReady = false
 
             while (!chunksReady && System.currentTimeMillis() - startTime < maxWaitTime) {
                 val savedCount = MediaChunkManager.countSavedChunks(context, mediaId)
-                Log.d(TAG, "Chunks saved: $savedCount / $totalChunks")
+                val elapsedMs = System.currentTimeMillis() - startTime
+                
+                // Update progress time if we received new chunks
+                if (savedCount > lastSavedCount) {
+                    lastProgressTime = System.currentTimeMillis()
+                    lastSavedCount = savedCount
+                    val progress = (savedCount * 100) / totalChunks
+                    Log.d(TAG, "[PROGRESS] $savedCount / $totalChunks chunks ($progress%)")
+                    messageDao.updateDownloadProgress(messageId, "downloading", progress)
+                    setForeground(notifier.buildDownloadForegroundInfo(messageId, mimeType, progress))
+                }
 
                 if (savedCount >= totalChunks) {
                     chunksReady = true
+                    Log.d(TAG, "[SUCCESS] All chunks ready!")
                 } else {
-                    delay(500) // Check every 500ms
+                    // Check if we've stalled (no new chunks for 60 seconds)
+                    val timeSinceLastProgress = System.currentTimeMillis() - lastProgressTime
+                    if (timeSinceLastProgress > progressTimeoutMs) {
+                        Log.e(TAG, "[STALL] No progress ${timeSinceLastProgress}ms. Have $savedCount/$totalChunks")
+                        messageDao.updateDownloadProgress(messageId, "failed", (savedCount * 100) / totalChunks)
+                        notifier.showDownloadFailed(messageId, mimeType)
+                        return Result.retry()
+                    }
+                    
+                    delay(checkInterval)
                 }
             }
 
             if (!chunksReady) {
-                Log.e(TAG, "Timeout waiting for all chunks to download")
-                messageDao.updateDownloadProgress(messageId, "failed", 0)
+                Log.e(TAG, "Timeout waiting for all chunks. Received $lastSavedCount / $totalChunks")
+                messageDao.updateDownloadProgress(messageId, "failed", (lastSavedCount * 100) / totalChunks)
                 notifier.showDownloadFailed(messageId, mimeType)
                 return Result.retry()
             }
@@ -107,12 +132,20 @@ class PrivateMediaDownloadWorker(
             Log.d(TAG, "All chunks received, assembling...")
             setForeground(notifier.buildDownloadForegroundInfo(messageId, mimeType, 90, stateLabel = "Assembling…"))
 
+            // Final validation: ensure all chunks are actually present and not corrupted
+            if (!MediaChunkManager.validateAllChunksPresent(context, mediaId, totalChunks)) {
+                Log.e(TAG, "Chunk validation failed - some chunks are missing or empty")
+                messageDao.updateDownloadProgress(messageId, "failed", 90)
+                notifier.showDownloadFailed(messageId, mimeType)
+                return Result.failure()
+            }
+
             // Assemble chunks into a complete file
             val finalPath = MediaChunkManager.assembleChunksFromDisk(
                 context, mediaId, mimeType
             ) ?: run {
                 Log.e(TAG, "Assembly failed for mediaId=$mediaId")
-                messageDao.updateDownloadProgress(messageId, "failed", 0)
+                messageDao.updateDownloadProgress(messageId, "failed", 90)
                 notifier.showDownloadFailed(messageId, mimeType)
                 return Result.failure()
             }

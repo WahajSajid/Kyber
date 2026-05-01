@@ -72,6 +72,23 @@ object MediaChunkManager {
     }
 
     /**
+     * Verify all chunks are present in sequence from 0 to total-1.
+     * Returns true if all chunks exist, false if any are missing.
+     */
+    fun validateAllChunksPresent(context: Context, mediaId: String, totalChunks: Int): Boolean {
+        val chunkDir = getChunkDir(context, mediaId)
+        for (i in 0 until totalChunks) {
+            val chunkFile = File(chunkDir, "chunk_${i.toString().padStart(6, '0')}")
+            if (!chunkFile.exists() || chunkFile.length() == 0L) {
+                Log.w(TAG, "Missing chunk $i for mediaId=$mediaId")
+                return false
+            }
+        }
+        Log.d(TAG, "All $totalChunks chunks present for mediaId=$mediaId")
+        return true
+    }
+
+    /**
      * Reassemble encrypted chunks from filesDir/chunks_{mediaId} into a complete encrypted file.
      * Saves to filesDir/received_media/{mediaId}.
      * Returns the absolute path to the assembled encrypted file, or null on error.
@@ -172,9 +189,14 @@ object MediaChunkManager {
      * Count the number of chunks already saved for a given mediaId.
      */
     fun countSavedChunks(context: Context, mediaId: String): Int {
-        val count = getChunkDir(context, mediaId)
-            .listFiles()?.count { it.name.startsWith("chunk_") } ?: 0
-        Log.d(TAG, "Counted $count chunks for mediaId=$mediaId")
+        val chunkDir = getChunkDir(context, mediaId)
+        if (!chunkDir.exists()) {
+            Log.w(TAG, "Chunk directory doesn't exist for mediaId=$mediaId: $chunkDir")
+            return 0
+        }
+        val files = chunkDir.listFiles() ?: emptyArray()
+        val count = files.count { it.name.startsWith("chunk_") && it.isFile && it.length() > 0 }
+        Log.d(TAG, "Counted $count valid chunks for mediaId=$mediaId (total files=${files.size}, dir readable=${chunkDir.canRead()})")
         return count
     }
 
