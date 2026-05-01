@@ -9,6 +9,30 @@
     android:clipToPadding="false">
 
     <LinearLayout
+        android:id="@+id/dateSeparatorLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:layout_marginBottom="@dimen/_8sdp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvDateSeparator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/system_bubble_bg"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:paddingVertical="@dimen/_6sdp"
+            android:text="Today"
+            android:textColor="#99FFFFFF"
+            android:textSize="@dimen/_10sdp"
+            android:fontFamily="@font/roboto_medium" />
+
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/rlMsgRcvd"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -424,7 +448,7 @@
         android:clipToPadding="false"
         android:elevation="@dimen/_8sdp"
         android:orientation="vertical"
-        android:visibility="visible"
+        android:visibility="gone"
         app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
         app:layout_constraintTop_toBottomOf="@id/rlMsgRcvd">
 
@@ -583,7 +607,8 @@
         android:elevation="@dimen/_16sdp"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/rlMsgRcvd"
-        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd" />
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
+        app:layout_constraintTop_toBottomOf="@id/dateSeparatorLayout" />
 
     <LinearLayout
         android:id="@+id/rlMsgSent"
@@ -616,7 +641,7 @@
             android:id="@+id/sent_message_media"
             android:layout_width="@dimen/_200sdp"
             android:layout_height="@dimen/_200sdp"
-            android:visibility="visible">
+            android:visibility="gone">
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/ivSentMedia"
@@ -1148,7 +1173,7 @@
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/rlMsgSent"
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/dateSeparatorLayout" />
 
     <!-- WIPE REQUEST SENT -->
     <LinearLayout

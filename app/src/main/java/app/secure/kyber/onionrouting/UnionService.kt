@@ -124,10 +124,6 @@ class UnionService : Service() {
             while (isActive && isServiceRunning) {
                 fetchGlobalMessages()
                 
-                if (pollCount % 20 == 0) {
-                    fetchContactPublicKeysGlobally()
-                }
-                
                 val delayMs = if (pollCount < 10) 1000L else 3000L
                 pollCount++
                 delay(delayMs)
@@ -337,15 +333,47 @@ class UnionService : Service() {
             return
         }
 
+        // ── SECURITY: Strict type whitelist ─────────────────────────────────────────
+        // Any unknown or unrecognized message type is silently dropped and NOT persisted.
+        // This is a critical security boundary — unknown payloads must never reach the DB.
+        val knownTypes = setOf(
+            "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK",
+            "WIPE_REQUEST", "WIPE_RESPONSE", "WIPE_SYSTEM", "WIPE_EVENT_RECEIVED",
+            "REMOTE_WIPE_REQUEST", "REMOTE_WIPE_ACK",
+            "DELIVERED_RECEIPT", "SEEN_RECEIPT",
+            "DISAPPEAR_SYSTEM", "KEY_UPDATE"
+        )
+        if (transport.type != null && transport.type !in knownTypes) {
+            Log.w(TAG, "SECURITY: Unknown message type '${transport.type}' from ${transport.senderOnion} — dropped.")
+            return
+        }
+
         if (contact == null && transport.senderName.isNotBlank()) {
             cachePendingContactName(transport.senderOnion, transport.senderName)
         }
-        
+
+        // ── System Updates: only process for accepted contacts ─────────────
+        if (transport.type == "KEY_UPDATE" || transport.type == "DISAPPEAR_SYSTEM" || transport.type == "WIPE_SYSTEM") {
+            if (contact == null || !contact.isContact) {
+                Log.w(TAG, "SECURITY: ${transport.type} from non-contact ${transport.senderOnion} — dropped.")
+                return
+            }
+            
+            if (transport.type == "KEY_UPDATE") {
+                val freshKey = transport.newPublicKey
+                if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                    contactRepo.saveContact(contact.onionAddress, contact.name, freshKey)
+                    Log.d(TAG, "KEY_UPDATE: Stored new public key for ${contact.onionAddress}")
+                }
+            }
+            // Store the system bubble, fall through to DB insert below
+        }
+
         var effectiveType = transport.type ?: "TEXT"
         if (transport.type == "WIPE_RESPONSE" && parseWipeResponseAction(decryptedPayloadText) == "ACCEPTED") {
             val now = System.currentTimeMillis().toString()
             messageDao.expireAllBySender(transport.senderOnion, now)
-            decryptedPayloadText = "Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}"
+            decryptedPayloadText = "You wiped out the chat at ${formatWipeTimestamp(System.currentTimeMillis())}"
             effectiveType = "WIPE_SYSTEM"
         }
 
@@ -422,7 +450,8 @@ class UnionService : Service() {
                 if (msgCount == 1) {
                     showPushNotification(transport.senderOnion, "Someone", "New message request")
                 }
-            } else {
+            } else if (effectiveType != "KEY_UPDATE" && effectiveType != "DISAPPEAR_SYSTEM") {
+                // KEY_UPDATE and system messages are silent — no push notification
                 val displayMsg = generateDisplayMessage(decryptedPayloadText, effectiveType)
                 showPushNotification(transport.senderOnion, "contact", displayMsg)
             }

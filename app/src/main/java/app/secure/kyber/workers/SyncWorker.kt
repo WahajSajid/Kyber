@@ -110,6 +110,21 @@ class SyncWorker(
                         return@forEach
                     }
 
+                    // ── SECURITY: Strict type whitelist ─────────────────────────────────
+                    // Unknown or unrecognized message types are silently dropped and NOT
+                    // saved to DB. This is a critical security boundary.
+                    val knownTypes = setOf(
+                        "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK",
+                        "WIPE_REQUEST", "WIPE_RESPONSE", "WIPE_SYSTEM", "WIPE_EVENT_RECEIVED",
+                        "REMOTE_WIPE_REQUEST", "REMOTE_WIPE_ACK",
+                        "DELIVERED_RECEIPT", "SEEN_RECEIPT",
+                        "DISAPPEAR_SYSTEM", "KEY_UPDATE"
+                    )
+                    if (transport.type != null && transport.type !in knownTypes) {
+                        Log.w(TAG, "SECURITY: Unknown type '${transport.type}' from ${transport.senderOnion} — dropped.")
+                        return@forEach
+                    }
+
                     // Check duplicate
                     val existing = messageDao.getMessageByMessageId(transport.messageId)
                     if (existing != null) return@forEach
@@ -162,6 +177,23 @@ class SyncWorker(
                             Log.e(TAG, "Decryption failed in SyncWorker for message ${transport.messageId}", e)
                             isDecryptionSuccessful = false
                         }
+                    }
+
+                    // ── KEY_UPDATE: persist the new public key for accepted contacts ───
+                    // Only accepted contacts may update their stored key (security boundary).
+                    // The system bubble is still stored so the user sees it in the chat.
+                    if (transport.type == "KEY_UPDATE") {
+                        val contact = contactRepo.getContact(transport.senderOnion)
+                        if (contact == null || !contact.isContact) {
+                            Log.w(TAG, "SECURITY: KEY_UPDATE from non-contact ${transport.senderOnion} — dropped.")
+                            return@forEach
+                        }
+                        val freshKey = transport.newPublicKey
+                        if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                            contactRepo.saveContact(contact.onionAddress, contact.name, freshKey)
+                            Log.d(TAG, "KEY_UPDATE: Saved new key for ${contact.onionAddress}")
+                        }
+                        // Fall through: store the system bubble in DB
                     }
 
                     var effectiveType = transport.type
@@ -255,31 +287,6 @@ class SyncWorker(
 
             Prefs.setLastSyncTime(context, System.currentTimeMillis())
             Log.d(TAG, "SyncWorker inserted $newMessageCount new messages")
-
-            // GLOBAL CONTACT PUBLIC KEY SYNC
-            try {
-                val allContacts = contactRepo.getAllOnce()
-                for (contact in allContacts) {
-                    try {
-                        val resp = repository.getPublicKey(contact.onionAddress)
-                        if (resp.isSuccessful) {
-                            val freshKey = resp.body()?.publicKey
-                            if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
-                                contactRepo.saveContact(
-                                    onionAddress = contact.onionAddress,
-                                    name = contact.name,
-                                    publicKey = freshKey
-                                )
-                                Log.d(TAG, "SyncWorker globally refreshed public key for contact ${contact.onionAddress}")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "SyncWorker could not refresh key for ${contact.onionAddress}: ${e.message}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "SyncWorker contact key global sync loop failed: ${e.message}")
-            }
 
 
             // If service is not running, start it so real-time delivery resumes

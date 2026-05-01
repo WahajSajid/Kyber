@@ -19,13 +19,27 @@ import androidx.navigation.findNavController
 import app.secure.kyber.R
 import app.secure.kyber.Utils.SystemUpdateManager
 import app.secure.kyber.activities.MainActivity
+import app.secure.kyber.Utils.DateUtils
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.roomViewModel.ContactsViewModel
+import app.secure.kyber.roomdb.MessageEntity
+import java.io.File
+import java.net.URI
+import java.util.*
+import org.json.JSONObject
+import androidx.work.WorkManager
+import androidx.work.ExistingWorkPolicy
+import app.secure.kyber.workers.TextUploadWorker
+import app.secure.kyber.Utils.MessageEncryptionManager
+import android.widget.TextView
+import android.widget.Toast
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlin.getValue
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 
 class ChatDetailsFragment : Fragment() {
     private lateinit var binding: FragmentChatDetailsBinding
@@ -114,6 +128,45 @@ class ChatDetailsFragment : Fragment() {
         binding.wipeChatText.setOnClickListener { showWipeChatDialog() }
 
         return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupRealtimeContactObserver()
+        startPeriodicTimeRefresh()
+    }
+
+    private fun setupRealtimeContactObserver() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val db = AppDb.get(requireContext())
+            db.contactDao().observeContact(contactOnion).collect { contact ->
+                if (contact != null) {
+                    updatePillTimeDisplay(contact.lastKeyUpdate)
+                }
+            }
+        }
+    }
+
+    private fun startPeriodicTimeRefresh() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            while (isAdded) {
+                try {
+                    val db = AppDb.get(requireContext())
+                    val contact = db.contactDao().get(contactOnion)
+                    if (contact != null) {
+                        updatePillTimeDisplay(contact.lastKeyUpdate)
+                    }
+                    kotlinx.coroutines.delay(10000)  // Update every 10 seconds
+                } catch (e: Exception) {
+                    android.util.Log.w("ChatDetailsFragment", "Error in periodic time refresh", e)
+                }
+            }
+        }
+    }
+
+    private fun updatePillTimeDisplay(lastKeyUpdate: Long) {
+        val timeStr = DateUtils.getRelativeTimeSpan(lastKeyUpdate)
+        binding.tvPill.text = "Updated $timeStr"
     }
 
     private fun showDisappearingMessagesDialog() {
@@ -351,6 +404,77 @@ class ChatDetailsFragment : Fragment() {
             )
         )
         dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+
+        dialogView.findViewById<View>(R.id.btnWipe).setOnClickListener {
+            dialog.dismiss()
+            performFullWipe()
+        }
+
         dialog.show()
     }
+
+    private fun performFullWipe() {
+        lifecycleScope.launch {
+            val db = AppDb.get(requireContext())
+            val messageDao = db.messageDao()
+            val myOnion = Prefs.getOnionAddress(requireContext()) ?: return@launch
+            val timestamp = System.currentTimeMillis().toString()
+            val messageId = UUID.randomUUID().toString()
+
+            val initiatorText = "You wiped out the chat at ${formatWipeTimestamp(System.currentTimeMillis())}"
+
+            // 1. Delete media files locally
+            withContext(Dispatchers.IO) {
+                val messages = messageDao.getBySender(contactOnion)
+                messages.forEach { msg ->
+                    msg.localFilePath?.let { path ->
+                        try {
+                            val file = File(URI(path))
+                            if (file.exists()) file.delete()
+                        } catch (e: Exception) {}
+                    }
+                    msg.thumbnailPath?.let { path ->
+                        try {
+                            val file = File(path)
+                            if (file.exists()) file.delete()
+                        } catch (e: Exception) {}
+                    }
+                }
+                // 2. Delete from DB
+                messageDao.deleteAllBySender(contactOnion)
+            }
+
+            // 3. Insert local system bubble for initiator
+            withContext(Dispatchers.IO) {
+                messageDao.insert(
+                    MessageEntity(
+                        messageId = messageId,
+                        msg = MessageEncryptionManager.encryptLocal(requireContext(), initiatorText).encryptedBlob,
+                        senderOnion = contactOnion,
+                        time = timestamp,
+                        isSent = true,
+                        type = "WIPE_SYSTEM",
+                        uploadState = "done",
+                        uploadProgress = 100
+                    )
+                )
+            }
+
+            Toast.makeText(requireContext(), "Chat wiped out", Toast.LENGTH_SHORT).show()
+            navController.popBackStack()
+        }
+    }
+
+    private fun formatWipeTimestamp(ts: Long): String {
+        val now = Calendar.getInstance()
+        val then = Calendar.getInstance().apply { timeInMillis = ts }
+        val sameDay = now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+                now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+        return if (sameDay) {
+            SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(ts))
+        } else {
+            SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()).format(Date(ts))
+        }
+    }
+
 }

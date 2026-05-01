@@ -1152,7 +1152,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    private suspend fun insertSystemMessage(text: String) {
+    private suspend fun insertSystemMessage(text: String, type: String = "WIPE_SYSTEM") {
         val db = AppDb.get(requireContext())
         val messageId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis().toString()
@@ -1164,7 +1164,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                  senderOnion = "system",
                  senderName = "System",
                  time = timestamp,
-                 type = "WIPE_SYSTEM",
+                 type = type,
                  isSent = false
              )
              db.groupsMessagesDao().insertGroupMessage(sysMsg)
@@ -1175,7 +1175,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                  senderOnion = contactOnion,
                  time = timestamp,
                  isSent = false,
-                 type = "WIPE_SYSTEM",
+                 type = type,
                  uploadState = "done",
                  uploadProgress = 100
              )
@@ -1295,7 +1295,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 val db = AppDb.get(requireContext())
                 val now = System.currentTimeMillis().toString()
                 db.messageDao().expireAllBySender(contactOnion, now)
-                insertSystemMessage("Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}")
+                insertSystemMessage("Chat wiped out at ${formatWipeTimestamp(System.currentTimeMillis())}")
             }
             
             // Update local message reaction so action buttons are hidden after response.
@@ -2013,17 +2013,21 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun canSwipeReplyAt(position: Int): Boolean {
         return if (comingFrom == "group_chat_list") {
             val item = groupMessageAdapter.currentList.getOrNull(position) ?: return false
-            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            val type = item.type.uppercase(Locale.US)
+            if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") return false
+            val isWipe = type.startsWith("WIPE_")
             if (!isWipe) return true
-            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+            val actionable = type == WIPE_REQ &&
                     item.senderOnion != (Prefs.getOnionAddress(requireContext()) ?: "") &&
                     item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
             actionable
         } else {
             val item = adapterMsg.currentList.getOrNull(position) ?: return false
-            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            val type = item.type.uppercase(Locale.US)
+            if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") return false
+            val isWipe = type.startsWith("WIPE_")
             if (!isWipe) return true
-            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+            val actionable = type == WIPE_REQ &&
                     !item.isSent &&
                     item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
             actionable
@@ -2514,7 +2518,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             contactRepo.saveContact(
                 onionAddress = contactOnion,
                 name = senderName,
-                publicKey = publicKey
+                publicKey = publicKey,
+                shortId = shortId
             )
 
             // Retroactively mark all previously read messages from this new contact as "seen"

@@ -23,6 +23,7 @@ import app.secure.kyber.Other.CircularBurnProgressView
 import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
+import app.secure.kyber.Utils.DateUtils
 import app.secure.kyber.roomdb.MessageEntity
 import app.secure.kyber.roomdb.MessageUiModel
 import com.bumptech.glide.Glide
@@ -364,6 +365,8 @@ class MessageAdapter(
 
         val llSystemUpdateBubble: View = view.findViewById(R.id.llSystemUpdateBubble)
         val tvSystemUpdateText: TextView = view.findViewById(R.id.tvSystemUpdateText)
+        val dateSeparatorLayout: View = view.findViewById(R.id.dateSeparatorLayout)
+        val tvDateSeparator: TextView = view.findViewById(R.id.tvDateSeparator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -378,6 +381,23 @@ class MessageAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
+
+        // ── Reset UI State for Recycled Views ────────────────────────────────
+        holder.llSystemUpdateBubble.visibility = View.GONE
+        holder.rlWipeRequestSent?.visibility = View.GONE
+        holder.rlWipeRequestRcvd?.visibility = View.GONE
+        holder.dateSeparatorLayout.visibility = View.GONE
+        val prevItem = if (pos > 0) getItem(pos - 1) else null
+        val itemTime = item.time.toLongOrNull() ?: 0L
+        val prevTime = prevItem?.time?.toLongOrNull() ?: 0L
+
+        if (pos == 0 || !DateUtils.isSameDay(itemTime, prevTime)) {
+            holder.dateSeparatorLayout.visibility = View.VISIBLE
+            holder.tvDateSeparator.text = DateUtils.getChatSeparatorDate(itemTime)
+        } else {
+            holder.dateSeparatorLayout.visibility = View.GONE
+        }
+
         val type = item.type.uppercase(Locale.US)
         val isSent = item.isSent
         val isMedia = type == "IMAGE" || type == "VIDEO"
@@ -510,7 +530,8 @@ class MessageAdapter(
         inactiveReactionView.text = ""
 
         holder.itemView.setOnLongClickListener {
-            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+            val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
                 return@setOnLongClickListener false
             }
             val p = holder.bindingAdapterPosition
@@ -523,6 +544,9 @@ class MessageAdapter(
                 return@setOnClickListener
             }
             val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
+                return@setOnClickListener
+            }
             // Guard: do NOT fire onClick for text/emoji messages to avoid
             // "Media not available" shown by ChatFragment's onClick handler
             if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
@@ -777,23 +801,12 @@ class MessageAdapter(
             h.receivedMessageTimeLayout?.visibility = View.GONE
 
             if (type == "WIPE_SYSTEM") {
-                // WhatsApp-style centered system message: full-width, center-aligned, neutral look.
                 h.rlSent.isVisible = false
                 h.rlRcvd.isVisible = false
                 h.rlWipeRequestRcvd?.isVisible = false
-                h.rlWipeRequestSent?.isVisible = true
-                h.tvWipeRequestSentStatus?.text = item.decryptedMsg
-                // Force the container to fill the whole row and center its content
-                h.rlWipeRequestSent?.let { container ->
-                    val lp = container.layoutParams
-                    if (lp is android.widget.LinearLayout.LayoutParams) {
-                        lp.width = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
-                        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
-                        container.layoutParams = lp
-                    }
-                    container.gravity = android.view.Gravity.CENTER
-                }
-                h.tvWipeRequestSentStatus?.gravity = android.view.Gravity.CENTER
+                h.rlWipeRequestSent?.isVisible = false
+                h.llSystemUpdateBubble.visibility = View.VISIBLE
+                h.tvSystemUpdateText.text = item.decryptedMsg
                 return
             }
 
@@ -815,7 +828,7 @@ class MessageAdapter(
                 h.tvWipeRequestRcvdDesc?.text = statusText
             }
             return
-        } else if (type == "DISAPPEAR_SYSTEM") {
+        } else if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
             h.rlSent.isVisible = false
             h.rlRcvd.isVisible = false
             h.tvDecryptingRcv?.isVisible = false

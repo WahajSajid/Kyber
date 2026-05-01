@@ -77,6 +77,9 @@ class KeyRotationWorker @AssistedInject constructor(
                 val response = repository.updatePublicKey(onionAddress, keyInfo.publicKeyBase64)
                 if (response.isSuccessful) {
                     Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
+                    // Immediately propagate new key to ALL accepted contacts via WorkManager
+                    // (works even when app is backgrounded or completely closed)
+                    app.secure.kyber.Utils.SystemUpdateManager.sendKeyUpdate(context, keyInfo.publicKeyBase64)
                 } else {
                     val errorBody = response.errorBody()?.string() ?: "Unknown error"
                     Log.e("### Key Rotation Failed ###", "Failed to push new public key to backend. Status: ${response.code()}, Error: $errorBody")

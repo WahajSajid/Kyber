@@ -21,6 +21,7 @@ import app.secure.kyber.databinding.FragmentNetworkBinding
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.KeyEntity
 import app.secure.kyber.workers.KeyRotationWorker
+import app.secure.kyber.Utils.DateUtils
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -109,18 +110,7 @@ class NetworkFragment : Fragment(R.layout.fragment_network) {
     }
 
     private fun updateTimeDisplay(activeKey: KeyEntity) {
-        val diff = System.currentTimeMillis() - activeKey.activatedAt
-        
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(diff)
-        val hours = TimeUnit.MILLISECONDS.toHours(diff)
-        val days = TimeUnit.MILLISECONDS.toDays(diff)
-        
-        val timeStr = when {
-            minutes < 1 -> "just now"
-            minutes < 60 -> "$minutes min ago"
-            hours < 24 -> "$hours hours ago"
-            else -> "$days days ago"
-        }
+        val timeStr = DateUtils.getRelativeTimeSpan(activeKey.activatedAt)
         binding.lastUpdateBadge.text = "Updated $timeStr"
     }
 

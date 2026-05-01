@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import app.secure.kyber.R
 import app.secure.kyber.roomdb.GroupMessageEntity
+import app.secure.kyber.Utils.DateUtils
 import app.secure.kyber.Other.CircularBurnProgressView
 import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
@@ -312,6 +313,9 @@ class GroupMessagesAdapter(
         val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
         fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
         fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
+
+        val dateSeparatorLayout: View = view.findViewById(R.id.dateSeparatorLayout)
+        val tvDateSeparator: TextView = view.findViewById(R.id.tvDateSeparator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -326,6 +330,22 @@ class GroupMessagesAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
+
+        // ── Reset UI State for Recycled Views ────────────────────────────────
+        holder.tvGroupSystemMessage?.visibility = View.GONE
+        holder.rlWipeRequestSent?.visibility = View.GONE
+        holder.rlWipeRequestRcvd?.visibility = View.GONE
+        holder.dateSeparatorLayout.visibility = View.GONE
+        val prevItem = if (pos > 0) getItem(pos - 1) else null
+        val itemTime = item.time.toLongOrNull() ?: 0L
+        val prevTime = prevItem?.time?.toLongOrNull() ?: 0L
+
+        if (pos == 0 || !DateUtils.isSameDay(itemTime, prevTime)) {
+            holder.dateSeparatorLayout.visibility = View.VISIBLE
+            holder.tvDateSeparator.text = DateUtils.getChatSeparatorDate(itemTime)
+        } else {
+            holder.dateSeparatorLayout.visibility = View.GONE
+        }
         val nextItem = if (pos < itemCount - 1) getItem(pos + 1) else null
         val nextType = nextItem?.type?.uppercase(Locale.US) ?: ""
         val nextIsSystem = nextType.startsWith("WIPE_")
@@ -427,7 +447,8 @@ class GroupMessagesAdapter(
         }
 
         holder.itemView.setOnLongClickListener {
-            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+            val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
                 return@setOnLongClickListener false
             }
             val p =
@@ -439,6 +460,9 @@ class GroupMessagesAdapter(
                 return@setOnClickListener
             }
             val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
+                return@setOnClickListener
+            }
             // Guard: do NOT fire onClick for text/emoji prevents "Media not available"
             if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
                 return@setOnClickListener
@@ -648,7 +672,7 @@ class GroupMessagesAdapter(
                 return
             }
 
-            if (type == "WIPE_SYSTEM" || type == "DISAPPEAR_SYSTEM") {
+            if (type == "WIPE_SYSTEM" || type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
                 h.rlSendMsg.isVisible = false
                 h.rlRecieveMsg.isVisible = false
                 h.rlWipeRequestRcvd?.isVisible = false

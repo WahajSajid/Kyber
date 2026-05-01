@@ -56,6 +56,7 @@ interface GroupMessageDao {
                 "  SELECT group_id,\n" +
                 "         MAX(CAST(time AS INTEGER)) AS maxTime\n" +
                 "  FROM group_messages\n" +
+                "  WHERE type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')\n" +
                 "  GROUP BY group_id\n" +
                 "),\n" +
                 "latest_row AS (\n" +
@@ -121,3 +122,4 @@ interface GroupMessageDao {
     suspend fun setThumbnailPath(messageId: String, path: String)
 
 }
+

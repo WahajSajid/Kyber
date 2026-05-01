@@ -32,7 +32,7 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 
-    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND id > :lastSeenId")
+    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND id > :lastSeenId AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')")
     suspend fun getUnreadCount(senderOnion: String, lastSeenId: Long): Int
 
     @Query("SELECT EXISTS(SELECT 1 FROM messages WHERE senderOnion = :senderOnion AND isSent = 1)")
@@ -88,6 +88,7 @@ interface MessageDao {
           SELECT senderOnion,
                  MAX(CAST(CASE WHEN updatedAt != '' THEN updatedAt ELSE time END AS INTEGER)) AS maxTime
           FROM messages
+          WHERE type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')
           GROUP BY senderOnion
         ),
         latest_row AS (
@@ -130,7 +131,7 @@ interface MessageDao {
           SELECT senderOnion,
                  MAX(CAST(time AS INTEGER)) AS maxTime
           FROM messages
-          WHERE isSent = 0
+          WHERE isSent = 0 AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')
           GROUP BY senderOnion
         ),
         latest_row AS (
@@ -224,7 +225,7 @@ interface MessageDao {
     /**
      * Get the count of received messages from a contact that we have not seen yet.
      */
-    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND seenAt = 0")
+    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND seenAt = 0 AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')")
     suspend fun getUnreadReceivedCount(senderOnion: String): Int
 
     /**
@@ -233,3 +234,5 @@ interface MessageDao {
     @Query("UPDATE messages SET seenAt = :ts WHERE senderOnion = :senderOnion AND isSent = 0 AND seenAt = 0")
     suspend fun markReceivedMessagesAsSeen(senderOnion: String, ts: Long)
 }
+
+

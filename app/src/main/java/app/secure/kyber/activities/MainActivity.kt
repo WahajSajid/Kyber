@@ -122,15 +122,22 @@ class MainActivity : AppCompatActivity() {
         if(isAppOpen == "false"){
             Prefs.setAppOpen(this, "true")
 
-            //push the new updated key to backend
             val publicKey = Prefs.getDummyPublicKey(this)
             val onionAddress = Prefs.getOnionAddress(this)
 
             lifecycleScope.launch {
                 try {
                     val response = repository.updatePublicKey(onionAddress!!, publicKey!!)
-                    if (response.isSuccessful) {  // Just check 200-299 status code
+                    if (response.isSuccessful) {
                         Log.d("### Key Rotation Success ###", "Successfully pushed new public key to backend.")
+
+                        // Option A: Only propagate to contacts if the key has actually changed
+                        // since the last time we broadcast it (avoids flooding contacts on every open)
+                        val lastBroadcast = Prefs.getLastBroadcastPublicKey(this@MainActivity)
+                        if (publicKey != lastBroadcast) {
+                            Log.d("### Key Propagation ###", "Key differs from last broadcast — propagating to contacts.")
+                            app.secure.kyber.Utils.SystemUpdateManager.sendKeyUpdate(this@MainActivity, publicKey)
+                        }
                     } else {
                         val errorBody = response.errorBody()?.string() ?: "Unknown error"
                         Log.e("### Key Rotation Failed ###", "Status: ${response.code()}, Error: $errorBody")
@@ -139,8 +146,6 @@ class MainActivity : AppCompatActivity() {
                     Log.e("### Key Rotation Failed ###", "Aborting rotation.", e)
                 }
             }
-
-
         }
 
 

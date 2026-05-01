@@ -389,19 +389,21 @@ class GroupManager {
                 )
                 groupMessagesRef.child(groupId).child(messageId).setValue(firebasePayload).await()
                 
-                val lastMsg = when (type.uppercase()) {
-                    "WIPE_REQUEST"  -> "$senderName: Wipe Chat Request"
-                    "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
-                    "WIPE_SYSTEM"   -> "Chat history updated"
-                    "WIPE_EVENT_RECEIVED" -> messageText
-                    else            -> "$senderName: $messageText"
+                if (type != "DISAPPEAR_SYSTEM" && type != "KEY_UPDATE") {
+                    val lastMsg = when (type.uppercase()) {
+                        "WIPE_REQUEST"  -> "$senderName: Wipe Chat Request"
+                        "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
+                        "WIPE_SYSTEM"   -> "Chat history updated"
+                        "WIPE_EVENT_RECEIVED" -> messageText
+                        else            -> "$senderName: $messageText"
+                    }
+                    val updates = hashMapOf<String, Any>(
+                        "lastMessage"       to lastMsg,
+                        "lastMessageTime"   to roomEntity.time,
+                        "lastMessageSenderId" to senderId
+                    )
+                    groupsRef.child(groupId).updateChildren(updates).await()
                 }
-                val updates = hashMapOf<String, Any>(
-                    "lastMessage"       to lastMsg,
-                    "lastMessageTime"   to roomEntity.time,
-                    "lastMessageSenderId" to senderId
-                )
-                groupsRef.child(groupId).updateChildren(updates).await()
             } else if (context != null && uri != null) {
                 // Media message: Enqueue Chunked Upload Worker
                 val request = app.secure.kyber.workers.GroupMediaUploadWorker.buildRequest(
@@ -418,18 +420,20 @@ class GroupManager {
                 androidx.work.WorkManager.getInstance(context).enqueue(request)
             }
             
-            // ALWAYS update local preview immediately for all message types
-            val localLastMsg = when (type.uppercase()) {
-                "WIPE_REQUEST" -> "$senderName: Wipe Request Sent"
-                "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
-                "IMAGE" -> "$senderName: sent an image"
-                "VIDEO" -> "$senderName: sent a video"
-                "AUDIO" -> "$senderName: sent a voice message"
-                else -> "$senderName: $messageText"
+            // ALWAYS update local preview immediately for all message types (EXCEPT SYSTEM)
+            if (type != "DISAPPEAR_SYSTEM" && type != "KEY_UPDATE") {
+                val localLastMsg = when (type.uppercase()) {
+                    "WIPE_REQUEST" -> "$senderName: Wipe Request Sent"
+                    "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
+                    "IMAGE" -> "$senderName: sent an image"
+                    "VIDEO" -> "$senderName: sent a video"
+                    "AUDIO" -> "$senderName: sent a voice message"
+                    else -> "$senderName: $messageText"
+                }
+                AppDb.get(context ?: return true).groupsDao().updateLastMessage(
+                    groupId, localLastMsg, roomEntity.time.toLongOrNull() ?: 0L
+                )
             }
-            AppDb.get(context ?: return true).groupsDao().updateLastMessage(
-                groupId, localLastMsg, roomEntity.time.toLongOrNull() ?: 0L
-            )
             
             true
         } catch (e: Exception) {
@@ -959,6 +963,11 @@ class GroupManager {
                 return
             }
             dao.insertGroupMessage(message)
+        }
+
+        // ── SYSTEM UPDATES (SILENT): Never update last message preview, time, or unread count
+        if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
+            return
         }
 
         // Sync metadata (Last Message Preview) — never expose raw wipe JSON
