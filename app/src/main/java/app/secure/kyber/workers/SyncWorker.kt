@@ -328,13 +328,12 @@ class SyncWorker(
                         android.app.PendingIntent.FLAG_IMMUTABLE
             )
             val notification = androidx.core.app.NotificationCompat
-                .Builder(context, "union_messages_channel")
+                .Builder(context, "union_messages_channel_v2")
                 .setContentTitle("You have a new message")
                 .setContentText(displayMsg)
                 .setSmallIcon(app.secure.kyber.R.drawable.app_ic)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL)
                 .build()
             notificationManager.notify(sender.hashCode(), notification)

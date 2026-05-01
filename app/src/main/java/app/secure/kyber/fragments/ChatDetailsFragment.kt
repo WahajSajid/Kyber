@@ -17,12 +17,14 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
+import app.secure.kyber.Utils.SystemUpdateManager
 import app.secure.kyber.activities.MainActivity
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
 import app.secure.kyber.roomdb.roomViewModel.ContactsViewModel
+import kotlinx.coroutines.launch
 import kotlin.getValue
 
 class ChatDetailsFragment : Fragment() {
@@ -145,8 +147,17 @@ class ChatDetailsFragment : Fragment() {
         refreshRadios(currentStatus)
         
         fun select(label: String) {
-            Prefs.setChatSpecificDisappearingStatus(requireContext(), contactOnion, label)
-            binding.disappearingMessagesState.text = label
+            val oldLabel = Prefs.getChatSpecificDisappearingStatus(requireContext(), contactOnion)
+                ?: Prefs.getDisappearingMessageStatus(requireContext())
+            
+            if (oldLabel != label) {
+                Prefs.setChatSpecificDisappearingStatus(requireContext(), contactOnion, label)
+                binding.disappearingMessagesState.text = label
+                
+                lifecycleScope.launch {
+                    SystemUpdateManager.sendDisappearingUpdate(requireContext(), contactOnion, label)
+                }
+            }
             dialog.dismiss()
         }
         

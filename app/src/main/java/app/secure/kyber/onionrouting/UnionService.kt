@@ -49,7 +49,7 @@ class UnionService : Service() {
     companion object {
         private const val TAG = "UnionService"
         private const val NOTIFICATION_ID = 1001
-        private const val MSG_CHANNEL_ID = "union_messages_channel"
+        private const val MSG_CHANNEL_ID = "union_messages_channel_v2"
         private const val CHANNEL_ID = "union_service_channel"
 
         const val ACTION_START_SERVICE = "START_UNION_SERVICE"
@@ -909,7 +909,7 @@ class UnionService : Service() {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE or NotificationCompat.DEFAULT_LIGHTS)
             .build()
 
         notificationManager.notify(sender.hashCode(), notification)
@@ -983,24 +983,32 @@ class UnionService : Service() {
                 CHANNEL_ID,
                 "Background Service",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
             val downloadChannel = NotificationChannel(
                 MediaTransferNotifier.DOWNLOAD_CHANNEL_ID,
                 "Media Downloads",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
 
             val uploadChannel = NotificationChannel(
                 MediaTransferNotifier.UPLOAD_CHANNEL_ID,
                 "Media Uploads",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
 
             val messageChannel = NotificationChannel(
                 MSG_CHANNEL_ID,
                 "Message Notifications",
                 NotificationManager.IMPORTANCE_HIGH
-            ).apply { setShowBadge(true) }
+            ).apply { 
+                setShowBadge(true)
+            }
 
             notificationManager.createNotificationChannel(downloadChannel)
             notificationManager.createNotificationChannel(uploadChannel)

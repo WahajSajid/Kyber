@@ -290,11 +290,19 @@
             android:textSize="@dimen/_10sdp" />
 
         <ImageView
-            android:layout_width="@dimen/_10sdp"
-            android:layout_height="@dimen/_10sdp"
+            android:layout_width="@dimen/_14sdp"
+            android:layout_height="@dimen/_14sdp"
             android:layout_gravity="center_vertical"
             android:src="@drawable/privacy"
             app:tint="#60FFFFFF" />
+
+        <app.secure.kyber.Other.CircularBurnProgressView
+            android:id="@+id/burnProgressRcv"
+            android:layout_width="@dimen/_14sdp"
+            android:layout_height="@dimen/_14sdp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/_4sdp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <TextView
@@ -680,11 +688,19 @@
             android:textSize="@dimen/_10sdp" />
 
         <ImageView
-            android:layout_width="@dimen/_10sdp"
-            android:layout_height="@dimen/_10sdp"
+            android:layout_width="@dimen/_14sdp"
+            android:layout_height="@dimen/_14sdp"
             android:layout_gravity="center_vertical"
             android:src="@drawable/privacy"
             app:tint="#60FFFFFF" />
+
+        <app.secure.kyber.Other.CircularBurnProgressView
+            android:id="@+id/burnProgressSent"
+            android:layout_width="@dimen/_14sdp"
+            android:layout_height="@dimen/_14sdp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="@dimen/_4sdp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <TextView
@@ -931,8 +947,8 @@
             android:textSize="@dimen/_10sdp" />
 
         <ImageView
-            android:layout_width="@dimen/_10sdp"
-            android:layout_height="@dimen/_10sdp"
+            android:layout_width="@dimen/_14sdp"
+            android:layout_height="@dimen/_14sdp"
             android:layout_gravity="center_vertical"
             android:src="@drawable/privacy"
             app:tint="#60FFFFFF" />
@@ -1039,8 +1055,7 @@
         android:layout_height="wrap_content"
         android:layout_marginVertical="@dimen/_12sdp"
         android:layout_marginHorizontal="@dimen/_40sdp"
-        android:background="@drawable/reaction_bg"
-        android:backgroundTint="#20000000"
+        android:background="@drawable/system_bubble_bg"
         android:paddingHorizontal="@dimen/_16sdp"
         android:paddingVertical="@dimen/_6sdp"
         android:gravity="center"

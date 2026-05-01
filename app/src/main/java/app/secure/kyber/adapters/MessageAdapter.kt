@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import app.secure.kyber.Other.CircularBurnProgressView
 import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
@@ -32,6 +33,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -142,6 +144,7 @@ class MessageAdapter(
 
     // True once the very first submitList with >1 item has been processed.
     private var firstLoadDone = false
+    private var timerJob: Job? = null
 
     override fun submitList(list: List<MessageUiModel>?) {
         val prevSize = currentList.size
@@ -179,11 +182,13 @@ class MessageAdapter(
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         recyclerView = rv
+        startTimer()
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {
         super.onDetachedFromRecyclerView(rv)
         recyclerView = null
+        timerJob?.cancel()
         adapterScope.coroutineContext.cancelChildren()
     }
 
@@ -333,6 +338,11 @@ class MessageAdapter(
         // Voice specific status
         val ivVoiceSentStatus: ImageView? = view.findViewById(R.id.voice_sent_status)
 
+        val burnProgressRcvAudio: CircularBurnProgressView = view.findViewById(R.id.burnProgressRcvAudio)
+        val burnProgressRcvText: CircularBurnProgressView = view.findViewById(R.id.burnProgressRcvText)
+        val burnProgressSentAudio: CircularBurnProgressView = view.findViewById(R.id.burnProgressSentAudio)
+        val burnProgressSentText: CircularBurnProgressView = view.findViewById(R.id.burnProgressSentText)
+
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
         fun waveform(sent: Boolean) = if (sent) waveformSent else waveformRcv
@@ -351,6 +361,9 @@ class MessageAdapter(
         val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
         fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
         fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
+
+        val llSystemUpdateBubble: View = view.findViewById(R.id.llSystemUpdateBubble)
+        val tvSystemUpdateText: TextView = view.findViewById(R.id.tvSystemUpdateText)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -439,6 +452,48 @@ class MessageAdapter(
         holder.sentTimeAudio?.text = convertDatetime(item.time)
         holder.rcvTimeAudio?.text = convertDatetime(item.time)
 
+        // ── Burn Time Indicators ─────────────────────────────────────────────
+        val expiresAt = item.expiresAt
+        val startTime = item.time.toLongOrNull() ?: System.currentTimeMillis()
+        val totalDuration = if (expiresAt > 0) (expiresAt - startTime).coerceAtLeast(1000L) else 0L
+
+        if (expiresAt > 0) {
+            if (isAudio) {
+                if (isSent) {
+                    holder.burnProgressSentAudio.isVisible = true
+                    holder.burnProgressSentAudio.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                } else {
+                    holder.burnProgressRcvAudio.isVisible = true
+                    holder.burnProgressRcvAudio.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                }
+            } else {
+                if (isSent) {
+                    holder.burnProgressSentText.isVisible = true
+                    holder.burnProgressSentText.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                } else {
+                    holder.burnProgressRcvText.isVisible = true
+                    holder.burnProgressRcvText.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                }
+            }
+        } else {
+            holder.burnProgressSentAudio.isVisible = false
+            holder.burnProgressSentText.isVisible = false
+            holder.burnProgressRcvAudio.isVisible = false
+            holder.burnProgressRcvText.isVisible = false
+        }
+
         // Render the actual parsed emoji
         val activeReactionView = holder.reaction(isSent)
         val isWipeType = type.startsWith("WIPE_")
@@ -508,6 +563,28 @@ class MessageAdapter(
             startPlayback(holder, item.isSent, item.decryptedUri ?: return)
         } else onBindViewHolder(holder, position)
 
+    }
+
+    private fun startTimer() {
+        if (timerJob?.isActive == true) return
+        timerJob = adapterScope.launch {
+            while (isActive) {
+                delay(1000)
+                updateVisibleTimers()
+            }
+        }
+    }
+
+    private fun updateVisibleTimers() {
+        val rv = recyclerView ?: return
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i)
+            val vh = rv.getChildViewHolder(child) as? VH ?: continue
+            vh.burnProgressRcvAudio.update()
+            vh.burnProgressRcvText.update()
+            vh.burnProgressSentAudio.update()
+            vh.burnProgressSentText.update()
+        }
     }
 
     private fun showMenu(position: Int) {
@@ -738,9 +815,22 @@ class MessageAdapter(
                 h.tvWipeRequestRcvdDesc?.text = statusText
             }
             return
+        } else if (type == "DISAPPEAR_SYSTEM") {
+            h.rlSent.isVisible = false
+            h.rlRcvd.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTimeLayout?.visibility = View.GONE
+            h.receivedMessageTimeLayout?.visibility = View.GONE
+            h.rlWipeRequestSent?.isVisible = false
+            h.rlWipeRequestRcvd?.isVisible = false
+            
+            h.llSystemUpdateBubble.visibility = View.VISIBLE
+            h.tvSystemUpdateText.text = item.decryptedMsg
+            return
         } else {
             h.rlWipeRequestSent?.isVisible = false
             h.rlWipeRequestRcvd?.isVisible = false
+            h.llSystemUpdateBubble.visibility = View.GONE
         }
 
         h.sentMessageTimeLayout?.visibility = View.VISIBLE

@@ -31,6 +31,7 @@ import app.secure.kyber.activities.QrCodeDialog
 import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.Utils.SystemUpdateManager
 import app.secure.kyber.databinding.FragmentSettingBinding
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.KeyEntity
@@ -238,8 +239,15 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         refreshDisappearingRadios(dialogView, currentSelection)
 
         fun select(label: String) {
-            Prefs.setDisappearingMessagesStatus(requireContext(), label)
-            binding.disappearingChatCard.cardValue.text = label
+            val oldLabel = Prefs.getDisappearingMessageStatus(requireContext())
+            if (oldLabel != label) {
+                Prefs.setDisappearingMessagesStatus(requireContext(), label)
+                binding.disappearingChatCard.cardValue.text = label
+                
+                lifecycleScope.launch {
+                    SystemUpdateManager.broadcastGlobalDisappearingUpdate(requireContext(), label)
+                }
+            }
             dialog.dismiss()
         }
 

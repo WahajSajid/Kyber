@@ -1075,7 +1075,7 @@ class GroupManager {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        val channelId = "group_messages_channel"
+        val channelId = "group_messages_channel_v2"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 channelId, "Group Messages", android.app.NotificationManager.IMPORTANCE_HIGH

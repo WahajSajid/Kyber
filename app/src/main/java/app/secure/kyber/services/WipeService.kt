@@ -38,8 +38,8 @@ class WipeService : Service() {
         const val ACTION_CANCEL_WIPE = "app.secure.kyber.ACTION_CANCEL_WIPE"
 
         private const val NOTIFICATION_ID = 8888
-        const val CHANNEL_ID = "kyber_wipe_channel"
-        const val CHANNEL_ID_SILENT = "kyber_wipe_channel_silent"
+        private const val CHANNEL_ID = "kyber_wipe_channel_v2"
+        private const val CHANNEL_ID_SILENT = "kyber_wipe_channel_silent_v2"
 
         private const val WIPE_COUNTDOWN_SECONDS = 5
     }
@@ -216,6 +216,7 @@ class WipeService : Service() {
                 description = "Urgent security wipe countdown"
                 setShowBadge(false)
                 enableVibration(true)
+                setSound(null, null)
             }
             
             val silentChannel = NotificationChannel(
@@ -226,6 +227,7 @@ class WipeService : Service() {
                 description = "Background data cleanup process"
                 setShowBadge(false)
                 enableVibration(false)
+                setSound(null, null)
             }
 
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -248,6 +250,7 @@ class WipeService : Service() {
             .setOngoing(true)
             .setPriority(if (isAuthorized) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(false)
+            .setSilent(true)
 
         // Only add UNDO action for authorized (manual) wipe
         if (isAuthorized) {
