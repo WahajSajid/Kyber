@@ -50,6 +50,9 @@ interface MessageDao {
     @Query("UPDATE messages SET downloadState = :state, downloadProgress = :progress WHERE messageId = :messageId")
     suspend fun updateDownloadProgress(messageId: String, state: String, progress: Int)
 
+    @Query("SELECT * FROM messages WHERE downloadState = :state")
+    suspend fun getMessagesByDownloadState(state: String): List<MessageEntity>
+
     @Query("UPDATE messages SET uploadState = :state, localFilePath = :path, uploadProgress = 100 WHERE messageId = :messageId")
     suspend fun setUploadDone(messageId: String, state: String, path: String?)
 

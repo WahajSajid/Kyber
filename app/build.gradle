@@ -16,8 +16,8 @@ android {
         applicationId "app.secure.kyber"
         minSdk 28
         targetSdk 36
-        versionCode 6          // ← Changed from 5 to 6
-        versionName "1.1.4"      // ← Changed from "1.1.3" to "1.1.4"
+        versionCode 7          // ← Changed from 6 to 7
+        versionName "1.1.5"      // ← Changed from "1.1.4" to "1.1.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -66,6 +66,7 @@ class UnionService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val chunkMutexes = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+    private val lastChunkReceivedMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private lateinit var transferNotifier: MediaTransferNotifier
 
@@ -119,6 +120,7 @@ class UnionService : Service() {
                 app.secure.kyber.GroupCreationBackend.GlobalGroupSync.startGlobalSync(applicationContext, myId)
             }
             
+            startDownloadWatchdog()
             refreshCircuitOnStart()
             var pollCount = 0
             while (isActive && isServiceRunning) {
@@ -211,6 +213,35 @@ class UnionService : Service() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Global polling error", e)
+        }
+    }
+
+    private fun startDownloadWatchdog() {
+        serviceScope.launch {
+            while (isActive && isServiceRunning) {
+                delay(30_000)
+                try {
+                    val downloadingMessages = messageDao.getMessagesByDownloadState("downloading")
+                    val now = System.currentTimeMillis()
+                    for (msg in downloadingMessages) {
+                        val mediaId = msg.remoteMediaId ?: continue
+                        val lastRx = lastChunkReceivedMap[mediaId] ?: now
+                        if (lastChunkReceivedMap[mediaId] == null) {
+                            lastChunkReceivedMap[mediaId] = now
+                        } else if (now - lastRx > 60_000) {
+                            messageDao.updateDownloadProgress(msg.messageId, "failed", msg.downloadProgress)
+                            val mimeType = msg.type
+                            val myApp = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                            if (myApp?.activeChatOnion != msg.senderOnion) {
+                                transferNotifier.showDownloadFailed(msg.messageId, mimeType)
+                            }
+                            lastChunkReceivedMap.remove(mediaId)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Watchdog error", e)
+                }
+            }
         }
     }
 
@@ -333,11 +364,16 @@ class UnionService : Service() {
             return
         }
 
+        if (transport.type == "CHUNK_RETRY_REQUEST") {
+            handleChunkRetryRequest(transport, decryptedPayloadText)
+            return
+        }
+
         // ── SECURITY: Strict type whitelist ─────────────────────────────────────────
         // Any unknown or unrecognized message type is silently dropped and NOT persisted.
         // This is a critical security boundary — unknown payloads must never reach the DB.
         val knownTypes = setOf(
-            "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK",
+            "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK", "CHUNK_RETRY_REQUEST",
             "WIPE_REQUEST", "WIPE_RESPONSE", "WIPE_SYSTEM", "WIPE_EVENT_RECEIVED",
             "REMOTE_WIPE_REQUEST", "REMOTE_WIPE_ACK",
             "DELIVERED_RECEIPT", "SEEN_RECEIPT",
@@ -586,6 +622,81 @@ class UnionService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "FATAL error in sendReceipt for $type", e)
+            }
+        }
+    }
+
+    fun sendChunkRetryRequest(senderOnion: String, mediaId: String, missingIndices: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val ctx = applicationContext
+                val myOnion = Prefs.getOnionAddress(ctx) ?: return@launch
+                val myName = Prefs.getName(ctx) ?: ""
+                
+                var recipientPublicKey: String? = contactRepo.getContact(senderOnion)?.publicKey
+                if (recipientPublicKey == null) {
+                    try {
+                        val pubKeyResp = repository.getPublicKey(senderOnion)
+                        if (pubKeyResp.isSuccessful) {
+                            recipientPublicKey = pubKeyResp.body()?.publicKey
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "getPublicKey API failed for CHUNK_RETRY_REQUEST")
+                    }
+                }
+                
+                if (recipientPublicKey == null) {
+                    Log.e(TAG, "No public key available for $senderOnion, cannot send CHUNK_RETRY_REQUEST")
+                    return@launch
+                }
+                
+                val payloadJson = JSONObject().apply {
+                    put("mediaId", mediaId)
+                    put("missingIndices", missingIndices)
+                }.toString()
+                
+                val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(ctx, recipientPublicKey!!, payloadJson)
+                
+                val transport = PrivateMessageTransportDto(
+                    messageId = UUID.randomUUID().toString(),
+                    msg = enc.encryptedPayload,
+                    senderOnion = myOnion,
+                    senderName = myName,
+                    timestamp = System.currentTimeMillis().toString(),
+                    type = "CHUNK_RETRY_REQUEST",
+                    iv = enc.iv,
+                    senderKeyFingerprint = enc.senderKeyFingerprint,
+                    recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                    senderPublicKey = enc.senderPublicKeyBase64
+                )
+                
+                val json = transportAdapter.toJson(transport)
+                val base64 = android.util.Base64.encodeToString(json.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                
+                var sentViaSocket = false
+                try {
+                    val result = unionClient.sendMessage(senderOnion, base64)
+                    if (result.isSuccess) {
+                        sentViaSocket = true
+                        Log.d(TAG, "SUCCESS dispatch CHUNK_RETRY_REQUEST via SOCKET to $senderOnion")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "ERROR dispatch CHUNK_RETRY_REQUEST via SOCKET", e)
+                }
+                
+                if (!sentViaSocket) {
+                    var circuit = Prefs.getCircuitId(ctx) ?: ""
+                    if (circuit.isEmpty()) {
+                        val r = repository.createCircuit()
+                        if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(ctx, circuit) }
+                    }
+                    if (circuit.isNotEmpty()) {
+                        repository.sendMessage(senderOnion, base64, circuit)
+                        Log.d(TAG, "SUCCESS dispatch CHUNK_RETRY_REQUEST via API to $senderOnion")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FATAL error in sendChunkRetryRequest", e)
             }
         }
     }
@@ -982,14 +1093,43 @@ class UnionService : Service() {
 
     private fun startPersistentConnectionLoop(host: String, port: Int) {
         serviceScope.launch {
+            var wasDisconnected = true
             while (isServiceRunning) {
                 val state = unionClient.connectionState.value
                 if (state == UnionClient.ConnectionState.DISCONNECTED || state == UnionClient.ConnectionState.ERROR) {
                     unionClient.connect(host, port)
+                    wasDisconnected = true
+                } else if (state == UnionClient.ConnectionState.CONNECTED && wasDisconnected) {
+                    wasDisconnected = false
+                    try {
+                        val failedMessages = messageDao.getMessagesByDownloadState("failed")
+                        for (msg in failedMessages) {
+                            val mediaId = msg.remoteMediaId ?: continue
+                            val missing = findMissingChunkIndices(msg)
+                            messageDao.updateDownloadProgress(msg.messageId, "downloading", msg.downloadProgress)
+                            lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
+                            sendChunkRetryRequest(msg.senderOnion, mediaId, missing)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Auto-retry error", e)
+                    }
                 }
                 delay(8000)
             }
         }
+    }
+
+    private fun findMissingChunkIndices(msg: MessageEntity): String {
+        val total = msg.totalChunksExpected
+        if (total <= 0) return ""
+        val downloaded = msg.downloadedChunkIndices.split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }.toSet()
+        val missing = mutableListOf<Int>()
+        for (i in 0 until total) {
+            if (!downloaded.contains(i)) {
+                missing.add(i)
+            }
+        }
+        return missing.joinToString(",")
     }
 
     @SuppressLint("ForegroundServiceType")
@@ -1129,8 +1269,12 @@ class UnionService : Service() {
         val originalMessageId = chunk.messageId
         val chunkDir = java.io.File(applicationContext.cacheDir, "chunks_$mediaId")
         val chunkFile = java.io.File(chunkDir, "chunk_${chunk.index.toString().padStart(6, '0')}")
-        if (chunkFile.exists() && chunkFile.length() > 0) return
+        if (chunkFile.exists() && chunkFile.length() > 0) {
+            lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
+            return
+        }
         MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
+        lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
         val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
         val progress = (savedCount * 100) / chunk.total
 
@@ -1248,4 +1392,31 @@ class UnionService : Service() {
     private fun getChunkMutex(mediaId: String): kotlinx.coroutines.sync.Mutex =
         chunkMutexes.getOrPut(mediaId) { kotlinx.coroutines.sync.Mutex() }
 
+    private fun handleChunkRetryRequest(transport: PrivateMessageTransportDto, decryptedPayloadText: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val json = JSONObject(decryptedPayloadText)
+                val missingMediaId = json.optString("mediaId")
+                val missingIndices = json.optString("missingIndices", "")
+                val existing = messageDao.getByRemoteMediaId(missingMediaId)
+                if (existing != null && existing.isSent) {
+                    val mediaSender = app.secure.kyber.media.MediaSender(applicationContext, messageDao)
+                    val senderName = Prefs.getName(applicationContext) ?: ""
+                    val isContact = contactRepo.getContact(transport.senderOnion) != null
+                    
+                    // We only want to retry this specific one
+                    mediaSender.retryUpload(
+                        messageId = existing.messageId,
+                        contactOnion = transport.senderOnion,
+                        senderOnion = Prefs.getOnionAddress(applicationContext) ?: "",
+                        senderName = senderName,
+                        isContact = isContact,
+                        missingIndices = missingIndices
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling CHUNK_RETRY_REQUEST", e)
+            }
+        }
+    }
 }

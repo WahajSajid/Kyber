@@ -116,7 +116,8 @@ class MediaSender(
         contactOnion: String,
         senderOnion: String,
         senderName: String,
-        isContact: Boolean
+        isContact: Boolean,
+        missingIndices: String = ""
     ) {
         val entity = messageDao.getByMessageId(messageId) ?: return
         val filePath   = entity.localFilePath ?: return
@@ -127,13 +128,24 @@ class MediaSender(
             if (entity.ampsJson.isNotBlank()) MessageEncryptionManager.decryptLocal(context, entity.ampsJson) else ""
         } catch (e: Exception) { "" }
 
+        // If missingIndices is provided, calculate the already uploaded ones to skip them
+        val totalChunks = entity.totalChunksExpected
+        val missingList = if (missingIndices.isNotBlank()) missingIndices.split(",").mapNotNull { it.toIntOrNull() } else emptyList()
+        val newUploadedIndices = mutableListOf<Int>()
+        if (missingList.isNotEmpty() && totalChunks > 0) {
+            for (i in 0 until totalChunks) {
+                if (i !in missingList) newUploadedIndices.add(i)
+            }
+        }
+        val newUploadedIndicesStr = newUploadedIndices.joinToString(",")
+
         // Reset chunk-tracking fields for retry
         messageDao.update(
             entity.copy(
                 uploadState = "pending",
-                uploadProgress = 0,
+                uploadProgress = if (totalChunks > 0) (newUploadedIndices.size * 100) / totalChunks else 0,
                 uploadAttemptCount = 0,
-                uploadedChunkIndices = "",
+                uploadedChunkIndices = if (missingList.isNotEmpty()) newUploadedIndicesStr else "",
                 lastUploadAttemptTime = 0L
             )
         )

@@ -1531,7 +1531,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             )
                         )
                         
-                        // Re-enqueue PrivateMediaDownloadWorker
+                        // Re-enqueue PrivateMediaDownloadWorker as a fallback for assembly
                         val assemblyRequest = app.secure.kyber.workers.PrivateMediaDownloadWorker.buildRequest(
                             messageId = msg.messageId,
                             mediaId = mediaId,
@@ -1545,6 +1545,37 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             assemblyRequest
                         )
                         Log.d("ChatFragment", "Re-enqueued download for messageId=${msg.messageId}")
+
+                        // Send CHUNK_RETRY_REQUEST to the sender
+                        val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                        val myName = app.secure.kyber.backend.common.Prefs.getName(requireContext()) ?: ""
+                        val recipientPublicKey = db.contactDao().get(contactOnion)?.publicKey
+                        if (recipientPublicKey != null) {
+                            val downloaded = entity.downloadedChunkIndices.split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }.toSet()
+                            val missing = mutableListOf<Int>()
+                            for (i in 0 until totalChunks) {
+                                if (!downloaded.contains(i)) missing.add(i)
+                            }
+                            val missingStr = missing.joinToString(",")
+                            val payloadJson = JSONObject().apply {
+                                put("mediaId", mediaId)
+                                put("missingIndices", missingStr)
+                            }.toString()
+                            val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(requireContext(), recipientPublicKey, payloadJson)
+                            val retryTransport = app.secure.kyber.backend.beans.PrivateMessageTransportDto(
+                                messageId = java.util.UUID.randomUUID().toString(),
+                                msg = enc.encryptedPayload,
+                                senderOnion = myOnion,
+                                senderName = myName,
+                                timestamp = System.currentTimeMillis().toString(),
+                                type = "CHUNK_RETRY_REQUEST",
+                                iv = enc.iv,
+                                senderKeyFingerprint = enc.senderKeyFingerprint,
+                                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                                senderPublicKey = enc.senderPublicKeyBase64
+                            )
+                            sendPrivateMessage(retryTransport)
+                        }
                     }
                 }
             },
