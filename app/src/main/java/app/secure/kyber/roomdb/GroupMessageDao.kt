@@ -121,5 +121,6 @@ interface GroupMessageDao {
     @Query("UPDATE group_messages SET thumbnailPath = :path WHERE messageId = :messageId")
     suspend fun setThumbnailPath(messageId: String, path: String)
 
+    @Query("UPDATE group_messages SET time = :time, expiresAt = :expiresAt WHERE messageId = :messageId")
+    suspend fun updateSentTime(messageId: String, time: String, expiresAt: Long)
 }
-

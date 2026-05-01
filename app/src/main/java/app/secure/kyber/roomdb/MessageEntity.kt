@@ -32,6 +32,11 @@ data class MessageEntity(
     val mediaDurationMs: Long = 0L,
     val mediaSizeBytes: Long = 0L,
     val thumbnailPath: String? = null,   // local path to thumbnail image
+    val uploadedChunkIndices: String = "",      // CSV of uploaded chunk indices (e.g., "0,1,2,5,7")
+    val downloadedChunkIndices: String = "",    // CSV of downloaded chunk indices
+    val totalChunksExpected: Int = 0,           // Total number of chunks for this media
+    val uploadAttemptCount: Int = 0,            // Number of retry attempts for failed upload
+    val lastUploadAttemptTime: Long = 0L,       // Timestamp of last upload attempt (for exponential backoff)
     val keyFingerprint: String? = null,  // Fingerprint of the key used to encrypt/decrypt
     val iv: String? = null,              // IV for AES-GCM decryption
     val expiresAt: Long = 0L,             // Timestamp when the message expires (0 = no expiry)
@@ -67,6 +72,11 @@ data class MessageUiModel(
     val remoteMediaId: String? get() = entity.remoteMediaId
     val mediaDurationMs: Long get() = entity.mediaDurationMs
     val thumbnailPath: String? get() = entity.thumbnailPath
+    val uploadedChunkIndices: String get() = entity.uploadedChunkIndices
+    val downloadedChunkIndices: String get() = entity.downloadedChunkIndices
+    val totalChunksExpected: Int get() = entity.totalChunksExpected
+    val uploadAttemptCount: Int get() = entity.uploadAttemptCount
+    val lastUploadAttemptTime: Long get() = entity.lastUploadAttemptTime
     val keyFingerprint: String? get() = entity.keyFingerprint
     val iv: String? get() = entity.iv
     val expiresAt: Long get() = entity.expiresAt

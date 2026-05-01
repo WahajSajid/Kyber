@@ -872,7 +872,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     type = msgType,
                     uploadState = "pending",
                     uploadProgress = 0,
-                    expiresAt = localExpiresAt,
+                    expiresAt = 0L, // Timer starts after successful upload
                     replyToText = capturedReplyText
                 )
             )
@@ -1501,7 +1501,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
                     val entity = db.messageDao().getByMessageId(msg.messageId) ?: return@launch
                     val mediaId = entity.remoteMediaId ?: return@launch
-                    val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunks(
+                    val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunksFromDisk(
                         requireContext(), mediaId, entity.type
                     )
                     if (assembled != null) {

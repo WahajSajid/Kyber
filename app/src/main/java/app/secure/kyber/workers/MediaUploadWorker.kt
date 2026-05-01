@@ -1,8 +1,10 @@
 package app.secure.kyber.workers
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
 import androidx.work.*
+import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
@@ -10,17 +12,15 @@ import app.secure.kyber.media.MediaChunkManager
 import app.secure.kyber.media.MediaTransferNotifier
 import app.secure.kyber.media.VideoCompressor
 import app.secure.kyber.roomdb.AppDb
-import android.util.Base64
-import app.secure.kyber.Utils.MessageEncryptionManager
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.EntryPointAccessors
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
+import kotlin.math.min
+import kotlin.math.pow
 
 class MediaUploadWorker(
     private val context: Context,
@@ -43,6 +43,11 @@ class MediaUploadWorker(
         const val KEY_DURATION_MS = "duration_ms"
         const val KEY_DISAPPEAR_TTL = "disappear_ttl"
         const val KEY_REPLY_TO_TEXT = "reply_to_text"
+
+        // Retry and timeout constants
+        private const val PER_CHUNK_TIMEOUT_MS = 15000L  // 15 seconds per chunk
+        private const val MAX_RETRIES_PER_CHUNK = 5
+        private const val INTER_CHUNK_DELAY_MS = 80L
 
         fun buildRequest(
             messageId: String,
@@ -83,7 +88,7 @@ class MediaUploadWorker(
                 .addTag(TAG)
                 .addTag("upload_$messageId")
                 .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
+                    BackoffPolicy.EXPONENTIAL,
                     WorkRequest.MIN_BACKOFF_MILLIS,
                     java.util.concurrent.TimeUnit.MILLISECONDS
                 )
@@ -94,7 +99,6 @@ class MediaUploadWorker(
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
-    private var serviceScope: CoroutineScope? = null
 
     override suspend fun doWork(): Result {
         val messageId = inputData.getString(KEY_MESSAGE_ID) ?: return Result.failure()
@@ -114,7 +118,6 @@ class MediaUploadWorker(
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
         val notifier = MediaTransferNotifier(context)
-        serviceScope = CoroutineScope(Dispatchers.IO)
 
         val repository = EntryPointAccessors.fromApplication(
             context.applicationContext,
@@ -122,37 +125,38 @@ class MediaUploadWorker(
         ).repository()
 
         return try {
-            val fgInfo = notifier.buildUploadForegroundInfo(messageId, mimeType, 0)
-            setForeground(fgInfo)
+            Log.d(TAG, "Starting upload for messageId=$messageId, mediaId=$mediaId")
+            setForeground(notifier.buildUploadForegroundInfo(messageId, mimeType, 0))
 
-            // Fetch saved state to support resumption
+            // Fetch saved state for resumption
             val savedMsg = messageDao.getMessageByMessageId(messageId)
-            val savedProgress = savedMsg?.uploadProgress ?: 0
-            val isUploading = savedMsg?.uploadState == "uploading"
+            val uploadedIndices = parseSavedChunks(savedMsg?.uploadedChunkIndices ?: "")
+            val attemptCount = savedMsg?.uploadAttemptCount ?: 0
 
+            if (attemptCount >= MAX_RETRIES_PER_CHUNK) {
+                Log.e(TAG, "Max retries reached for messageId=$messageId")
+                messageDao.updateUploadProgress(messageId, "failed", 0)
+                notifier.showUploadFailed(messageId, mimeType)
+                return Result.failure()
+            }
+
+            // Prepare file for upload (compress video if needed)
             val uploadFilePath: String
             val thumbnailPath: String?
 
             if (mimeType == "VIDEO") {
                 val existingLocalPath = savedMsg?.localFilePath ?: filePath
-                val hasCompressed = existingLocalPath.contains("sent_media") && isUploading
+                val hasCompressed = existingLocalPath.contains("sent_media") && savedMsg?.uploadState == "uploading"
 
                 if (hasCompressed) {
-                    // Skip compression, resume from where we left off
                     uploadFilePath = existingLocalPath
                     thumbnailPath = savedMsg?.thumbnailPath
-                    messageDao.updateUploadProgress(messageId, "uploading", savedProgress)
-                    setForeground(
-                        notifier.buildUploadForegroundInfo(
-                            messageId, mimeType, savedProgress, stateLabel = "Uploading…"
-                        )
-                    )
+                    Log.d(TAG, "Using existing compressed video: $uploadFilePath")
                 } else {
+                    Log.d(TAG, "Compressing video...")
                     messageDao.updateUploadProgress(messageId, "compressing", 0)
                     setForeground(
-                        notifier.buildUploadForegroundInfo(
-                            messageId, mimeType, 0, stateLabel = "Compressing…"
-                        )
+                        notifier.buildUploadForegroundInfo(messageId, mimeType, 0, stateLabel = "Compressing…")
                     )
 
                     val result = VideoCompressor.compress(
@@ -161,17 +165,15 @@ class MediaUploadWorker(
                         onProgress = { pct ->
                             if (pct % 5 == 0) {
                                 notifier.showCompressionProgress(messageId, pct)
-                                serviceScope?.launch {
+                                runBlocking {
                                     messageDao.updateUploadProgress(messageId, "compressing", pct)
                                 }
                             }
                         }
-                    )
-
-                    if (result == null) {
+                    ) ?: run {
+                        Log.e(TAG, "Video compression failed")
                         messageDao.updateUploadProgress(messageId, "failed", 0)
                         notifier.showUploadFailed(messageId, mimeType)
-                        serviceScope?.cancel()
                         return Result.failure()
                     }
 
@@ -182,22 +184,17 @@ class MediaUploadWorker(
                     if (thumbnailPath != null) {
                         messageDao.setThumbnailPath(messageId, thumbnailPath)
                     }
-
-                    messageDao.updateUploadProgress(messageId, "uploading", 0)
-                    setForeground(
-                        notifier.buildUploadForegroundInfo(
-                            messageId, mimeType, 0, stateLabel = "Uploading…"
-                        )
-                    )
                 }
-
             } else {
                 uploadFilePath = filePath
-                thumbnailPath = null
+                // For IMAGE: read the early thumbnail that MediaSender already saved to the DB.
+                // This is transmitted in Chunk 0 so the receiver can show it during download.
+                thumbnailPath = savedMsg?.thumbnailPath
                 messageDao.setLocalFilePath(messageId, uploadFilePath)
-                messageDao.updateUploadProgress(messageId, "uploading", savedProgress)
             }
 
+            // Build chunks
+            Log.d(TAG, "Building chunks for uploadFilePath=$uploadFilePath")
             val chunks = MediaChunkManager.buildChunks(
                 context = context,
                 filePath = uploadFilePath,
@@ -210,114 +207,170 @@ class MediaUploadWorker(
             )
 
             if (chunks.isEmpty()) {
+                Log.e(TAG, "No chunks built")
                 messageDao.updateUploadProgress(messageId, "failed", 0)
                 notifier.showUploadFailed(messageId, mimeType)
-                serviceScope?.cancel()
                 return Result.failure()
             }
 
+            Log.d(TAG, "Built ${chunks.size} chunks, already uploaded: ${uploadedIndices.size}")
+
             // Get recipient public key
-//            val contact = db.contactDao().get(contactOnion)
-//            var recipientPublicKey = contact?.publicKey
-//            if (recipientPublicKey == null) {
-//                recipientPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
-//                    .getString("pending_key_$contactOnion", null)
-//            }
-            
+            val resp = repository.getPublicKey(contactOnion)
+            if (!resp.isSuccessful) {
+                Log.e(TAG, "Failed to get recipient public key")
+                return Result.retry()
+            }
+            val recipientPublicKey = resp.body()?.publicKey ?: return Result.retry()
 
-                val resp = repository.getPublicKey(contactOnion)
-                if (resp.isSuccessful) {
-                    val recipientPublicKey = resp.body()?.publicKey
-
-                    val startIndex = if (savedProgress > 0 && isUploading) {
-                        (savedProgress * chunks.size) / 100
-                    } else 0
-
-
-                    var successCount = startIndex
-
-                    val chunksToSend = if (startIndex > 0 && startIndex < chunks.size) {
-                        chunks.subList(startIndex, chunks.size)
-                    } else chunks
-
-
-
-                    for (chunk in chunksToSend) {
-                        if (isStopped) {
-                            messageDao.updateUploadProgress(
-                                messageId, "failed", (successCount * 100) / chunks.size
-                            )
-                            notifier.showUploadFailed(messageId, mimeType)
-                            serviceScope?.cancel()
-                            return Result.retry()
-                        }
-
-                        val chunkJson = chunkAdapter.toJson(chunk)
-                        val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey!!, chunkJson)
-
-                        val sent = sendChunk(
-                            repository, contactOnion, senderOnion, senderName, chunk, isContact, recipientPublicKey!!, encryptionResult.senderPublicKeyBase64, disappearTtl, replyToText
-                        )
-                        if (sent) {
-                            successCount++
-                            val progress = (successCount * 100) / chunks.size
-                            messageDao.updateUploadProgress(messageId, "uploading", progress)
-                            setForeground(
-                                notifier.buildUploadForegroundInfo(messageId, mimeType, progress)
-                            )
-                        } else {
-                            messageDao.updateUploadProgress(
-                                messageId, "failed", (successCount * 100) / chunks.size
-                            )
-                            notifier.showUploadFailed(messageId, mimeType)
-                            serviceScope?.cancel()
-                            return Result.retry()
-                        }
-
-                        if (chunk.index < chunks.size - 1) delay(80)
-                    }
-
-
+            // Identify chunks to send
+            val failedChunks = mutableSetOf<Int>()
+            for (i in chunks.indices) {
+                if (i !in uploadedIndices) {
+                    failedChunks.add(i)
                 }
-
-//            if (recipientPublicKey == null) {
-//                Log.e(TAG, "Recipient public key not found for $contactOnion")
-//                return Result.retry()
-//            }
-
-
-
-            val finalLocalPath = if (mimeType == "VIDEO") {
-                try {
-                    val compressed = java.io.File(uploadFilePath.removePrefix("file://"))
-                    if (compressed.exists()) {
-                        val destDir =
-                            java.io.File(context.filesDir, "sent_media").apply { mkdirs() }
-                        val dest = java.io.File(destDir, "video_${messageId}.mp4")
-                        if (!dest.exists()) compressed.copyTo(dest)
-                        dest.absolutePath
-                    } else uploadFilePath.removePrefix("file://")
-                } catch (e: Exception) {
-                    uploadFilePath.removePrefix("file://")
-                }
-            } else {
-                filePath.removePrefix("file://")
             }
 
+            Log.d(TAG, "Chunks to send: ${failedChunks.sorted()}")
+
+            // Send chunks with retry logic
+            var successCount = uploadedIndices.size
+            messageDao.updateUploadProgress(messageId, "uploading", 0)
+            setForeground(notifier.buildUploadForegroundInfo(messageId, mimeType, 0, stateLabel = "Uploading…"))
+
+            for (chunkIndex in failedChunks.sorted()) {
+                if (isStopped) {
+                    Log.w(TAG, "Worker stopped")
+                    messageDao.updateUploadProgress(messageId, "failed", (successCount * 100) / chunks.size)
+                    return Result.retry()
+                }
+
+                val chunk = chunks[chunkIndex]
+                val sent = sendChunkWithRetry(
+                    repository, contactOnion, senderOnion, senderName, chunk, isContact,
+                    recipientPublicKey, disappearTtl, replyToText, thumbnailPath
+                )
+
+                if (sent) {
+                    uploadedIndices.add(chunkIndex)
+                    successCount++
+
+                    // Update DB with progress
+                    val progress = (successCount * 100) / chunks.size
+                    val indices = uploadedIndices.sorted().joinToString(",")
+                    messageDao.updateUploadProgress(messageId, "uploading", progress)
+
+                    // Update chunk tracking
+                    val entity = messageDao.getMessageByMessageId(messageId)
+                    if (entity != null) {
+                        db.messageDao().update(
+                            entity.copy(
+                                uploadedChunkIndices = indices,
+                                totalChunksExpected = chunks.size,
+                                uploadProgress = progress
+                            )
+                        )
+                    }
+
+                    Log.d(TAG, "Chunk $chunkIndex sent ($successCount/${chunks.size})")
+                    setForeground(notifier.buildUploadForegroundInfo(messageId, mimeType, progress))
+                } else {
+                    Log.e(TAG, "Failed to send chunk $chunkIndex after all retries")
+                    messageDao.updateUploadProgress(messageId, "failed", (successCount * 100) / chunks.size)
+                    notifier.showUploadFailed(messageId, mimeType)
+
+                    // Increment attempt count and retry
+                    val entity = messageDao.getMessageByMessageId(messageId)
+                    if (entity != null) {
+                        db.messageDao().update(entity.copy(uploadAttemptCount = attemptCount + 1))
+                    }
+
+                    return Result.retry()
+                }
+
+                if (chunkIndex < chunks.size - 1) {
+                    delay(INTER_CHUNK_DELAY_MS)
+                }
+            }
+
+            // All chunks sent successfully
+            val nowMs = System.currentTimeMillis()
+            val nowStr = nowMs.toString()
+            if (disappearTtl > 0L) {
+                val expiresAt = nowMs + disappearTtl
+                messageDao.updateSentTime(messageId, nowStr, expiresAt)
+            } else {
+                messageDao.updateSentTime(messageId, nowStr, 0L)
+            }
+            val finalLocalPath = uploadFilePath.removePrefix("file://")
             messageDao.setUploadDone(messageId, "done", finalLocalPath)
             notifier.showUploadComplete(messageId, mimeType)
-            serviceScope?.cancel()
+
+            Log.d(TAG, "Upload complete for messageId=$messageId")
             Result.success()
 
         } catch (e: Exception) {
-            Log.e(TAG, "Upload worker error for $messageId", e)
+            Log.e(TAG, "Upload worker error for $messageId: ${e.message}", e)
             messageDao.updateUploadProgress(messageId, "failed", 0)
             notifier.showUploadFailed(messageId, mimeType)
-            serviceScope?.cancel()
             Result.retry()
         }
     }
 
+    /**
+     * Send a single chunk with exponential backoff retry logic.
+     * Per-chunk timeout: 15 seconds
+     * Max retries: 5
+     */
+    private suspend fun sendChunkWithRetry(
+        repository: app.secure.kyber.backend.KyberRepository,
+        contactOnion: String,
+        senderOnion: String,
+        senderName: String,
+        chunk: MediaChunkDto,
+        isContact: Boolean,
+        recipientPublicKey: String,
+        disappearTtl: Long,
+        replyToText: String,
+        thumbnailPath: String?
+    ): Boolean {
+        var attempt = 0
+
+        while (attempt < MAX_RETRIES_PER_CHUNK) {
+            try {
+                val result = withTimeoutOrNull(PER_CHUNK_TIMEOUT_MS) {
+                    sendChunk(
+                        repository, contactOnion, senderOnion, senderName, chunk, isContact,
+                        recipientPublicKey, disappearTtl, replyToText, thumbnailPath
+                    )
+                } ?: false
+
+                if (result) {
+                    Log.d(TAG, "Chunk ${chunk.index} sent successfully")
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Chunk ${chunk.index} attempt $attempt error: ${e.message}")
+            }
+
+            // Exponential backoff
+            if (attempt < MAX_RETRIES_PER_CHUNK - 1) {
+                val backoffMs = (1000L * (2.0.pow(attempt.toDouble()))).toLong().coerceAtMost(30000L)
+                Log.d(TAG, "Chunk ${chunk.index} backoff: ${backoffMs}ms")
+                delay(backoffMs)
+            }
+
+            attempt++
+        }
+
+        Log.e(TAG, "Chunk ${chunk.index} failed after $MAX_RETRIES_PER_CHUNK attempts")
+        return false
+    }
+
+    /**
+     * Send a single chunk to the server.
+     * Returns true if successful, false otherwise.
+     */
     private suspend fun sendChunk(
         repository: app.secure.kyber.backend.KyberRepository,
         contactOnion: String,
@@ -326,15 +379,17 @@ class MediaUploadWorker(
         chunk: MediaChunkDto,
         isContact: Boolean,
         recipientPublicKey: String,
-        myPublicKey: String?,
         disappearTtl: Long,
-        replyToText: String
+        replyToText: String,
+        thumbnailPath: String?
     ): Boolean {
         return try {
             val chunkJson = chunkAdapter.toJson(chunk)
-            
+
             // Encrypt chunk
-            val encryptionResult = MessageEncryptionManager.encryptMessage(context, recipientPublicKey, chunkJson)
+            val encryptionResult = MessageEncryptionManager.encryptMessage(
+                context, recipientPublicKey, chunkJson
+            )
 
             val transport = PrivateMessageTransportDto(
                 messageId = UUID.randomUUID().toString(),
@@ -343,13 +398,14 @@ class MediaUploadWorker(
                 senderName = senderName,
                 timestamp = System.currentTimeMillis().toString(),
                 type = "CHUNK",
-                uri = null, // In the new system, we put the encrypted payload in 'msg'
+                uri = null,
                 isRequest = !isContact,
                 iv = encryptionResult.iv,
                 senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
                 recipientKeyFingerprint = encryptionResult.recipientKeyFingerprint,
-                senderPublicKey = myPublicKey,
+                senderPublicKey = encryptionResult.senderPublicKeyBase64,
                 disappear_ttl = disappearTtl,
+                thumbnail = if (chunk.index == 0) thumbnailPath?.let { encodeThumbnail(it) } else null,
                 replyToText = replyToText
             )
             val transportJson = transportAdapter.toJson(transport)
@@ -357,6 +413,7 @@ class MediaUploadWorker(
                 transportJson.toByteArray(Charsets.UTF_8), Base64.NO_WRAP
             )
 
+            // Get circuit
             var circuitId = Prefs.getCircuitId(context) ?: ""
             if (circuitId.isEmpty()) {
                 val r = repository.createCircuit()
@@ -367,8 +424,10 @@ class MediaUploadWorker(
             }
             if (circuitId.isEmpty()) return false
 
+            // Send message
             var response = repository.sendMessage(contactOnion, payload, circuitId)
             if (!response.isSuccessful && (response.code() == 400 || response.code() == 404)) {
+                // Try fresh circuit
                 val retry = repository.createCircuit()
                 if (retry.isSuccessful) {
                     circuitId = retry.body()?.circuitId ?: ""
@@ -376,10 +435,33 @@ class MediaUploadWorker(
                     response = repository.sendMessage(contactOnion, payload, circuitId)
                 }
             }
+
             response.isSuccessful
         } catch (e: Exception) {
-            Log.e(TAG, "sendChunk error: ${e.message}")
+            Log.e(TAG, "sendChunk error: ${e.message}", e)
             false
         }
     }
+
+    /**
+     * Parse comma-separated chunk indices from saved state.
+     * Example: "0,1,2,5,7" → {0, 1, 2, 5, 7}
+     */
+    private fun parseSavedChunks(csv: String): MutableSet<Int> {
+        if (csv.isBlank()) return mutableSetOf()
+        return csv.split(",")
+            .mapNotNull { it.trim().toIntOrNull() }
+            .toMutableSet()
+    }
+    private fun encodeThumbnail(path: String): String? {
+        return try {
+            val file = java.io.File(path)
+            if (!file.exists()) return null
+            val bytes = file.readBytes()
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (e: Exception) {
+            null
+        }
+    }
 }
+

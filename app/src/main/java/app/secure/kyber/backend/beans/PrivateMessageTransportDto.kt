@@ -25,6 +25,8 @@ data class PrivateMessageTransportDto(
     
     // Settings metadata
     @Json(name = "disappear_ttl") val disappear_ttl: Long? = 0L,
+    @Json(name = "thumbnail") val thumbnail: String? = null,
+
     
     // Reply context
     @Json(name = "replyToText") val replyToText: String = "",

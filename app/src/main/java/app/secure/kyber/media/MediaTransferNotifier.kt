@@ -167,13 +167,25 @@ class MediaTransferNotifier(private val context: Context) {
         nm.cancel(DOWNLOAD_BASE_ID + messageId.hashCode().and(0xFFFF))
     }
 
-    fun buildDownloadForegroundInfo(messageId: String, mimeType: String, progress: Int): ForegroundInfo {
+    fun buildDownloadForegroundInfo(
+        messageId: String,
+        mimeType: String,
+        progress: Int,
+        stateLabel: String = ""
+    ): ForegroundInfo {
         val notifId = DOWNLOAD_BASE_ID + messageId.hashCode().and(0xFFFF)
         val label = typeLabel(mimeType)
-        val isIndeterminate = progress == 0
+        val isIndeterminate = progress == 0 && stateLabel.isBlank()
+        
+        val contentText = when {
+            stateLabel.isNotBlank() -> "$stateLabel $progress%"
+            isIndeterminate -> "Starting…"
+            else -> "$progress%"
+        }
+
         val notification = NotificationCompat.Builder(context, DOWNLOAD_CHANNEL_ID)
             .setContentTitle("Receiving $label")
-            .setContentText(if (isIndeterminate) "Starting…" else "$progress%")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.app_ic)
             .setProgress(100, progress, isIndeterminate)
             .setOngoing(true)

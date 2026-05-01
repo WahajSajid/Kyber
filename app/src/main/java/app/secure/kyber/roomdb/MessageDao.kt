@@ -62,6 +62,9 @@ interface MessageDao {
     @Query("UPDATE messages SET remoteMediaId = :mediaId WHERE messageId = :messageId")
     suspend fun setRemoteMediaId(messageId: String, mediaId: String)
 
+    @Query("UPDATE messages SET time = :time, expiresAt = :expiresAt WHERE messageId = :messageId")
+    suspend fun updateSentTime(messageId: String, time: String, expiresAt: Long)
+
     @Query("SELECT * FROM messages WHERE remoteMediaId = :mediaId AND isSent = 0 LIMIT 1")
     suspend fun getByRemoteMediaId(mediaId: String): MessageEntity?
 

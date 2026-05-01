@@ -6,12 +6,15 @@ import android.util.Base64
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.WorkManager
 import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.activities.AppIntroSliderActivity
+import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.DisappearTime
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.fragments.SettingFragment
+import app.secure.kyber.media.MediaChunkManager
 import app.secure.kyber.onionrouting.UnionService
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
@@ -43,6 +46,7 @@ class SyncWorker(
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+    private val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
@@ -106,7 +110,168 @@ class SyncWorker(
                         transportAdapter.fromJson(decoded)
                     } catch (e: Exception) { null }
 
-                    if (transport == null || transport.isAcceptance || transport.type == "CHUNK") {
+                    if (transport == null || transport.isAcceptance) {
+                        return@forEach
+                    }
+
+                    // ═════════════════════════════════════════════════════════════════════
+                    // CHUNK HANDLING: Process media chunks for private chat reassembly
+                    // ═════════════════════════════════════════════════════════════════════
+                    if (transport.type == "CHUNK") {
+                        try {
+                            Log.d(TAG, "Received CHUNK from ${transport.senderOnion}")
+
+                            // Decrypt the chunk payload to extract MediaChunkDto
+                            var decryptedChunkJson = transport.msg
+                            var senderPublicKey: String? = transport.senderPublicKey
+                            
+                            if (!transport.iv.isNullOrBlank() && !transport.recipientKeyFingerprint.isNullOrBlank()) {
+                                try {
+                                    if (senderPublicKey == null) {
+                                        senderPublicKey = contactRepo.getContact(transport.senderOnion)?.publicKey
+                                    }
+                                    if (senderPublicKey == null) {
+                                        senderPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                            .getString("pending_key_${transport.senderOnion}", null)
+                                    }
+                                    if (senderPublicKey == null) {
+                                        val resp = repository.getPublicKey(transport.senderOnion)
+                                        if (resp.isSuccessful) {
+                                            senderPublicKey = resp.body()?.publicKey
+                                        }
+                                    }
+                                    
+                                    if (senderPublicKey != null) {
+                                        decryptedChunkJson = MessageEncryptionManager.decryptMessage(
+                                            context,
+                                            senderPublicKey,
+                                            transport.recipientKeyFingerprint,
+                                            transport.msg,
+                                            transport.iv
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Chunk decryption failed: ${e.message}")
+                                    return@forEach
+                                }
+                            }
+
+                            // Parse the decrypted JSON into MediaChunkDto
+                            val chunkDto = try {
+                                val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
+                                chunkAdapter.fromJson(decryptedChunkJson)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to parse MediaChunkDto: ${e.message}")
+                                return@forEach
+                            }
+
+                            if (chunkDto == null) {
+                                Log.w(TAG, "Null MediaChunkDto after parsing")
+                                return@forEach
+                            }
+
+                            Log.d(TAG, "Parsed chunk: mediaId=${chunkDto.mediaId}, index=${chunkDto.index}, total=${chunkDto.total}")
+
+                            // Save chunk to disk
+                            MediaChunkManager.saveChunkToDisk(context, chunkDto.mediaId, chunkDto.index, chunkDto.data)
+
+                            // Check if this was the first chunk (contains metadata)
+                            if (chunkDto.index == 0) {
+                                // Insert or update the message entity in DB with metadata
+                                val thumbPath = if (chunkDto.index == 0) {
+                                    transport.thumbnail?.let { 
+                                        app.secure.kyber.media.MediaChunkManager.decodeThumbnail(context, it, chunkDto.mediaId) 
+                                    }
+                                } else null
+                                var existingMsg = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                if (existingMsg == null) {
+                                    existingMsg = MessageEntity(
+                                        messageId = chunkDto.messageId,
+                                        msg = if (chunkDto.caption.isNotBlank())
+                                            MessageEncryptionManager.encryptLocal(context, chunkDto.caption).encryptedBlob
+                                        else "",
+                                        senderOnion = transport.senderOnion,
+                                        time = DisappearTime.parseMessageTimestampMs(transport.timestamp).toString(),
+                                        isSent = false,
+                                        type = chunkDto.mimeType,
+                                        thumbnailPath = thumbPath,
+                                        remoteMediaId = chunkDto.mediaId,
+                                        downloadState = "downloading",
+                                        downloadProgress = 0,
+                                        mediaSizeBytes = chunkDto.totalBytes,
+                                        mediaDurationMs = chunkDto.durationMs,
+                                        totalChunksExpected = chunkDto.total,
+                                        downloadedChunkIndices = "0",
+                                        keyFingerprint = transport.recipientKeyFingerprint,
+                                        iv = transport.iv,
+                                        expiresAt = 0L, // Timer starts after full download
+                                        replyToText = transport.replyToText ?: ""
+                                    )
+                                    messageDao.insert(existingMsg)
+                                    Log.d(TAG, "Inserted new message for CHUNK mediaId=${chunkDto.mediaId}")
+                                } else {
+                                    // Update with chunk tracking
+                                    messageDao.update(
+                                        existingMsg.copy(
+                                            downloadedChunkIndices = "0",
+                                            totalChunksExpected = chunkDto.total,
+                                            thumbnailPath = thumbPath ?: existingMsg.thumbnailPath
+                                        )
+                                    )
+                                }
+                            } else {
+                                // Update existing message with new chunk index
+                                val existingMsg = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                if (existingMsg != null) {
+                                    val indices = existingMsg.downloadedChunkIndices
+                                        .split(",")
+                                        .filter { it.isNotBlank() }
+                                        .map { it.toIntOrNull() ?: -1 }
+                                        .filter { it >= 0 }
+                                        .toMutableSet()
+                                    indices.add(chunkDto.index)
+                                    val newIndices = indices.sorted().joinToString(",")
+                                    
+                                    val progress = (indices.size * 100) / chunkDto.total
+                                    messageDao.update(
+                                        existingMsg.copy(
+                                            downloadedChunkIndices = newIndices,
+                                            downloadProgress = progress
+                                        )
+                                    )
+                                    Log.d(TAG, "Updated message with chunk ${ chunkDto.index}, indices: $newIndices")
+                                }
+                            }
+
+                            // Check if all chunks are received
+                            val savedCount = MediaChunkManager.countSavedChunks(context, chunkDto.mediaId)
+                            if (savedCount >= chunkDto.total) {
+                                Log.d(TAG, "All $savedCount chunks received for mediaId=${chunkDto.mediaId}, enqueueing assembly worker")
+                                
+                                // Find the message entity to get its ID
+                                val msgEntity = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                if (msgEntity != null) {
+                                    // Enqueue PrivateMediaDownloadWorker to assemble chunks
+                                    val assemblyRequest = app.secure.kyber.workers.PrivateMediaDownloadWorker.buildRequest(
+                                        messageId = msgEntity.messageId,
+                                        mediaId = chunkDto.mediaId,
+                                        totalChunks = chunkDto.total,
+                                        mimeType = chunkDto.mimeType,
+                                        disappearTtl = transport.disappear_ttl ?: 0L
+                                    )
+                                    WorkManager.getInstance(context).enqueueUniqueWork(
+                                        "download_${msgEntity.messageId}",
+                                        androidx.work.ExistingWorkPolicy.KEEP,
+                                        assemblyRequest
+                                    )
+                                    Log.d(TAG, "Enqueued PrivateMediaDownloadWorker for messageId=${msgEntity.messageId}")
+                                }
+                            } else {
+                                Log.d(TAG, "Waiting for more chunks: $savedCount / ${chunkDto.total}")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing CHUNK message", e)
+                        }
                         return@forEach
                     }
 

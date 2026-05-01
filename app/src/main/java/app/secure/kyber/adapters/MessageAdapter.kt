@@ -1083,12 +1083,16 @@ class MessageAdapter(
                     resolveMediaSource(ctx, rawSource, type)
                 }
             }
-            // While downloading, try to show a real thumbnail if available
-            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
-            if (isDownloading) {
+            // While uploading (sender) or downloading (receiver), try to show a real thumbnail
+            val isInTransit = item.downloadState == "downloading"
+                    || item.downloadState == "pending"
+                    || item.uploadState == "uploading"
+                    || item.uploadState == "compressing"
+                    || item.uploadState == "pending"
+            if (isInTransit) {
                 val thumbFile = item.thumbnailPath?.let { java.io.File(it) }
                 if (thumbFile != null && thumbFile.exists()) {
-                    // Real thumbnail available — show it during download
+                    // Real thumbnail available — show it during upload/download
                     Glide.with(ctx)
                         .load(thumbFile)
                         .apply(

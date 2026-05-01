@@ -23,20 +23,23 @@ class GroupMediaDownloadWorker(
         const val KEY_MEDIA_ID = "media_id"
         const val KEY_TOTAL_CHUNKS = "total_chunks"
         const val KEY_MIME_TYPE = "mime_type"
+        const val KEY_DISAPPEAR_TTL = "disappear_ttl"
 
         fun buildRequest(
             messageId: String,
             groupId: String,
             mediaId: String,
             totalChunks: Int,
-            mimeType: String
+            mimeType: String,
+            disappearTtl: Long = 0L
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
                 KEY_GROUP_ID to groupId,
                 KEY_MEDIA_ID to mediaId,
                 KEY_TOTAL_CHUNKS to totalChunks,
-                KEY_MIME_TYPE to mimeType
+                KEY_MIME_TYPE to mimeType,
+                KEY_DISAPPEAR_TTL to disappearTtl
             )
             return OneTimeWorkRequestBuilder<GroupMediaDownloadWorker>()
                 .setInputData(data)
@@ -86,13 +89,21 @@ class GroupMediaDownloadWorker(
             }
 
             // Assembly 
-            val assembledPath = MediaChunkManager.assembleChunks(context, mediaId, mimeType)
+            val assembledPath = MediaChunkManager.assembleChunksFromDisk(context, mediaId, mimeType)
             if (assembledPath == null) {
                 dao.updateMessageFields(messageId, null, "failed", 0)
                 return Result.failure()
             }
 
             val finalLocalPath = assembledPath.removePrefix("file://")
+            
+            val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
+            if (disappearTtl > 0L) {
+                val expiresAt = System.currentTimeMillis() + disappearTtl
+                val time = System.currentTimeMillis().toString()
+                dao.updateSentTime(messageId, time, expiresAt)
+            }
+            
             dao.updateMessageFields(messageId, finalLocalPath, "done", 100)
             Result.success()
 

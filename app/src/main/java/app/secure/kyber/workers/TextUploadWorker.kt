@@ -122,12 +122,15 @@ class TextUploadWorker(
 
 
 
+                    val nowMs = System.currentTimeMillis()
+                    val nowStr = nowMs.toString()
+
                     val transport = PrivateMessageTransportDto(
                         messageId = messageId,
                         msg = encryptionResult.encryptedPayload,
                         senderOnion = senderOnion,
                         senderName = senderName,
-                        timestamp = timestamp,
+                        timestamp = nowStr,
                         isRequest = isRequest,
                         iv = encryptionResult.iv,
                         senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
@@ -167,6 +170,13 @@ class TextUploadWorker(
 
                         if (response.isSuccessful) {
                             // Sent successfully
+                            if (disappearTtl > 0L) {
+                                val expiresAt = nowMs + disappearTtl
+                                messageDao.updateSentTime(messageId, nowStr, expiresAt)
+                            } else {
+                                // Just update time to match the payload
+                                messageDao.updateSentTime(messageId, nowStr, 0L)
+                            }
                             messageDao.setUploadDone(messageId, "done", "")
                             return@withContext Result.success()
                         }

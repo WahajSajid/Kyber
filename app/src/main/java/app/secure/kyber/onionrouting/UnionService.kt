@@ -1135,11 +1135,12 @@ class UnionService : Service() {
         val progress = (savedCount * 100) / chunk.total
 
         if (chunk.index == 0) {
+            val thumbPath = transport.thumbnail?.let { 
+                app.secure.kyber.media.MediaChunkManager.decodeThumbnail(applicationContext, it, mediaId) 
+            }
             val existing = messageDao.getByRemoteMediaId(mediaId)
             if (existing == null) {
                 val sentMs = DisappearTime.parseMessageTimestampMs(transport.timestamp)
-                val localExpiresAt = DisappearTime.expiresAtFromSent(sentMs, transport.disappear_ttl)
-
                 val entity = MessageEntity(
                     messageId = originalMessageId,
                     apiMessageId = apiMsg?.id,
@@ -1155,6 +1156,7 @@ class UnionService : Service() {
                     isSent = false,
                     type = chunk.mimeType,
                     uri = null,
+                    thumbnailPath = thumbPath,
                     ampsJson = if (chunk.ampsJson.isNotBlank())
                         MessageEncryptionManager.encryptLocal(applicationContext, chunk.ampsJson).encryptedBlob else "",
                     downloadState = "downloading",
@@ -1166,12 +1168,11 @@ class UnionService : Service() {
                     keyFingerprint = transport.recipientKeyFingerprint,
                     iv = transport.iv,
                     replyToText = transport.replyToText,
-                    expiresAt = localExpiresAt
+                    expiresAt = 0L // Timer starts after full download
                 )
                 messageDao.insert(entity)
                 val isAccepted = contactRepo.getContact(transport.senderOnion) != null
                 if (isAccepted) {
-                    val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
                     val displayMsg = when (chunk.mimeType) {
                         "AUDIO" -> "Voice message"
                         "VIDEO" -> "Video"
@@ -1180,6 +1181,10 @@ class UnionService : Service() {
                     showPushNotification(transport.senderOnion, "media", displayMsg)
                 } else {
                     showPushNotification(transport.senderOnion, "Someone", "New message request")
+                }
+            } else {
+                if (thumbPath != null && existing.thumbnailPath == null) {
+                    messageDao.setThumbnailPath(existing.messageId, thumbPath)
                 }
             }
 
@@ -1202,18 +1207,25 @@ class UnionService : Service() {
                 if (!isInChat && progress % 10 == 0) {
                     transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)
                 }
-                val assembledPath = MediaChunkManager.assembleChunks(applicationContext, mediaId, chunk.mimeType) { p ->
+                val assembledPath = MediaChunkManager.assembleChunksFromDisk(applicationContext, mediaId, chunk.mimeType) { p ->
                     serviceScope.launch {
                         messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
                         transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)
                     }
                 }
                 if (assembledPath != null) {
+                    val nowMs = System.currentTimeMillis()
+                    val nowStr = nowMs.toString()
+                    val ttl = transport.disappear_ttl ?: 0L
+                    val localExpiresAt = if (ttl > 0L) nowMs + ttl else 0L
+
                     val updated = entity.copy(
                         uri = MessageEncryptionManager.encryptLocal(applicationContext, assembledPath).encryptedBlob,
                         downloadState = "done",
                         downloadProgress = 100,
-                        localFilePath = assembledPath.removePrefix("file://")
+                        localFilePath = assembledPath.removePrefix("file://"),
+                        time = nowStr,
+                        expiresAt = localExpiresAt
                     )
                     messageDao.update(updated)
                     val myApp2 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
