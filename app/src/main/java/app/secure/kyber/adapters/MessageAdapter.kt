@@ -129,7 +129,7 @@ class MessageAdapter(
     }
 
     private var activePlayer: MediaPlayer? = null
-    private var activeUri: String? = null
+    private var activeMessageId: String? = null
     private var activeHolder: VH? = null
     private var activeHandler: android.os.Handler? = null
     private var activeSpeedIdx: Int = 0
@@ -584,7 +584,7 @@ class MessageAdapter(
         if (pos == RecyclerView.NO_POSITION) return
         if (payloads.contains("START_PLAYBACK")) {
             val item = getItem(pos)
-            startPlayback(holder, item.isSent, item.decryptedUri ?: return)
+            triggerAudioPlayback(holder, item.isSent, item)
         } else onBindViewHolder(holder, position)
 
     }
@@ -1249,21 +1249,7 @@ class MessageAdapter(
         h.receivedMessageTimeLayout?.visibility = View.GONE
         h.sentAudio.isVisible = sent; h.rcvAudio.isVisible = !sent
 
-        // FIX: Route the raw decrypted source through the Base64 file resolver
-        // Prefer the directly assembled local path to avoid Base64 re-decode
-        val uriStr = if (!item.localFilePath.isNullOrBlank() && item.downloadState == "done") {
-            "file://${item.localFilePath}"
-        } else {
-            val rawSource = item.decryptedUri ?: item.decryptedMsg
-            resolveMediaSource(h.itemView.context, rawSource, "AUDIO")
-        }
-        if (uriStr.isBlank() && item.downloadState != "downloading") return
-        if (item.downloadState == "downloading" || item.downloadState == "pending") {
-            // Not ready yet — show state UI only, skip playback setup
-            // (the progress block above already handled the UI)
-            // We still want to show the container
-        } else if (uriStr.isBlank()) return
-
+        // Set waveform (will be flat if ampsJson is empty during lazy load)
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
 
 
@@ -1349,50 +1335,49 @@ class MessageAdapter(
         }
 
 
-        h.durationLabel(sent).text = formatDuration(getTotalDuration(h.itemView.context, uriStr))
-        if (activeUri == uriStr) syncPlayingUi(h, sent)
+        // Show duration from metadata
+        if (item.mediaDurationMs > 0L) {
+            val secs = (item.mediaDurationMs / 1000).toInt()
+            h.durationLabel(sent).text = String.format(
+                java.util.Locale.getDefault(), "%d:%02d", secs / 60, secs % 60
+            )
+        } else {
+            h.durationLabel(sent).text = "0:00"
+        }
+
+        if (activeMessageId == item.messageId) syncPlayingUi(h, sent)
         else {
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1); h.waveform(sent)
                 .setProgress(0f); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         }
 
         h.playPauseFrame(sent).setOnClickListener {
-            if (activeUri == uriStr) {
+            if (activeMessageId == item.messageId) {
                 val player = activePlayer
                 if (player != null && player.isPlaying) {
                     player.pause(); activeHandler?.removeCallbacksAndMessages(null); h.playIcon(sent)
                         .setImageResource(R.drawable.pause_icon_1)
                 } else if (player != null) {
                     player.start(); h.playIcon(sent)
-                        .setImageResource(R.drawable.pause_icon_0); startProgressUpdater(
-                        h,
-                        sent,
-                        uriStr
-                    )
+                        .setImageResource(R.drawable.pause_icon_0); startProgressUpdater(h, sent)
                 }
-            } else startPlayback(h, sent, uriStr)
+            } else {
+                triggerAudioPlayback(h, sent, item)
+            }
         }
         h.waveform(sent).setOnSeekListener { progress ->
-            if (activeUri == uriStr) activePlayer?.let {
-                it.seekTo((progress * it.duration).toInt()); h.waveform(
-                sent
-            ).setProgress(progress)
-            }
-            else {
-                startPlayback(
-                    h,
-                    sent,
-                    uriStr
-                ); activePlayer?.let {
-                    it.seekTo((progress * it.duration).toInt()); h.waveform(sent)
-                    .setProgress(progress)
+            if (activeMessageId == item.messageId) {
+                activePlayer?.let {
+                    it.seekTo((progress * it.duration).toInt())
+                    h.waveform(sent).setProgress(progress)
                 }
             }
+            // Seeking while not playing isn't fully supported without lazy-loading first, so we ignore
         }
         h.speedBadge(sent).setOnClickListener {
-            activeSpeedIdx = if (activeUri == uriStr) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
+            activeSpeedIdx = if (activeMessageId == item.messageId) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
             val speed = SPEED_STEPS[activeSpeedIdx]; h.speedBadge(sent).text = speed.toLabel()
-            if (activeUri == uriStr) applySpeed(speed)
+            if (activeMessageId == item.messageId) applySpeed(speed)
         }
         
         if (sent) {
@@ -1400,26 +1385,68 @@ class MessageAdapter(
         }
     }
 
-    private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
+    private fun triggerAudioPlayback(h: VH, sent: Boolean, item: MessageUiModel) {
+        val ctx = h.itemView.context
+        adapterScope.launch {
+            try {
+                h.playIcon(sent).setImageResource(R.drawable.downloading_vm_ic)
+                h.playIcon(sent).alpha = 0.5f
+
+                // Decrypt lazily
+                val resolvedUri: String
+                val resolvedAmps: String
+
+                if (!item.localFilePath.isNullOrBlank() && item.downloadState == "done") {
+                    resolvedUri = "file://${item.localFilePath}"
+                    resolvedAmps = if (item.ampsJson.isNotBlank()) item.ampsJson else {
+                        app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(
+                            ctx, item.entity.ampsJson, item.senderOnion, item.entity.keyFingerprint, item.entity.iv
+                        )
+                    }
+                } else {
+                    val encUri = item.entity.uri ?: ""
+                    val encAmps = item.entity.ampsJson
+                    val decUri = if (encUri.isNotBlank()) app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(ctx, encUri, item.senderOnion, item.entity.keyFingerprint, item.entity.iv) else ""
+                    resolvedAmps = if (encAmps.isNotBlank()) app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(ctx, encAmps, item.senderOnion, item.entity.keyFingerprint, item.entity.iv) else ""
+                    resolvedUri = resolveMediaSource(ctx, decUri, "AUDIO")
+                }
+
+                if (resolvedUri.isBlank()) {
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
+                    h.playIcon(sent).alpha = 1f
+                    android.widget.Toast.makeText(ctx, "Audio not found", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                h.waveform(sent).setAmplitudes(decodeAmplitudes(resolvedAmps))
+                h.playIcon(sent).alpha = 1f
+                startPlayback(h, sent, resolvedUri, item.messageId)
+            } catch (e: Exception) {
+                h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
+                h.playIcon(sent).alpha = 1f
+            }
+        }
+    }
+
+    private fun startPlayback(h: VH, sent: Boolean, uriStr: String, messageId: String) {
         stopPlayback(resetUi = true)
         val player = try {
             MediaPlayer().apply { setDataSource(h.itemView.context, uriStr.toUri()); prepare() }
         } catch (e: Exception) {
             e.printStackTrace(); return
         }
-        activePlayer = player; activeUri = uriStr; activeHolder = h; activeSpeedIdx = 0
+        activePlayer = player; activeMessageId = messageId; activeHolder = h; activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0]); player.start()
         h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
         h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         h.durationLabel(sent).text = formatDuration(player.duration)
-        startProgressUpdater(h, sent, uriStr)
+        startProgressUpdater(h, sent)
         player.setOnCompletionListener {
             activeHandler?.removeCallbacksAndMessages(null)
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1); h.waveform(sent)
             .setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
-            val cp = h.bindingAdapterPosition; activePlayer = null; activeUri = null; activeHolder =
-            null
+            val cp = h.bindingAdapterPosition; activePlayer = null; activeMessageId = null; activeHolder = null
             if (cp != -1) playNextAudioIfAvailable(cp)
         }
     }
@@ -1432,41 +1459,50 @@ class MessageAdapter(
         }
     }
 
-    private fun startProgressUpdater(h: VH, sent: Boolean, uriStr: String) {
+    private fun stopPlayback(resetUi: Boolean = false) {
+        activePlayer?.run { if (isPlaying) stop(); release() }
+        activePlayer = null
+        activeHandler?.removeCallbacksAndMessages(null)
+        if (resetUi) {
+            activeHolder?.let { vh ->
+                val s = vh.sentAudio.isVisible
+                vh.playIcon(s).setImageResource(R.drawable.pause_icon_1)
+                vh.waveform(s).setProgress(0f)
+                vh.speedBadge(s).text = SPEED_STEPS[0].toLabel()
+            }
+        }
+        activeMessageId = null
+        activeHolder = null
+    }
+
+    private fun startProgressUpdater(h: VH, sent: Boolean) {
+        val player = activePlayer ?: return
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         activeHandler = handler
-        handler.post(object : Runnable {
+        val r = object : Runnable {
             override fun run() {
-                val player = activePlayer ?: return; if (activeUri != uriStr) return
+                if (activePlayer != player || activeHolder != h) return
                 if (player.isPlaying) {
-                    h.waveform(sent)
-                        .setProgress(player.currentPosition.toFloat() / player.duration); h.durationLabel(
-                        sent
-                    ).text = formatDuration(player.duration - player.currentPosition)
+                    val p = player.currentPosition.toFloat() / player.duration
+                    h.waveform(sent).setProgress(p)
+                    h.durationLabel(sent).text = formatDuration(player.currentPosition)
+                    handler.postDelayed(this, 30)
                 }
-                handler.postDelayed(this, 50)
             }
-        })
+        }
+        handler.post(r)
     }
 
     private fun syncPlayingUi(h: VH, sent: Boolean) {
         val player = activePlayer ?: return
-        h.playIcon(sent)
-            .setImageResource(if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.pause_icon_1)
+        h.playIcon(sent).setImageResource(
+            if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.pause_icon_1
+        )
         h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
-        if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
-    }
-
-    private fun stopPlayback(resetUi: Boolean) {
-        activeHandler?.removeCallbacksAndMessages(null)
-        activePlayer?.stop(); activePlayer?.release(); activePlayer = null
-        if (resetUi) activeHolder?.let { h ->
-            val pos = h.bindingAdapterPosition; if (pos != -1) {
-            val s = getItem(pos).isSent; h.playIcon(s)
-                .setImageResource(R.drawable.pause_icon_1); h.waveform(s).setProgress(0f)
-        }
-        }
-        activeUri = null; activeHolder = null
+        if (player.duration > 0) h.waveform(sent)
+            .setProgress(player.currentPosition.toFloat() / player.duration)
+        if (player.isPlaying) startProgressUpdater(h, sent)
+        else h.durationLabel(sent).text = formatDuration(player.currentPosition)
     }
 
     private fun applySpeed(speed: Float) {

@@ -100,22 +100,16 @@ suspend fun MessageEntity.toUiModel(context: android.content.Context): MessageUi
         context, this.msg, this.senderOnion, this.keyFingerprint, this.iv
     )
 
-    val decryptedUri = if (!this.uri.isNullOrBlank()) {
-        MessageEncryptionManager.decryptSmart(
-            context, this.uri!!, this.senderOnion, this.keyFingerprint, this.iv
-        )
-    } else null
-
-    val decryptedAmps = if (!this.ampsJson.isNullOrBlank()) {
-        MessageEncryptionManager.decryptSmart(
-            context, this.ampsJson, this.senderOnion, this.keyFingerprint, this.iv
-        )
-    } else ""
+    // ── LAZY LOADING ────────────────────────────────────────────────────
+    // Heavy media fields (uri and ampsJson) are NO LONGER decrypted here.
+    // They are decrypted on-demand when the user clicks the media or play button,
+    // ensuring the chat list loads instantly regardless of media size.
+    // ────────────────────────────────────────────────────────────────────
 
     return MessageUiModel(
         entity = this,
         decryptedMsg = decryptedMsg,
-        decryptedUri = decryptedUri,
-        decryptedAmpsJson = decryptedAmps
+        decryptedUri = null,
+        decryptedAmpsJson = ""
     )
 }

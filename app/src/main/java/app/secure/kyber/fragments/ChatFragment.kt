@@ -1624,59 +1624,38 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         (displayedList.isNotEmpty() && recent.isEmpty() &&
                             displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
 
-                    // PHASE 1: Decrypt in batches of 5 on IO — submit each batch as it completes
-                    // so the UI fills in progressively rather than waiting for the full page.
-                    val BATCH = 5
-                    var isFirstBatch = true
+                    val newModels = withContext(Dispatchers.IO) {
+                        recent.map { it.toUiModel(requireContext()) }
+                    }
 
-                    val newModels = mutableListOf<MessageUiModel>()
-                    for (batch in recent.chunked(BATCH)) {
-                        val decryptedBatch = withContext(Dispatchers.IO) {
-                            batch.map { it.toUiModel(requireContext()) }
+                    val merged = if (displayedList.isEmpty() || freshStart) {
+                        if (freshStart) wipePending = false
+                        newModels.toMutableList()
+                    } else {
+                        val recentIds = newModels.map { it.id }.toSet()
+                        val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
+                        val filteredOlder = displayedList.filter {
+                            it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime
                         }
-                        newModels.addAll(decryptedBatch)
-
-                        // Build the merged list after each batch
-                        val merged = if (displayedList.isEmpty() || freshStart) {
-                            if (freshStart && isFirstBatch) wipePending = false
-                            newModels.toMutableList()
-                        } else {
-                            val recentIds = newModels.map { it.id }.toSet()
-                            val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
-                            if (newModels.size < MSG_PAGE_SIZE) {
-                                newModels.toMutableList()
-                            } else {
-                                val filteredOlder = displayedList.filter {
-                                    it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime
-                                }
-                                (filteredOlder + newModels).toMutableList()
-                            }
+                        (filteredOlder + newModels).toMutableList()
+                    }
+                    
+                    displayedList = merged
+                    
+                    adapterMsg.submitList(displayedList.toList()) {
+                        val lastVisible = llm.findLastVisibleItemPosition()
+                        val total = adapterMsg.itemCount
+                        if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
+                            recyclerview.scrollToPosition(total - 1)
                         }
-                        displayedList = merged
-
-                        val isLastBatch = newModels.size >= recent.size
-                        adapterMsg.submitList(displayedList.toList()) {
-                            val lastVisible = llm.findLastVisibleItemPosition()
-                            val total = adapterMsg.itemCount
-                            if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
-                                recyclerview.scrollToPosition(total - 1)
-                            }
-                            if (isLastBatch) {
-                                val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
-                                if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
-                                    sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
-                                }
-                            }
-                        }
-
-                        // PHASE 2: Hide shimmer as soon as the first batch is submitted
-                        if (isFirstBatch) {
-                            isFirstBatch = false
-                            hideShimmer()
+                        
+                        val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
+                        if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
+                            sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
                         }
                     }
-                    // Ensure shimmer is hidden even if recent was empty
-                    if (recent.isEmpty()) hideShimmer()
+
+                    hideShimmer()
                 }
             }
         }
