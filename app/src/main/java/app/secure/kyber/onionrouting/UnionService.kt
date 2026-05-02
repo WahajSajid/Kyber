@@ -1267,16 +1267,15 @@ class UnionService : Service() {
     ) {
         val mediaId = chunk.mediaId
         val originalMessageId = chunk.messageId
-        val chunkDir = java.io.File(applicationContext.cacheDir, "chunks_$mediaId")
-        val chunkFile = java.io.File(chunkDir, "chunk_${chunk.index.toString().padStart(6, '0')}")
-        if (chunkFile.exists() && chunkFile.length() > 0) {
-            lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
-            return
-        }
         MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
         lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
         val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
         val progress = (savedCount * 100) / chunk.total
+
+        val downloadedIndices = MediaChunkManager.getChunkDir(applicationContext, mediaId).listFiles()
+            ?.filter { it.name.startsWith("chunk_") && it.length() > 0 }
+            ?.mapNotNull { it.name.removePrefix("chunk_").toIntOrNull() }
+            ?.joinToString(",") ?: ""
 
         if (chunk.index == 0) {
             val thumbPath = transport.thumbnail?.let { 
@@ -1312,7 +1311,9 @@ class UnionService : Service() {
                     keyFingerprint = transport.recipientKeyFingerprint,
                     iv = transport.iv,
                     replyToText = transport.replyToText,
-                    expiresAt = 0L // Timer starts after full download
+                    expiresAt = 0L, // Timer starts after full download
+                    totalChunksExpected = chunk.total,
+                    downloadedChunkIndices = downloadedIndices
                 )
                 messageDao.insert(entity)
                 val isAccepted = contactRepo.getContact(transport.senderOnion) != null
@@ -1338,20 +1339,23 @@ class UnionService : Service() {
         } else {
             val existing = messageDao.getByRemoteMediaId(mediaId)
             if (existing != null) {
-                messageDao.updateDownloadProgress(existing.messageId, "downloading", progress)
+                messageDao.update(existing.copy(
+                    downloadedChunkIndices = downloadedIndices,
+                    downloadProgress = progress
+                ))
             }
         }
 
         if (savedCount >= chunk.total) {
             val entity = messageDao.getByRemoteMediaId(mediaId)
-            if (entity != null) {
+            if (entity != null && entity.downloadState != "done") {
                 messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
                 val myApp = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
                 val isInChat = myApp?.activeChatOnion == entity.senderOnion
                 if (!isInChat && progress % 10 == 0) {
                     transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)
                 }
-                val assembledPath = MediaChunkManager.assembleChunksFromDisk(applicationContext, mediaId, chunk.mimeType) { p ->
+                val assembledPath = MediaChunkManager.assembleChunksFromDisk(applicationContext, mediaId, chunk.mimeType, chunk.total) { p ->
                     serviceScope.launch {
                         messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
                         transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)

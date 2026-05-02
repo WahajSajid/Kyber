@@ -1514,7 +1514,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         // Old format or missing metadata - try direct assembly
                         db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
                         val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunksFromDisk(
-                            requireContext(), mediaId, entity.type
+                            requireContext(), mediaId, entity.type, 
+                            if (totalChunks > 0) totalChunks else app.secure.kyber.media.MediaChunkManager.countSavedChunks(requireContext(), mediaId)
                         )
                         if (assembled != null) {
                             db.messageDao().setDownloadDone(msg.messageId, "done", assembled)
@@ -1522,29 +1523,13 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                             db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
                         }
                     } else {
-                        // New chunk-based format - reset download state and re-enqueue worker
+                        // New chunk-based format - reset download state
                         db.messageDao().update(
                             entity.copy(
-                                downloadState = "downloading",
-                                downloadProgress = 0,
-                                downloadedChunkIndices = ""
+                                downloadState = "downloading"
                             )
                         )
-                        
-                        // Re-enqueue PrivateMediaDownloadWorker as a fallback for assembly
-                        val assemblyRequest = app.secure.kyber.workers.PrivateMediaDownloadWorker.buildRequest(
-                            messageId = msg.messageId,
-                            mediaId = mediaId,
-                            totalChunks = totalChunks,
-                            mimeType = entity.type,
-                            disappearTtl = 0L
-                        )
-                        androidx.work.WorkManager.getInstance(requireContext()).enqueueUniqueWork(
-                            "download_${msg.messageId}",
-                            androidx.work.ExistingWorkPolicy.REPLACE,
-                            assemblyRequest
-                        )
-                        Log.d("ChatFragment", "Re-enqueued download for messageId=${msg.messageId}")
+                        Log.d("ChatFragment", "Reset download state to downloading for messageId=${msg.messageId}")
 
                         // Send CHUNK_RETRY_REQUEST to the sender
                         val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""

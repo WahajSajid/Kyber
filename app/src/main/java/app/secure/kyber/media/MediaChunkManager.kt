@@ -99,17 +99,23 @@ object MediaChunkManager {
         context: Context,
         mediaId: String,
         mimeType: String,
+        expectedTotalChunks: Int,
         onProgress: ((Int) -> Unit)? = null
     ): String? {
         return try {
             val chunkDir = getChunkDir(context, mediaId)
-            val chunkFiles = chunkDir.listFiles()
-                ?.filter { it.name.startsWith("chunk_") }
-                ?.sortedBy { it.name.removePrefix("chunk_").toIntOrNull() ?: 0 }
-                ?: return null
+            val chunkFiles = mutableListOf<File>()
+            for (i in 0 until expectedTotalChunks) {
+                val file = File(chunkDir, "chunk_${i.toString().padStart(6, '0')}")
+                if (!file.exists() || file.length() == 0L) {
+                    Log.e(TAG, "Missing or empty chunk $i for mediaId=$mediaId")
+                    return null
+                }
+                chunkFiles.add(file)
+            }
 
-            if (chunkFiles.isEmpty()) {
-                Log.w(TAG, "No chunk files found in $chunkDir")
+            if (chunkFiles.size != expectedTotalChunks) {
+                Log.e(TAG, "Chunk count mismatch for $mediaId: expected $expectedTotalChunks, found ${chunkFiles.size}")
                 return null
             }
 

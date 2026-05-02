@@ -89,7 +89,7 @@ class GroupMediaDownloadWorker(
             }
 
             // Assembly 
-            val assembledPath = MediaChunkManager.assembleChunksFromDisk(context, mediaId, mimeType)
+            val assembledPath = MediaChunkManager.assembleChunksFromDisk(context, mediaId, mimeType, totalChunks)
             if (assembledPath == null) {
                 dao.updateMessageFields(messageId, null, "failed", 0)
                 return Result.failure()

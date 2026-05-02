@@ -146,7 +146,7 @@ class MediaUploadWorker(
 
             if (mimeType == "VIDEO") {
                 val existingLocalPath = savedMsg?.localFilePath ?: filePath
-                val hasCompressed = existingLocalPath.contains("sent_media") && savedMsg?.uploadState == "uploading"
+                val hasCompressed = existingLocalPath.contains("video_comp_") && java.io.File(existingLocalPath.removePrefix("file://")).exists()
 
                 if (hasCompressed) {
                     uploadFilePath = existingLocalPath

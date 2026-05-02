@@ -142,7 +142,7 @@ class PrivateMediaDownloadWorker(
 
             // Assemble chunks into a complete file
             val finalPath = MediaChunkManager.assembleChunksFromDisk(
-                context, mediaId, mimeType
+                context, mediaId, mimeType, totalChunks
             ) ?: run {
                 Log.e(TAG, "Assembly failed for mediaId=$mediaId")
                 messageDao.updateDownloadProgress(messageId, "failed", 90)
