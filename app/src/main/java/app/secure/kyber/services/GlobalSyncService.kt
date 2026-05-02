@@ -123,7 +123,7 @@ class GlobalSyncService : LifecycleService() {
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL)
             .setContentTitle("Kyber")
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.app_ic)
             .setContentIntent(getPendingIntentToApp())
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -199,7 +199,17 @@ class GlobalSyncService : LifecycleService() {
                     if (expiredPrivate.isNotEmpty()) {
                         Log.d(TAG, "Absolute Deletion: Purging ${expiredPrivate.size} expired private messages")
                         expiredPrivate.forEach { msg ->
+                            // Delete media files (encrypted)
                             deleteMediaFiles(msg.localFilePath, msg.thumbnailPath)
+                            
+                            // Delete chunk directories for media downloads
+                            if (!msg.remoteMediaId.isNullOrBlank()) {
+                                val chunkDir = java.io.File(filesDir, "chunks_${msg.remoteMediaId}")
+                                if (chunkDir.exists()) {
+                                    val deleted = chunkDir.deleteRecursively()
+                                    Log.d(TAG, "Deleted chunk directory for ${msg.remoteMediaId}: $deleted")
+                                }
+                            }
                         }
                         db.messageDao().deleteExpiredMessages(now)
                     }

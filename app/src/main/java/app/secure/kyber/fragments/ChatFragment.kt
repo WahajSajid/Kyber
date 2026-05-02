@@ -85,10 +85,15 @@ import com.google.android.material.textfield.TextInputEditText
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.view.animation.LinearInterpolator
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -168,6 +173,9 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
     private var recentEmojisList = mutableListOf("👌", "😊", "😂", "😍", "💜", "🎮")
     private var displayedList = mutableListOf<MessageUiModel>()
+
+    // ── Shimmer animation ─────────────────────────────────────────────────────
+    private var shimmerAnimator: ObjectAnimator? = null
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
@@ -273,6 +281,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private val comingFrom by lazy { requireArguments().getString("coming_from").orEmpty() }
     private val groupId by lazy { requireArguments().getString("group_id").orEmpty() }
     private val groupName by lazy { requireArguments().getString("group_name").orEmpty() }
+
+    private val shortId by lazy { requireArguments().getString("shortId").orEmpty() }
 
     private var isRequestMode: Boolean = false
 
@@ -744,7 +754,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                         sendTextMessage(text, onionAddr, name); clearReply()
                     }
                 }
-                (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName)
+                (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contactName, shortId)
                 setListMessageAdapter()
             }
 
@@ -819,19 +829,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contactsVm.observeContact(contactOnion).collect { contact ->
                     if (contact != null && !isRequestMode) {
-                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(
-                            0,
-                            14
-                        ) else contact.name
+                        val newDisplayName = if (contact.name.length > 15) contact.name.substring(0, 14) else contact.name
                         (requireActivity() as MainActivity).setAppChatUser(newDisplayName)
+                        (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, contact.name, contact.shortId ?: "")
                     }
                 }
             }
         }
     }
 
-    private fun resolveDisplayName(): String =
-        contactName.takeIf { it.isNotBlank() && it != contactOnion } ?: "Unknown User"
+    private fun resolveDisplayName(): String {
+        // For message requests, always hide the actual name until accepted
+        return "Unknown User"
+    }
 
     private fun sendTextMessage(text: String, onionAddr: String, name: String, msgType: String = "TEXT") {
         val messageId = UUID.randomUUID().toString()
@@ -844,7 +854,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         lifecycleScope.launch {
             val db = AppDb.get(requireContext())
             val contactRepo = ContactRepository(db.contactDao())
-            val isContact = contactRepo.getContact(contactOnion) != null
+            val contact = contactRepo.getContact(contactOnion)
+            val isContact = contact?.isContact == true
             val isRequest = !isContact
             val disappearTimerMs = if (comingFrom == "group_chat_list") {
                 Prefs.getEffectiveDisappearingTimerMs(requireContext(), groupId)
@@ -869,7 +880,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     type = msgType,
                     uploadState = "pending",
                     uploadProgress = 0,
-                    expiresAt = localExpiresAt,
+                    expiresAt = 0L, // Timer starts after successful upload
                     replyToText = capturedReplyText
                 )
             )
@@ -1149,7 +1160,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
         }
     }
 
-    private suspend fun insertSystemMessage(text: String) {
+    private suspend fun insertSystemMessage(text: String, type: String = "WIPE_SYSTEM") {
         val db = AppDb.get(requireContext())
         val messageId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis().toString()
@@ -1161,7 +1172,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                  senderOnion = "system",
                  senderName = "System",
                  time = timestamp,
-                 type = "WIPE_SYSTEM",
+                 type = type,
                  isSent = false
              )
              db.groupsMessagesDao().insertGroupMessage(sysMsg)
@@ -1172,7 +1183,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                  senderOnion = contactOnion,
                  time = timestamp,
                  isSent = false,
-                 type = "WIPE_SYSTEM",
+                 type = type,
                  uploadState = "done",
                  uploadProgress = 100
              )
@@ -1292,7 +1303,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 val db = AppDb.get(requireContext())
                 val now = System.currentTimeMillis().toString()
                 db.messageDao().expireAllBySender(contactOnion, now)
-                insertSystemMessage("Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}")
+                insertSystemMessage("Chat wiped out at ${formatWipeTimestamp(System.currentTimeMillis())}")
             }
             
             // Update local message reaction so action buttons are hidden after response.
@@ -1461,7 +1472,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                     val myName = Prefs.getName(requireContext()) ?: ""
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                    val isContact = contactRepo.getContact(contactOnion) != null
+                    val contact = contactRepo.getContact(contactOnion)
+                    val isContact = contact?.isContact == true
 
                     val normalizedType = msg.type.uppercase(Locale.US)
                     if (normalizedType != "IMAGE" && normalizedType != "VIDEO" && normalizedType != "AUDIO") {
@@ -1494,25 +1506,61 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             onRetryDownload = { msg ->
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
-                    db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
                     val entity = db.messageDao().getByMessageId(msg.messageId) ?: return@launch
                     val mediaId = entity.remoteMediaId ?: return@launch
-                    val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunks(
-                        requireContext(), mediaId, entity.type
-                    )
-                    if (assembled != null) {
-                        val updated = entity.copy(
-                            uri = MessageEncryptionManager.encryptLocal(
-                                requireContext(),
-                                assembled
-                            ).encryptedBlob,
-                            downloadState = "done",
-                            downloadProgress = 100,
-                            localFilePath = assembled.removePrefix("file://")
+                    val totalChunks = entity.totalChunksExpected
+                    
+                    if (totalChunks <= 0) {
+                        // Old format or missing metadata - try direct assembly
+                        db.messageDao().updateDownloadProgress(msg.messageId, "pending", 0)
+                        val assembled = app.secure.kyber.media.MediaChunkManager.assembleChunksFromDisk(
+                            requireContext(), mediaId, entity.type, 
+                            if (totalChunks > 0) totalChunks else app.secure.kyber.media.MediaChunkManager.countSavedChunks(requireContext(), mediaId)
                         )
-                        db.messageDao().update(updated)
+                        if (assembled != null) {
+                            db.messageDao().setDownloadDone(msg.messageId, "done", assembled)
+                        } else {
+                            db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
+                        }
                     } else {
-                        db.messageDao().updateDownloadProgress(msg.messageId, "failed", 0)
+                        // New chunk-based format - reset download state
+                        db.messageDao().update(
+                            entity.copy(
+                                downloadState = "downloading"
+                            )
+                        )
+                        Log.d("ChatFragment", "Reset download state to downloading for messageId=${msg.messageId}")
+
+                        // Send CHUNK_RETRY_REQUEST to the sender
+                        val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                        val myName = app.secure.kyber.backend.common.Prefs.getName(requireContext()) ?: ""
+                        val recipientPublicKey = db.contactDao().get(contactOnion)?.publicKey
+                        if (recipientPublicKey != null) {
+                            val downloaded = entity.downloadedChunkIndices.split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }.toSet()
+                            val missing = mutableListOf<Int>()
+                            for (i in 0 until totalChunks) {
+                                if (!downloaded.contains(i)) missing.add(i)
+                            }
+                            val missingStr = missing.joinToString(",")
+                            val payloadJson = JSONObject().apply {
+                                put("mediaId", mediaId)
+                                put("missingIndices", missingStr)
+                            }.toString()
+                            val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(requireContext(), recipientPublicKey, payloadJson)
+                            val retryTransport = app.secure.kyber.backend.beans.PrivateMessageTransportDto(
+                                messageId = java.util.UUID.randomUUID().toString(),
+                                msg = enc.encryptedPayload,
+                                senderOnion = myOnion,
+                                senderName = myName,
+                                timestamp = System.currentTimeMillis().toString(),
+                                type = "CHUNK_RETRY_REQUEST",
+                                iv = enc.iv,
+                                senderKeyFingerprint = enc.senderKeyFingerprint,
+                                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                                senderPublicKey = enc.senderPublicKeyBase64
+                            )
+                            sendPrivateMessage(retryTransport)
+                        }
                     }
                 }
             },
@@ -1549,64 +1597,101 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             clipToPadding = false
         }
 
+        // ── Start shimmer immediately so the user never sees a blank screen ────
+        startShimmer()
+
         // ── Collect the recent window (live-updates on new messages) ─────────
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                vm.recentMessagesFlow.collect { recent ->
-                    // Decrypt on IO so Main thread is never blocked
-                    val newModels =
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            recent.map { it.toUiModel(requireContext()) }
+                // ── Mark all our sent messages as SEEN when the chat is opened ────────
+                launch(Dispatchers.IO) {
+                    val db = AppDb.get(requireContext())
+                    val contact = db.contactDao().get(contactOnion)
+                    if (contact?.isContact == true) {
+                        val unreadCount = db.messageDao().getUnreadReceivedCount(contactOnion)
+                        if (unreadCount > 0) {
+                            val now = System.currentTimeMillis()
+                            db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                            sendPrivateMessage(
+                                PrivateMessageTransportDto(
+                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    msg = "",
+                                    senderOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: "",
+                                    timestamp = now.toString(),
+                                    type = "SEEN_RECEIPT"
+                                )
+                            )
                         }
-
-                    // After a wipe, discard the stale in-memory cache entirely so the
-                    // adapter clears in real-time without requiring a nav back/forward.
-                    // Also discard when a NEW WIPE_SYSTEM message arrives from the network
-                    // (meaning the other user accepted the wipe).
-                    val hasNewWipeSystem = newModels.any { newMsg ->
-                        newMsg.type.uppercase() == "WIPE_SYSTEM" && displayedList.none { it.id == newMsg.id }
                     }
-                    
+                }
+
+                vm.recentMessagesFlow.collect { recent ->
+                    // Real-time Seen: mark new incoming messages as seen while chat is open.
+                    val unreadReceived = recent.filter { !it.isSent && it.seenAt == 0L }
+                    if (unreadReceived.isNotEmpty()) {
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+                            val db = app.secure.kyber.roomdb.AppDb.get(requireContext())
+                            val contact = db.contactDao().get(contactOnion)
+                            val isAccepted = contact?.isContact == true
+                            if (!isAccepted) return@launch
+                            delay(1500)
+                            val now = System.currentTimeMillis()
+                            db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                            val myOnion = app.secure.kyber.backend.common.Prefs.getOnionAddress(requireContext()) ?: ""
+                            sendPrivateMessage(
+                                PrivateMessageTransportDto(
+                                    messageId = java.util.UUID.randomUUID().toString(),
+                                    msg = "",
+                                    senderOnion = myOnion,
+                                    timestamp = now.toString(),
+                                    type = "SEEN_RECEIPT"
+                                )
+                            )
+                        }
+                    }
+
+                    // ── TWO-PHASE RENDER ───────────────────────────────────────────────
+                    // Determine wipe / fresh-start condition using raw entities (no decrypt needed)
+                    val hasNewWipeSystem = recent.any { newEntity ->
+                        newEntity.type.uppercase() == "WIPE_SYSTEM" &&
+                            displayedList.none { it.id == newEntity.id }
+                    }
                     val freshStart = wipePending || hasNewWipeSystem ||
-                        (displayedList.isNotEmpty() && newModels.isEmpty() &&
-                         displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
+                        (displayedList.isNotEmpty() && recent.isEmpty() &&
+                            displayedList.any { it.type.uppercase() !in setOf("WIPE_SYSTEM", "WIPE_REQUEST", "WIPE_RESPONSE") })
+
+                    val newModels = withContext(Dispatchers.IO) {
+                        recent.map { it.toUiModel(requireContext()) }
+                    }
 
                     val merged = if (displayedList.isEmpty() || freshStart) {
-                        wipePending = false
+                        if (freshStart) wipePending = false
                         newModels.toMutableList()
                     } else {
-                        // The recent window always covers the newest MSG_PAGE_SIZE messages.
                         val recentIds = newModels.map { it.id }.toSet()
                         val oldestRecentTime = newModels.firstOrNull()?.time?.toLongOrNull() ?: Long.MAX_VALUE
-                        
-                        if (newModels.size < MSG_PAGE_SIZE) {
-                            // If the recent window is not full, it means the entire chat history fits in it.
-                            // Fully replace to handle deletions accurately.
-                            newModels.toMutableList()
-                        } else {
-                            // Keep older items that are NOT in the recent window.
-                            // Use timestamp to ensure we don't keep items that SHOULD be in the recent window but aren't (meaning they were deleted).
-                            val filteredOlder = displayedList.filter { 
-                                it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime 
-                            }
-                            (filteredOlder + newModels).toMutableList()
+                        val filteredOlder = displayedList.filter {
+                            it.id !in recentIds && (it.time.toLongOrNull() ?: 0L) < oldestRecentTime
                         }
+                        (filteredOlder + newModels).toMutableList()
                     }
+                    
                     displayedList = merged
-
+                    
                     adapterMsg.submitList(displayedList.toList()) {
-                        // Only auto-scroll to bottom if user is near bottom (new message) or first load
                         val lastVisible = llm.findLastVisibleItemPosition()
                         val total = adapterMsg.itemCount
                         if (total > 0 && (lastVisible >= total - 3 || displayedList.size <= MSG_PAGE_SIZE)) {
                             recyclerview.scrollToPosition(total - 1)
                         }
-                        // Update last-seen bookmark
+                        
                         val maxId = displayedList.maxOfOrNull { it.id } ?: 0L
                         if (maxId > sharedPrefs.getLong(lastSeenIdKey, 0L)) {
                             sharedPrefs.edit().putLong(lastSeenIdKey, maxId).apply()
                         }
                     }
+
+                    hideShimmer()
                 }
             }
         }
@@ -1659,6 +1744,47 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 if (item != null) handleReply(buildReplyPreviewForPrivate(item))
             }
         )
+    }
+
+    // ── Shimmer helpers ───────────────────────────────────────────────────────
+
+    private fun startShimmer() {
+        val container = binding.shimmerContainer
+        val highlight = binding.shimmerHighlight
+        container.visibility = android.view.View.VISIBLE
+        container.alpha = 1f
+
+        // Measure after layout so we know the real width
+        container.post {
+            val width = container.width.toFloat()
+            if (width <= 0f) return@post
+            val highlightWidth = highlight.width.toFloat().coerceAtLeast(1f)
+
+            shimmerAnimator = ObjectAnimator.ofFloat(
+                highlight,
+                "translationX",
+                -highlightWidth,
+                width + highlightWidth
+            ).apply {
+                duration = 1200
+                repeatCount = ValueAnimator.INFINITE
+                repeatMode = ValueAnimator.RESTART
+                interpolator = LinearInterpolator()
+                start()
+            }
+        }
+    }
+
+    private fun hideShimmer() {
+        shimmerAnimator?.cancel()
+        shimmerAnimator = null
+        val container = binding.shimmerContainer
+        if (container.visibility == android.view.View.GONE) return
+        container.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction { container.visibility = android.view.View.GONE }
+            .start()
     }
 
     private fun setupGroupMessageAdapter(
@@ -1955,17 +2081,21 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
     private fun canSwipeReplyAt(position: Int): Boolean {
         return if (comingFrom == "group_chat_list") {
             val item = groupMessageAdapter.currentList.getOrNull(position) ?: return false
-            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            val type = item.type.uppercase(Locale.US)
+            if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") return false
+            val isWipe = type.startsWith("WIPE_")
             if (!isWipe) return true
-            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+            val actionable = type == WIPE_REQ &&
                     item.senderOnion != (Prefs.getOnionAddress(requireContext()) ?: "") &&
                     item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
             actionable
         } else {
             val item = adapterMsg.currentList.getOrNull(position) ?: return false
-            val isWipe = item.type.uppercase(Locale.US).startsWith("WIPE_")
+            val type = item.type.uppercase(Locale.US)
+            if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") return false
+            val isWipe = type.startsWith("WIPE_")
             if (!isWipe) return true
-            val actionable = item.type.uppercase(Locale.US) == WIPE_REQ &&
+            val actionable = type == WIPE_REQ &&
                     !item.isSent &&
                     item.reaction.uppercase(Locale.US) !in setOf(WIPE_ACTION_ACCEPTED, WIPE_ACTION_REJECTED)
             actionable
@@ -2051,7 +2181,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             lifecycleScope.launch {
                 val db = AppDb.get(requireContext())
                 val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                val isContact = contactRepo.getContact(contactOnion) != null
+                val contact = contactRepo.getContact(contactOnion)
+                val isContact = contact?.isContact == true
                 mediaSender.sendMedia(
                     contactOnion = contactOnion,
                     senderOnion = onionAddr,
@@ -2218,15 +2349,19 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             myApp.activeGroupId = null
         } catch (e: Exception) {
         }
-        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer(); if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer(); super.onPause()
+        if (::adapterMsg.isInitialized) {
+            adapterMsg.releasePlayer()
+            // Save last seen message ID for decryption animation logic
+            val maxId = adapterMsg.currentList.maxOfOrNull { it.id } ?: 0L
+            if (maxId > 0) {
+                val sharedPrefs = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+                sharedPrefs.edit().putLong("last_seen_id_$contactOnion", maxId).apply()
+            }
+        }
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer()
+        super.onPause()
     }
 
-    override fun onDestroyView() {
-        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
-        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
-        (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = null
-        super.onDestroyView()
-    }
 
     override fun onDestroy() {
         recordingTimerHandler.removeCallbacks(recordingTimerRunnable); waveformHandler.removeCallbacks(
@@ -2328,7 +2463,8 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
                 lifecycleScope.launch {
                     val db = AppDb.get(requireContext())
                     val contactRepo = app.secure.kyber.roomdb.ContactRepository(db.contactDao())
-                    val isContact = contactRepo.getContact(contactOnion) != null
+                    val contact = contactRepo.getContact(contactOnion)
+                    val isContact = contact?.isContact == true
 
                     mediaSender.sendMedia(
                         contactOnion = contactOnion,
@@ -2444,8 +2580,28 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             contactRepo.saveContact(
                 onionAddress = contactOnion,
                 name = senderName,
-                publicKey = publicKey
+                publicKey = publicKey,
+                shortId = shortId
             )
+
+            // Retroactively mark all previously read messages from this new contact as "seen"
+            launch(kotlinx.coroutines.Dispatchers.IO) {
+                val db = AppDb.get(requireContext())
+                val unreadCount = db.messageDao().getUnreadReceivedCount(contactOnion)
+                if (unreadCount > 0) {
+                    val now = System.currentTimeMillis()
+                    db.messageDao().markReceivedMessagesAsSeen(contactOnion, now)
+                    sendPrivateMessage(
+                        PrivateMessageTransportDto(
+                            messageId = UUID.randomUUID().toString(),
+                            msg = "",
+                            senderOnion = myOnion,
+                            timestamp = now.toString(),
+                            type = "SEEN_RECEIPT"
+                        )
+                    )
+                }
+            }
 
             sendPrivateMessage(
                 PrivateMessageTransportDto(
@@ -2473,7 +2629,7 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
             val displayName =
                 if (senderName.length > 15) senderName.substring(0, 14) else senderName
             (requireActivity() as MainActivity).setAppChatUser(displayName)
-            (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, senderName)
+            (requireActivity() as MainActivity).onChatDetailsClick(contactOnion, senderName, shortId)
 
             binding.ivSend.setOnClickListener {
                 val text = binding.etMsg.text.toString().trim()
@@ -2500,4 +2656,15 @@ class ChatFragment : Fragment(R.layout.fragment_chat) {
 
 
     data class SelectedMedia(val uri: Uri, var caption: String?, val type: String)
+
+    override fun onDestroyView() {
+
+        if (::adapterMsg.isInitialized) adapterMsg.releasePlayer();
+        if (::groupMessageAdapter.isInitialized) groupMessageAdapter.releasePlayer();
+        (requireActivity().application as? app.secure.kyber.MyApp.MyApp)?.activeGroupId = null
+
+        super.onDestroyView()
+        shimmerAnimator?.cancel()
+        shimmerAnimator = null
+    }
 }

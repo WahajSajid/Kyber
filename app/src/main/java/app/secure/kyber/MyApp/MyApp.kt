@@ -14,7 +14,10 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import app.secure.kyber.Utils.NetworkMonitor
 import app.secure.kyber.backend.common.Prefs
 
+import dagger.hilt.android.HiltAndroidApp
+
 @Suppress("UNCHECKED_CAST")
+@HiltAndroidApp
 class MyApp : ApplicationClass() {
     var tabBtnState = "individual_chat"
     var addedMembersList: MutableLiveData<MutableList<AddedMembers>> = MutableLiveData(mutableListOf())

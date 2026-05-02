@@ -145,20 +145,27 @@ class GroupMessageRepository(private val dao: GroupMessageDao) {
 
 class ContactRepository(private val dao: ContactDao) {
 
-    suspend fun saveContact(onionAddress: String, name: String, publicKey: String? = null) {
+    suspend fun saveContact(onionAddress: String, name: String, publicKey: String? = null, shortId: String? = null, isContact: Boolean = true) {
         val existing = dao.get(onionAddress)
         dao.insert(ContactEntity(
             onionAddress = onionAddress, 
             name = name, 
             publicKey = publicKey ?: existing?.publicKey,
             keyVersion = existing?.keyVersion,
-            lastKeyUpdate = if (publicKey != null) System.currentTimeMillis() else (existing?.lastKeyUpdate ?: 0L)
+            lastKeyUpdate = if (publicKey != null) System.currentTimeMillis() else (existing?.lastKeyUpdate ?: 0L),
+            shortId = shortId ?: existing?.shortId,
+            isContact = isContact
         ))
     }
 
     suspend fun getContact(onionAddress: String): ContactEntity? {
         return dao.get(onionAddress)
     }
+
+    suspend fun getShortId(onionAddress:String): String?{
+        return dao.getShortId(onionAddress)
+    }
+
 
     suspend fun getAllOnce(): List<ContactEntity> = dao.getAll()
     fun observeAll(): Flow<List<ContactEntity>> = dao.observeAll()

@@ -10,8 +10,12 @@ import java.io.RandomAccessFile
 object MediaChunkManager {
 
     private const val TAG = "MediaChunkManager"
-    const val CHUNK_SIZE_BYTES = 128 * 1024 // 128 KB raw → ~175 KB per message payload
+    const val CHUNK_SIZE_BYTES = 64 * 1024 // 16 KB raw → ~175 KB Base64 encoded
 
+    /**
+     * Build chunks from a file in memory (does not touch disk).
+     * Returns List of MediaChunkDto ready for transmission.
+     */
     fun buildChunks(
         context: Context,
         filePath: String,
@@ -68,80 +72,168 @@ object MediaChunkManager {
     }
 
     /**
-     * Reassemble chunks already on disk (sorted by index) into a single file.
-     * Returns the assembled file path or null on error.
+     * Verify all chunks are present in sequence from 0 to total-1.
+     * Returns true if all chunks exist, false if any are missing.
      */
-    fun assembleChunks(
+    fun validateAllChunksPresent(context: Context, mediaId: String, totalChunks: Int): Boolean {
+        val chunkDir = getChunkDir(context, mediaId)
+        for (i in 0 until totalChunks) {
+            val chunkFile = File(chunkDir, "chunk_${i.toString().padStart(6, '0')}")
+            if (!chunkFile.exists() || chunkFile.length() == 0L) {
+                Log.w(TAG, "Missing chunk $i for mediaId=$mediaId")
+                return false
+            }
+        }
+        Log.d(TAG, "All $totalChunks chunks present for mediaId=$mediaId")
+        return true
+    }
+
+    /**
+     * Reassemble encrypted chunks from filesDir/chunks_{mediaId} into a complete encrypted file.
+     * Saves to filesDir/received_media/{mediaId}.
+     * Returns the absolute path to the assembled encrypted file, or null on error.
+     *
+     * Important: The result file is ENCRYPTED. Use MessageEncryptionManager to decrypt before viewing.
+     */
+    fun assembleChunksFromDisk(
         context: Context,
         mediaId: String,
         mimeType: String,
+        expectedTotalChunks: Int,
         onProgress: ((Int) -> Unit)? = null
     ): String? {
         return try {
             val chunkDir = getChunkDir(context, mediaId)
-            val chunkFiles = chunkDir.listFiles()
-                ?.filter { it.name.startsWith("chunk_") }
-                ?.sortedBy { it.name.removePrefix("chunk_").toIntOrNull() ?: 0 }
-                ?: return null
-
-            if (chunkFiles.isEmpty()) return null
-
-            val ext = when (mimeType.uppercase()) {
-                "AUDIO" -> "m4a"; "VIDEO" -> "mp4"; else -> "jpg"
+            val chunkFiles = mutableListOf<File>()
+            for (i in 0 until expectedTotalChunks) {
+                val file = File(chunkDir, "chunk_${i.toString().padStart(6, '0')}")
+                if (!file.exists() || file.length() == 0L) {
+                    Log.e(TAG, "Missing or empty chunk $i for mediaId=$mediaId")
+                    return null
+                }
+                chunkFiles.add(file)
             }
-            val outFile = File(context.cacheDir, "assembled_${mediaId}.$ext")
-            // Write to temp file first, rename atomically when complete
-            val tmpFile = File(context.cacheDir, "assembling_${mediaId}.$ext")
+
+            if (chunkFiles.size != expectedTotalChunks) {
+                Log.e(TAG, "Chunk count mismatch for $mediaId: expected $expectedTotalChunks, found ${chunkFiles.size}")
+                return null
+            }
+
+            // Extension for the final file
+            val ext = when (mimeType.uppercase()) {
+                "AUDIO" -> "m4a"
+                "VIDEO" -> "mp4"
+                else -> "jpg"
+            }
+
+            // Ensure received_media directory exists
+            val receivedMediaDir = File(context.filesDir, "received_media").apply { mkdirs() }
+
+            // Write to temp file first, then atomically rename
+            val tmpFile = File(receivedMediaDir, "assembling_${mediaId}.$ext")
+            val outFile = File(receivedMediaDir, "${mediaId}.$ext")
 
             tmpFile.outputStream().buffered(32 * 1024).use { out ->
                 chunkFiles.forEachIndexed { idx, chunkFile ->
-                    // Streaming decode: read Base64 text → decode → write directly
-                    // Never hold entire file in memory
+                    // Streaming decode: read Base64 text → decode bytes → write directly
+                    // This way we never load the entire file into memory
                     chunkFile.inputStream().bufferedReader().use { reader ->
                         val b64 = reader.readText()
                         val decoded = Base64.decode(b64, Base64.NO_WRAP)
                         out.write(decoded)
-                        decoded.fill(0) // allow GC immediately
+                        decoded.fill(0) // Allow GC to collect immediately
                     }
                     onProgress?.invoke(((idx + 1) * 100) / chunkFiles.size)
                 }
                 out.flush()
             }
 
-            // Atomic rename — only exists as final path if fully written
-            tmpFile.renameTo(outFile)
-
-            if (!outFile.exists() || outFile.length() == 0L) {
+            // Atomic rename — file only exists at final path if write fully completes
+            if (!tmpFile.renameTo(outFile)) {
+                Log.e(TAG, "Failed to rename tmp file to $outFile")
                 tmpFile.delete()
                 return null
             }
 
-            chunkDir.deleteRecursively()
-            "file://${outFile.absolutePath}"
+            if (!outFile.exists() || outFile.length() == 0L) {
+                Log.e(TAG, "Output file is empty or doesn't exist: $outFile")
+                outFile.delete()
+                return null
+            }
+
+            Log.d(TAG, "Successfully assembled chunks to $outFile (${outFile.length()} bytes)")
+
+            // Clean up chunk directory after successful assembly
+            deleteChunkDirectory(context, mediaId)
+
+            outFile.absolutePath
         } catch (e: Exception) {
-            Log.e(TAG, "assembleChunks failed", e)
+            Log.e(TAG, "assembleChunksFromDisk failed for mediaId=$mediaId", e)
             null
         }
     }
 
+    /**
+     * Save a single encrypted Base64-encoded chunk to disk at filesDir/chunks_{mediaId}/chunk_{index}.
+     */
     fun saveChunkToDisk(context: Context, mediaId: String, index: Int, base64Data: String) {
         try {
             val chunkDir = getChunkDir(context, mediaId)
-            if (!chunkDir.exists()) chunkDir.mkdirs()
-            File(chunkDir, "chunk_${index.toString().padStart(6, '0')}").writeText(base64Data)
+            if (!chunkDir.exists()) {
+                val created = chunkDir.mkdirs()
+                Log.d(TAG, "Created chunk directory: $chunkDir (success=$created)")
+            }
+            val chunkFile = File(chunkDir, "chunk_${index.toString().padStart(6, '0')}")
+            chunkFile.writeText(base64Data)
+            Log.d(TAG, "Saved chunk $index to $chunkFile")
         } catch (e: Exception) {
-            Log.e(TAG, "saveChunkToDisk failed", e)
+            Log.e(TAG, "saveChunkToDisk failed for mediaId=$mediaId, index=$index", e)
         }
     }
 
+    /**
+     * Count the number of chunks already saved for a given mediaId.
+     */
     fun countSavedChunks(context: Context, mediaId: String): Int {
-        return getChunkDir(context, mediaId)
-            .listFiles()?.count { it.name.startsWith("chunk_") } ?: 0
+        val chunkDir = getChunkDir(context, mediaId)
+        if (!chunkDir.exists()) {
+            Log.w(TAG, "Chunk directory doesn't exist for mediaId=$mediaId: $chunkDir")
+            return 0
+        }
+        val files = chunkDir.listFiles() ?: emptyArray()
+        val count = files.count { it.name.startsWith("chunk_") && it.isFile && it.length() > 0 }
+        Log.d(TAG, "Counted $count valid chunks for mediaId=$mediaId (total files=${files.size}, dir readable=${chunkDir.canRead()})")
+        return count
     }
 
-    private fun getChunkDir(context: Context, mediaId: String): File =
-        File(context.cacheDir, "chunks_$mediaId")
+    /**
+     * Recursively delete the chunk directory for a given mediaId.
+     * Called after successful assembly or on cleanup.
+     */
+    fun deleteChunkDirectory(context: Context, mediaId: String) {
+        try {
+            val chunkDir = getChunkDir(context, mediaId)
+            if (chunkDir.exists()) {
+                val deleted = chunkDir.deleteRecursively()
+                Log.d(TAG, "Deleted chunk directory: $chunkDir (success=$deleted)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteChunkDirectory failed for mediaId=$mediaId", e)
+        }
+    }
 
+    /**
+     * Get the directory path for storing chunks: filesDir/chunks_{mediaId}/
+     */
+    fun getChunkDir(context: Context, mediaId: String): File =
+        File(context.filesDir, "chunks_$mediaId")
+
+    /**
+     * Resolve a file path from various formats:
+     * - file:// URLs
+     * - content:// URIs (copied to temp location)
+     * - Standard absolute paths
+     */
     fun resolveFile(context: Context, path: String): File? {
         val cleaned = path
             .removePrefix("file://")
@@ -165,6 +257,19 @@ object MediaChunkManager {
                 if (tmp.exists() && tmp.length() > 0) tmp else null
             } else null
         } catch (e: Exception) {
+            Log.e(TAG, "resolveFile failed for path=$path", e)
+            null
+        }
+    }
+    fun decodeThumbnail(context: Context, b64: String, mediaId: String): String? {
+        return try {
+            val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+            val dir = java.io.File(context.cacheDir, "thumbnails").apply { mkdirs() }
+            val file = java.io.File(dir, "thumb_$mediaId.jpg")
+            file.writeBytes(bytes)
+            file.absolutePath
+        } catch (e: Exception) {
+            android.util.Log.e("MediaChunkManager", "decodeThumbnail failed", e)
             null
         }
     }

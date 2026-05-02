@@ -2,9 +2,16 @@ package app.secure.kyber.fragments
 
 import android.annotation.SuppressLint
 import android.app.AlertDialog
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,25 +19,54 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.secure.kyber.R
+import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.activities.QrCodeDialog
+import app.secure.kyber.backend.KyberRepository
+import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.Utils.SystemUpdateManager
 import app.secure.kyber.databinding.FragmentSettingBinding
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.KeyEntity
 import app.secure.kyber.workers.KeyRotationWorker
-import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.textfield.TextInputEditText
+import com.google.firebase.database.FirebaseDatabase
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.UUID
 import java.util.concurrent.TimeUnit
+import javax.inject.Inject
 
 
+@AndroidEntryPoint
 class SettingFragment : Fragment(R.layout.fragment_setting) {
+
+    companion object {
+        private const val TAG = "SettingFragment"
+        const val NOTIF_CHANNEL_ID = "union_messages_channel"
+
+        // Shared state for ACK callback from UnionService/SyncWorker
+        @Volatile var pendingWipeRequestId: String? = null
+        @Volatile var onWipeAckReceived: ((status: String) -> Unit)? = null
+    }
+
+    @Inject
+    lateinit var repository: KyberRepository
 
     private lateinit var binding: FragmentSettingBinding
     private lateinit var navController: NavController
@@ -90,7 +126,9 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         binding.searchPrivacyCard.cardIcon.setImageResource(R.drawable.eye_off)
 
         binding.encryptionTimerCard.cardTitle.text = "Encryption Timer"
+        binding.encryptionTimerCard.cardTitle.setTextColor(0xFFFF0000.toInt())
         binding.encryptionTimerCard.cardIcon.setImageResource(R.drawable.encryption_timer_ic)
+        binding.encryptionTimerCard.cardIcon.setColorFilter(Color.RED)
     }
 
     /** Reads persisted values and shows them in each card's value label. */
@@ -132,9 +170,14 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
             showEncryptionTimerDialog()
         }
 
-        // ── NEW: Security item → Wipe-Out Password ──
+        // ── Security item → Wipe-Out Password ──
         binding.itemSecurity.setOnClickListener {
             showWipePasswordDialog()
+        }
+
+        // ── Wipe Other Phone ──
+        binding.itemWipeOtherPhone.setOnClickListener {
+            showWipeOtherPhoneDialog()
         }
     }
 
@@ -196,8 +239,15 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         refreshDisappearingRadios(dialogView, currentSelection)
 
         fun select(label: String) {
-            Prefs.setDisappearingMessagesStatus(requireContext(), label)
-            binding.disappearingChatCard.cardValue.text = label
+            val oldLabel = Prefs.getDisappearingMessageStatus(requireContext())
+            if (oldLabel != label) {
+                Prefs.setDisappearingMessagesStatus(requireContext(), label)
+                binding.disappearingChatCard.cardValue.text = label
+                
+                lifecycleScope.launch {
+                    SystemUpdateManager.broadcastGlobalDisappearingUpdate(requireContext(), label)
+                }
+            }
             dialog.dismiss()
         }
 
@@ -393,6 +443,289 @@ class SettingFragment : Fragment(R.layout.fragment_setting) {
         }
 
         dialog.show()
+    }
+
+    // ══════════════════════════════════════════════════════
+    // WIPE OTHER PHONE
+    // ══════════════════════════════════════════════════════
+
+    private fun showWipeOtherPhoneDialog() {
+        val dialogView = LayoutInflater.from(context)
+            .inflate(R.layout.dialog_wipe_other_phone, null)
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .setCancelable(true)
+            .create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(requireContext(), R.drawable.disappearing_messages_dialog_bg)
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+
+        val sectionInput   = dialogView.findViewById<LinearLayout>(R.id.section_input)
+        val sectionLoading = dialogView.findViewById<LinearLayout>(R.id.section_loading)
+        val sectionResult  = dialogView.findViewById<LinearLayout>(R.id.section_result)
+        val etShortId      = dialogView.findViewById<TextInputEditText>(R.id.et_target_short_id)
+        val etWipePwd      = dialogView.findViewById<TextInputEditText>(R.id.et_target_wipe_password)
+        val tvError        = dialogView.findViewById<TextView>(R.id.tv_wipe_other_error)
+        val tvLoadStatus   = dialogView.findViewById<TextView>(R.id.tv_loading_status)
+        val btnProceed     = dialogView.findViewById<MaterialButton>(R.id.btn_wipe_other_proceed)
+        val tvResultMsg    = dialogView.findViewById<TextView>(R.id.tv_result_message)
+        val tvResultSub    = dialogView.findViewById<TextView>(R.id.tv_result_sub)
+        val ivResultIcon   = dialogView.findViewById<ImageView>(R.id.iv_result_icon)
+        val btnClose       = dialogView.findViewById<MaterialButton>(R.id.btn_result_close)
+
+        fun showInput()   { sectionInput.visibility = View.VISIBLE; sectionLoading.visibility = View.GONE; sectionResult.visibility = View.GONE }
+        fun showLoading(msg: String) { sectionInput.visibility = View.GONE; sectionLoading.visibility = View.VISIBLE; sectionResult.visibility = View.GONE; tvLoadStatus.text = msg }
+        fun showResult(success: Boolean, title: String, sub: String = "") {
+            sectionInput.visibility = View.GONE; sectionLoading.visibility = View.GONE; sectionResult.visibility = View.VISIBLE
+            tvResultMsg.text = title
+            if (sub.isNotBlank()) { tvResultSub.text = sub; tvResultSub.visibility = View.VISIBLE } else { tvResultSub.visibility = View.GONE }
+            tvResultMsg.setTextColor(if (success) 0xFF4CAF50.toInt() else 0xFFFF6B6B.toInt())
+            ivResultIcon.setImageResource(if (success) R.drawable.security_ic else R.drawable.security_ic)
+            ivResultIcon.setColorFilter(if (success) 0xFF4CAF50.toInt() else 0xFFFF6B6B.toInt())
+        }
+
+        showInput()
+        btnClose.setOnClickListener { dialog.dismiss() }
+
+        btnProceed.setOnClickListener {
+            val shortId  = etShortId.text?.toString()?.trim() ?: ""
+            val wipePwd  = etWipePwd.text?.toString()?.trim() ?: ""
+            if (shortId.isEmpty() || wipePwd.isEmpty()) {
+                tvError.text = "All fields are required."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+
+            val myShortId = Prefs.getShortId(requireContext()).toString()
+            if (shortId == myShortId) {
+                tvError.text = "You cannot wipe your own phone from here."
+                tvError.visibility = View.VISIBLE
+                return@setOnClickListener
+            }
+            tvError.visibility = View.GONE
+            btnProceed.isEnabled = false
+            showLoading("Looking up user...")
+
+            // Firebase: shortId → onionAddress
+            val db = FirebaseDatabase.getInstance(
+                "https://kyber-b144e-default-rtdb.asia-southeast1.firebasedatabase.app/"
+            )
+            db.getReference("users").child(shortId).child("onion_address").get()
+                .addOnSuccessListener { snapshot ->
+                    val onionAddress = snapshot.value as? String
+                    if (onionAddress.isNullOrBlank()) {
+                        showInput()
+                        tvError.text = "User not found. Check the Short ID."
+                        tvError.visibility = View.VISIBLE
+                        btnProceed.isEnabled = true
+                        return@addOnSuccessListener
+                    }
+                    tvLoadStatus.text = "Verifying user on network..."
+                    lifecycleScope.launch {
+                        try {
+                            val resp = withContext(Dispatchers.IO) { repository.getPublicKey(onionAddress) }
+                            if (!resp.isSuccessful || resp.body() == null) {
+                                withContext(Dispatchers.Main) {
+                                    showInput(); tvError.text = "User not reachable on the network."; tvError.visibility = View.VISIBLE; btnProceed.isEnabled = true
+                                }
+                                return@launch
+                            }
+                            // User verified → dismiss this dialog, show timer dialog
+                            withContext(Dispatchers.Main) {
+                                dialog.dismiss()
+                                showWipeTimerDialog(onionAddress, wipePwd)
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                showInput(); tvError.text = "Network error. Please try again."; tvError.visibility = View.VISIBLE; btnProceed.isEnabled = true
+                            }
+                        }
+                    }
+                }
+                .addOnFailureListener {
+                    showInput(); tvError.text = "Lookup failed: ${it.message}"; tvError.visibility = View.VISIBLE; btnProceed.isEnabled = true
+                }
+        }
+
+        dialog.show()
+    }
+
+    private fun showWipeTimerDialog(targetOnion: String, targetWipePwd: String) {
+        if (!isAdded) return
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.wipe_timer_dialog, null)
+        val tvMessage   = dialogView.findViewById<TextView>(R.id.wipe_timer_message)
+        val tvCountdown = dialogView.findViewById<TextView>(R.id.wipe_timer_countdown)
+        val btnUndo     = dialogView.findViewById<MaterialButton>(R.id.btn_wipe_undo)
+
+        tvMessage.text = "Remote wipe will be triggered on target device"
+        btnUndo.visibility = View.VISIBLE
+
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(requireContext(), R.drawable.disappearing_messages_dialog_bg)
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+
+        var cancelled = false
+        btnUndo.setOnClickListener { cancelled = true; dialog.dismiss() }
+
+        val timer = object : CountDownTimer(5_000L, 1_000L) {
+            override fun onTick(ms: Long) {
+                if (isAdded) tvCountdown.text = ((ms / 1_000L) + 1).toString()
+            }
+            override fun onFinish() {
+                if (!isAdded) return
+                tvCountdown.text = "0"
+                if (cancelled) return
+                dialog.dismiss()
+                // Send the remote wipe command
+                val requestId = UUID.randomUUID().toString()
+                pendingWipeRequestId = requestId
+                // Show a confirmation dialog that waits for ACK
+                showWipeAwaitingDialog(requestId)
+                lifecycleScope.launch(Dispatchers.IO) {
+                    sendRemoteWipeRequest(targetOnion, targetWipePwd, requestId)
+                }
+            }
+        }.start()
+
+        dialog.setOnDismissListener { if (!cancelled) timer.cancel() }
+        dialog.show()
+    }
+
+    private fun showWipeAwaitingDialog(requestId: String) {
+        if (!isAdded) return
+        val dialogView = LayoutInflater.from(requireContext())
+            .inflate(R.layout.dialog_wipe_other_phone, null)
+        val dialog = AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+        dialog.window?.setBackgroundDrawable(
+            ContextCompat.getDrawable(requireContext(), R.drawable.disappearing_messages_dialog_bg)
+        )
+        dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+
+        val sectionInput   = dialogView.findViewById<LinearLayout>(R.id.section_input)
+        val sectionLoading = dialogView.findViewById<LinearLayout>(R.id.section_loading)
+        val sectionInstruction = dialogView.findViewById<TextView>(R.id.wipe_other_desc)
+        val sectionResult  = dialogView.findViewById<LinearLayout>(R.id.section_result)
+        val tvLoadStatus   = dialogView.findViewById<TextView>(R.id.tv_loading_status)
+        val tvResultMsg    = dialogView.findViewById<TextView>(R.id.tv_result_message)
+        val tvResultSub    = dialogView.findViewById<TextView>(R.id.tv_result_sub)
+        val ivResultIcon   = dialogView.findViewById<ImageView>(R.id.iv_result_icon)
+        val btnClose       = dialogView.findViewById<MaterialButton>(R.id.btn_result_close)
+
+        sectionInput.visibility = View.GONE
+        sectionLoading.visibility = View.VISIBLE
+        sectionResult.visibility = View.GONE
+        tvLoadStatus.text = "Sending wipe command..."
+
+        fun showResult(success: Boolean, title: String, sub: String = "") {
+            sectionLoading.visibility = View.GONE
+            sectionInstruction.visibility = View.GONE
+            sectionResult.visibility = View.VISIBLE
+            tvResultMsg.text = title
+            tvResultMsg.setTextColor(if (success) 0xFF4CAF50.toInt() else 0xFFFF6B6B.toInt())
+            ivResultIcon.setColorFilter(if (success) 0xFF4CAF50.toInt() else 0xFFFF6B6B.toInt())
+            if (sub.isNotBlank()) { tvResultSub.text = sub; tvResultSub.visibility = View.VISIBLE } else tvResultSub.visibility = View.GONE
+        }
+
+        btnClose.setOnClickListener { dialog.dismiss(); onWipeAckReceived = null; pendingWipeRequestId = null }
+
+        // Register callback — invoked by UnionService on main thread
+        onWipeAckReceived = { status ->
+            if (isAdded) {
+                when (status) {
+                    "SUCCESS"          -> showResult(true,  "Remote Wipe Successful!", "Target device app data has been wiped.")
+                    "NO_WIPE_PASSWORD" -> showResult(false, "Target Has No Wipe Password", "The target user has not set a wipe password.")
+                    "WRONG_PASSWORD"   -> showResult(false, "Incorrect Wipe Password", "The wipe password provided does not match.")
+                    else               -> showResult(false, "Wipe Failed", "An unknown error occurred.")
+                }
+            } else {
+                dialog.dismiss()
+            }
+        }
+
+        // Auto-dismiss after 30s if no ACK (timeout)
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (dialog.isShowing && pendingWipeRequestId == requestId) {
+                showResult(false, "No Response", "Target device did not respond. It may be offline.")
+                pendingWipeRequestId = null
+                onWipeAckReceived = null
+            }
+        }, 30_000L)
+
+        dialog.show()
+    }
+
+    private suspend fun sendRemoteWipeRequest(targetOnion: String, wipePwd: String, requestId: String) {
+        try {
+            val ctx      = requireContext().applicationContext
+            val myOnion  = Prefs.getOnionAddress(ctx) ?: return
+            val myName   = Prefs.getName(ctx) ?: ""
+            val pwdHash  = sha256(wipePwd)
+
+            val payload = JSONObject()
+                .put("action", "REMOTE_WIPE_REQUEST")
+                .put("wipePasswordHash", pwdHash)
+                .put("requestId", requestId)
+                .put("initiatorOnion", myOnion)
+                .toString()
+
+            val pubKeyResp = repository.getPublicKey(targetOnion)
+            if (!pubKeyResp.isSuccessful || pubKeyResp.body() == null) return
+            val recipientPublicKey = pubKeyResp.body()!!.publicKey
+
+            val enc = MessageEncryptionManager.encryptMessage(ctx, recipientPublicKey, payload)
+
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+            val transport = PrivateMessageTransportDto(
+                messageId = requestId,
+                msg = enc.encryptedPayload,
+                senderOnion = myOnion,
+                senderName = myName,
+                timestamp = System.currentTimeMillis().toString(),
+                type = "REMOTE_WIPE_REQUEST",
+                iv = enc.iv,
+                senderKeyFingerprint = enc.senderKeyFingerprint,
+                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                senderPublicKey = enc.senderPublicKeyBase64
+            )
+
+            val json    = adapter.toJson(transport)
+            val base64  = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            var circuit = Prefs.getCircuitId(ctx) ?: ""
+            if (circuit.isEmpty()) {
+                val r = repository.createCircuit()
+                if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(ctx, circuit) }
+            }
+            if (circuit.isNotEmpty()) {
+                val resp = repository.sendMessage(targetOnion, base64, circuit)
+                if (!resp.isSuccessful) {
+                    // Retry with fresh circuit
+                    val r2 = repository.createCircuit()
+                    if (r2.isSuccessful) {
+                        circuit = r2.body()?.circuitId ?: ""
+                        Prefs.setCircuitId(ctx, circuit)
+                        repository.sendMessage(targetOnion, base64, circuit)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "sendRemoteWipeRequest failed", e)
+        }
+    }
+
+    private fun sha256(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 
     private fun Context.shareText(text: String, subject: String? = null) {

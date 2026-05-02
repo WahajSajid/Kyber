@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small pill: used for timestamp bars and the text-line stubs inside bubbles -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#30FFFFFF" />
+    <corners android:radius="6dp" />
+</shape>

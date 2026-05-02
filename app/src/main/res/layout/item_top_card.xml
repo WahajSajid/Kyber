@@ -18,7 +18,8 @@
             android:layout_height="@dimen/_26sdp"
             android:layout_centerHorizontal="true"
             android:layout_alignParentTop="true"
-            android:src="@drawable/lock_ic" />
+            android:src="@drawable/lock_ic"
+            app:tint="#1A8BCE" />
 
         <!-- small info icon at the bottom-right -->
         <ImageView
@@ -38,7 +39,7 @@
             android:layout_marginTop="@dimen/_8sdp"
             android:layout_centerHorizontal="true"
             android:text="Auto Lock"
-            android:textColor="@color/white"
+            android:textColor="#1A8BCE"
             android:textSize="@dimen/_14sdp"
             android:textStyle="bold"/>
 

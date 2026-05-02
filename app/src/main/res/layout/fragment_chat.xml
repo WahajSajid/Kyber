@@ -35,6 +35,35 @@
         android:clipToPadding="false"
         tools:listitem="@layout/msg_list_item" />
 
+    <!-- ── Chat loading shimmer ────────────────────────────────────────────
+         Shown instantly when the fragment opens; hidden once the first
+         batch of messages is submitted to the adapter. The shimmer sweep
+         animation is driven purely in code (no external library needed).
+    ──────────────────────────────────────────────────────────────────── -->
+    <FrameLayout
+        android:id="@+id/shimmerContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="visible"
+        android:clipChildren="false"
+        app:layout_constraintBottom_toTopOf="@id/bottom_items_layout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <!-- Static bubble skeleton -->
+        <include layout="@layout/layout_chat_shimmer" />
+
+        <!-- Animated sweep highlight -->
+        <View
+            android:id="@+id/shimmerHighlight"
+            android:layout_width="120dp"
+            android:layout_height="match_parent"
+            android:background="@drawable/shimmer_gradient"
+            android:translationX="-120dp" />
+
+    </FrameLayout>
+
     <!-- BLUR/DIM OVERLAY -->
     <View
         android:id="@+id/blurOverlay"

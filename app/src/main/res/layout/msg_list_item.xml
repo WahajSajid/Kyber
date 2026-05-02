@@ -9,6 +9,30 @@
     android:clipToPadding="false">
 
     <LinearLayout
+        android:id="@+id/dateSeparatorLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:layout_marginTop="@dimen/_8sdp"
+        android:layout_marginBottom="@dimen/_8sdp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvDateSeparator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/system_bubble_bg"
+            android:paddingHorizontal="@dimen/_16sdp"
+            android:paddingVertical="@dimen/_6sdp"
+            android:text="Today"
+            android:textColor="#99FFFFFF"
+            android:textSize="@dimen/_10sdp"
+            android:fontFamily="@font/roboto_medium" />
+
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/rlMsgRcvd"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -126,7 +150,7 @@
             android:paddingTop="@dimen/_8sdp"
             android:paddingEnd="@dimen/_8sdp"
             android:paddingBottom="@dimen/_4sdp"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
@@ -307,6 +331,14 @@
                         android:layout_gravity="center_vertical"
                         android:src="@drawable/privacy"
                         app:tint="#60FFFFFF" />
+
+                    <app.secure.kyber.Other.CircularBurnProgressView
+                        android:id="@+id/burnProgressRcvAudio"
+                        android:layout_width="@dimen/_14sdp"
+                        android:layout_height="@dimen/_14sdp"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginStart="@dimen/_4sdp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -366,6 +398,14 @@
                 android:layout_gravity="center_vertical"
                 android:src="@drawable/privacy"
                 app:tint="#60FFFFFF" />
+
+            <app.secure.kyber.Other.CircularBurnProgressView
+                android:id="@+id/burnProgressRcvText"
+                android:layout_width="@dimen/_12sdp"
+                android:layout_height="@dimen/_12sdp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:visibility="gone" />
         </LinearLayout>
 
     </LinearLayout>
@@ -567,7 +607,8 @@
         android:elevation="@dimen/_16sdp"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/rlMsgRcvd"
-        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd" />
+        app:layout_constraintStart_toStartOf="@id/rlMsgRcvd"
+        app:layout_constraintTop_toBottomOf="@id/dateSeparatorLayout" />
 
     <LinearLayout
         android:id="@+id/rlMsgSent"
@@ -841,11 +882,20 @@
                         android:textSize="@dimen/_10sdp" />
 
                     <ImageView
-                        android:layout_width="@dimen/_10sdp"
-                        android:layout_height="@dimen/_11sdp"
+                        android:id="@+id/voice_sent_status"
+                        android:layout_width="@dimen/_14sdp"
+                        android:layout_height="@dimen/_14sdp"
                         android:layout_gravity="center_vertical"
                         android:src="@drawable/privacy"
                         app:tint="#60FFFFFF" />
+
+                    <app.secure.kyber.Other.CircularBurnProgressView
+                        android:id="@+id/burnProgressSentAudio"
+                        android:layout_width="@dimen/_14sdp"
+                        android:layout_height="@dimen/_14sdp"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginStart="@dimen/_4sdp"
+                        android:visibility="gone" />
                 </LinearLayout>
             </androidx.constraintlayout.widget.ConstraintLayout>
 
@@ -884,7 +934,7 @@
             android:layout_marginEnd="@dimen/_8sdp"
             android:gravity="end|center_vertical"
             android:orientation="horizontal"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <TextView
                 android:id="@+id/tvSentTime"
@@ -903,6 +953,14 @@
                 android:layout_gravity="center_vertical"
                 android:src="@drawable/privacy"
                 app:tint="#60FFFFFF" />
+
+            <app.secure.kyber.Other.CircularBurnProgressView
+                android:id="@+id/burnProgressSentText"
+                android:layout_width="@dimen/_12sdp"
+                android:layout_height="@dimen/_12sdp"
+                android:layout_gravity="center_vertical"
+                android:layout_marginStart="@dimen/_4sdp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <Button
@@ -1115,7 +1173,7 @@
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/rlMsgSent"
         app:layout_constraintEnd_toEndOf="@id/rlMsgSent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/dateSeparatorLayout" />
 
     <!-- WIPE REQUEST SENT -->
     <LinearLayout
@@ -1264,6 +1322,32 @@
             android:textColor="#FF4444"
             android:textSize="14sp"
             android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- SYSTEM UPDATE BUBBLE (Disappearing Messages) -->
+    <LinearLayout
+        android:id="@+id/llSystemUpdateBubble"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="@dimen/_10sdp"
+        android:background="@drawable/system_bubble_bg"
+        android:paddingHorizontal="@dimen/_16sdp"
+        android:paddingVertical="@dimen/_6sdp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rlWipeRequestRcvd"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <TextView
+            android:id="@+id/tvSystemUpdateText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/roboto_regular"
+            android:text="System update message here"
+            android:textColor="#99FFFFFF"
+            android:textSize="@dimen/_10sdp"
+            android:textAlignment="center" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

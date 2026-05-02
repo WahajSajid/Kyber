@@ -202,6 +202,14 @@ class GroupMediaUploadWorker(
             msgRef.setValue(header).await()
 
             // 5. Finalize local state
+            val nowMs = System.currentTimeMillis()
+            val nowStr = nowMs.toString()
+            if (disappearTtl > 0L) {
+                val expiresAt = nowMs + disappearTtl
+                dao.updateSentTime(messageId, nowStr, expiresAt)
+            } else {
+                dao.updateSentTime(messageId, nowStr, 0L)
+            }
             val finalLocalPath = uploadFilePath.removePrefix("file://")
             dao.updateMessageFields(messageId, finalLocalPath, "done", 100)
             

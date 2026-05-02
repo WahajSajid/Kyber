@@ -32,7 +32,7 @@ interface MessageDao {
     @Query("DELETE FROM messages")
     suspend fun deleteAll()
 
-    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND id > :lastSeenId")
+    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND id > :lastSeenId AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')")
     suspend fun getUnreadCount(senderOnion: String, lastSeenId: Long): Int
 
     @Query("SELECT EXISTS(SELECT 1 FROM messages WHERE senderOnion = :senderOnion AND isSent = 1)")
@@ -50,6 +50,9 @@ interface MessageDao {
     @Query("UPDATE messages SET downloadState = :state, downloadProgress = :progress WHERE messageId = :messageId")
     suspend fun updateDownloadProgress(messageId: String, state: String, progress: Int)
 
+    @Query("SELECT * FROM messages WHERE downloadState = :state")
+    suspend fun getMessagesByDownloadState(state: String): List<MessageEntity>
+
     @Query("UPDATE messages SET uploadState = :state, localFilePath = :path, uploadProgress = 100 WHERE messageId = :messageId")
     suspend fun setUploadDone(messageId: String, state: String, path: String?)
 
@@ -61,6 +64,9 @@ interface MessageDao {
 
     @Query("UPDATE messages SET remoteMediaId = :mediaId WHERE messageId = :messageId")
     suspend fun setRemoteMediaId(messageId: String, mediaId: String)
+
+    @Query("UPDATE messages SET time = :time, expiresAt = :expiresAt WHERE messageId = :messageId")
+    suspend fun updateSentTime(messageId: String, time: String, expiresAt: Long)
 
     @Query("SELECT * FROM messages WHERE remoteMediaId = :mediaId AND isSent = 0 LIMIT 1")
     suspend fun getByRemoteMediaId(mediaId: String): MessageEntity?
@@ -88,6 +94,7 @@ interface MessageDao {
           SELECT senderOnion,
                  MAX(CAST(CASE WHEN updatedAt != '' THEN updatedAt ELSE time END AS INTEGER)) AS maxTime
           FROM messages
+          WHERE type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')
           GROUP BY senderOnion
         ),
         latest_row AS (
@@ -130,7 +137,7 @@ interface MessageDao {
           SELECT senderOnion,
                  MAX(CAST(time AS INTEGER)) AS maxTime
           FROM messages
-          WHERE isSent = 0
+          WHERE isSent = 0 AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')
           GROUP BY senderOnion
         ),
         latest_row AS (
@@ -156,7 +163,7 @@ interface MessageDao {
                lr.keyFingerprint AS keyFingerprint,
                lr.iv AS iv
         FROM latest_row lr
-        WHERE lr.senderOnion NOT IN (SELECT onionAddress FROM contacts)
+        WHERE lr.senderOnion NOT IN (SELECT onionAddress FROM contacts WHERE isContact = 1)
           AND lr.senderOnion NOT IN (SELECT senderOnion FROM messages WHERE isSent = 1)
           AND lr.senderOnion IN (
               SELECT senderOnion FROM messages WHERE isRequest = 1 AND isSent = 0
@@ -190,5 +197,48 @@ interface MessageDao {
         LIMIT :limit
     """)
     suspend fun getOlderMessages(senderOnion: String, beforeTime: Long, limit: Int): List<MessageEntity>
+
+    // ── Message status: Delivered / Seen ──────────────────────────────────────
+
+    /** Mark a single sent message as delivered by the recipient device. */
+    @Query("UPDATE messages SET deliveredAt = :ts WHERE messageId = :messageId AND isSent = 1 AND deliveredAt = 0")
+    suspend fun updateDeliveredAt(messageId: String, ts: Long)
+
+    /**
+     * Mark all sent messages to a given contact as delivered.
+     * Called by SyncWorker when the first incoming message from that contact is processed,
+     * confirming the contact's device is online and able to pull messages.
+     */
+    @Query("UPDATE messages SET deliveredAt = :ts WHERE senderOnion = :senderOnion AND isSent = 1 AND deliveredAt = 0")
+    suspend fun markAllDeliveredForContact(senderOnion: String, ts: Long)
+
+    /**
+     * Mark all sent messages to a contact as seen.
+     * Called when the local user opens the private chat (recipient-side event piggybacked
+     * via the next outgoing message's seen-receipt field, or tracked locally for self-view).
+     *
+     * In practice this is called on the *sender's* device when the recipient opens
+     * the chat — which is signalled by the recipient sending any outgoing message or
+     * when the ChatFragment receives a "seen" marker from the contact's device.
+     *
+     * For now, we call this on the *receiver's* own device when they open the chat
+     * so our *own* sent messages to that person are flagged seen (the sender would need
+     * a separate receipt channel to know; this self-marks for local UX consistency).
+     */
+    @Query("UPDATE messages SET seenAt = :ts WHERE senderOnion = :senderOnion AND isSent = 1 AND seenAt = 0")
+    suspend fun markAllSeenForContact(senderOnion: String, ts: Long)
+
+    /**
+     * Get the count of received messages from a contact that we have not seen yet.
+     */
+    @Query("SELECT COUNT(*) FROM messages WHERE senderOnion = :senderOnion AND isSent = 0 AND seenAt = 0 AND type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')")
+    suspend fun getUnreadReceivedCount(senderOnion: String): Int
+
+    /**
+     * Mark all received messages from a contact as seen locally so we don't keep sending receipts.
+     */
+    @Query("UPDATE messages SET seenAt = :ts WHERE senderOnion = :senderOnion AND isSent = 0 AND seenAt = 0")
+    suspend fun markReceivedMessagesAsSeen(senderOnion: String, ts: Long)
 }
+
 

@@ -19,9 +19,11 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import app.secure.kyber.Other.CircularBurnProgressView
 import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
 import app.secure.kyber.R
+import app.secure.kyber.Utils.DateUtils
 import app.secure.kyber.roomdb.MessageEntity
 import app.secure.kyber.roomdb.MessageUiModel
 import com.bumptech.glide.Glide
@@ -32,6 +34,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -126,7 +129,7 @@ class MessageAdapter(
     }
 
     private var activePlayer: MediaPlayer? = null
-    private var activeUri: String? = null
+    private var activeMessageId: String? = null
     private var activeHolder: VH? = null
     private var activeHandler: android.os.Handler? = null
     private var activeSpeedIdx: Int = 0
@@ -142,6 +145,7 @@ class MessageAdapter(
 
     // True once the very first submitList with >1 item has been processed.
     private var firstLoadDone = false
+    private var timerJob: Job? = null
 
     override fun submitList(list: List<MessageUiModel>?) {
         val prevSize = currentList.size
@@ -179,11 +183,13 @@ class MessageAdapter(
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         recyclerView = rv
+        startTimer()
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {
         super.onDetachedFromRecyclerView(rv)
         recyclerView = null
+        timerJob?.cancel()
         adapterScope.coroutineContext.cancelChildren()
     }
 
@@ -329,6 +335,14 @@ class MessageAdapter(
         // Text specific
         val ivSentStatus: ImageView? = view.findViewById(R.id.ivSentStatus)
         val btnRetrySentText: android.widget.Button? = view.findViewById(R.id.btnRetrySentText)
+        
+        // Voice specific status
+        val ivVoiceSentStatus: ImageView? = view.findViewById(R.id.voice_sent_status)
+
+        val burnProgressRcvAudio: CircularBurnProgressView = view.findViewById(R.id.burnProgressRcvAudio)
+        val burnProgressRcvText: CircularBurnProgressView = view.findViewById(R.id.burnProgressRcvText)
+        val burnProgressSentAudio: CircularBurnProgressView = view.findViewById(R.id.burnProgressSentAudio)
+        val burnProgressSentText: CircularBurnProgressView = view.findViewById(R.id.burnProgressSentText)
 
         fun playPauseFrame(sent: Boolean) = if (sent) ivSentPlayPause else ivRcvPlayPause
         fun playIcon(sent: Boolean) = if (sent) ivSentPlayIcon else ivRcvPlayIcon
@@ -348,6 +362,11 @@ class MessageAdapter(
         val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
         fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
         fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
+
+        val llSystemUpdateBubble: View = view.findViewById(R.id.llSystemUpdateBubble)
+        val tvSystemUpdateText: TextView = view.findViewById(R.id.tvSystemUpdateText)
+        val dateSeparatorLayout: View = view.findViewById(R.id.dateSeparatorLayout)
+        val tvDateSeparator: TextView = view.findViewById(R.id.tvDateSeparator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -362,6 +381,23 @@ class MessageAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
+
+        // ── Reset UI State for Recycled Views ────────────────────────────────
+        holder.llSystemUpdateBubble.visibility = View.GONE
+        holder.rlWipeRequestSent?.visibility = View.GONE
+        holder.rlWipeRequestRcvd?.visibility = View.GONE
+        holder.dateSeparatorLayout.visibility = View.GONE
+        val prevItem = if (pos > 0) getItem(pos - 1) else null
+        val itemTime = item.time.toLongOrNull() ?: 0L
+        val prevTime = prevItem?.time?.toLongOrNull() ?: 0L
+
+        if (pos == 0 || !DateUtils.isSameDay(itemTime, prevTime)) {
+            holder.dateSeparatorLayout.visibility = View.VISIBLE
+            holder.tvDateSeparator.text = DateUtils.getChatSeparatorDate(itemTime)
+        } else {
+            holder.dateSeparatorLayout.visibility = View.GONE
+        }
+
         val type = item.type.uppercase(Locale.US)
         val isSent = item.isSent
         val isMedia = type == "IMAGE" || type == "VIDEO"
@@ -436,6 +472,48 @@ class MessageAdapter(
         holder.sentTimeAudio?.text = convertDatetime(item.time)
         holder.rcvTimeAudio?.text = convertDatetime(item.time)
 
+        // ── Burn Time Indicators ─────────────────────────────────────────────
+        val expiresAt = item.expiresAt
+        val startTime = item.time.toLongOrNull() ?: System.currentTimeMillis()
+        val totalDuration = if (expiresAt > 0) (expiresAt - startTime).coerceAtLeast(1000L) else 0L
+
+        if (expiresAt > 0) {
+            if (isAudio) {
+                if (isSent) {
+                    holder.burnProgressSentAudio.isVisible = true
+                    holder.burnProgressSentAudio.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                } else {
+                    holder.burnProgressRcvAudio.isVisible = true
+                    holder.burnProgressRcvAudio.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                }
+            } else {
+                if (isSent) {
+                    holder.burnProgressSentText.isVisible = true
+                    holder.burnProgressSentText.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                    holder.burnProgressRcvText.isVisible = false
+                } else {
+                    holder.burnProgressRcvText.isVisible = true
+                    holder.burnProgressRcvText.setTimer(expiresAt, totalDuration)
+                    holder.burnProgressSentAudio.isVisible = false
+                    holder.burnProgressSentText.isVisible = false
+                    holder.burnProgressRcvAudio.isVisible = false
+                }
+            }
+        } else {
+            holder.burnProgressSentAudio.isVisible = false
+            holder.burnProgressSentText.isVisible = false
+            holder.burnProgressRcvAudio.isVisible = false
+            holder.burnProgressRcvText.isVisible = false
+        }
+
         // Render the actual parsed emoji
         val activeReactionView = holder.reaction(isSent)
         val isWipeType = type.startsWith("WIPE_")
@@ -452,7 +530,8 @@ class MessageAdapter(
         inactiveReactionView.text = ""
 
         holder.itemView.setOnLongClickListener {
-            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+            val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
                 return@setOnLongClickListener false
             }
             val p = holder.bindingAdapterPosition
@@ -465,6 +544,9 @@ class MessageAdapter(
                 return@setOnClickListener
             }
             val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
+                return@setOnClickListener
+            }
             // Guard: do NOT fire onClick for text/emoji messages to avoid
             // "Media not available" shown by ChatFragment's onClick handler
             if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
@@ -502,9 +584,31 @@ class MessageAdapter(
         if (pos == RecyclerView.NO_POSITION) return
         if (payloads.contains("START_PLAYBACK")) {
             val item = getItem(pos)
-            startPlayback(holder, item.isSent, item.decryptedUri ?: return)
+            triggerAudioPlayback(holder, item.isSent, item)
         } else onBindViewHolder(holder, position)
 
+    }
+
+    private fun startTimer() {
+        if (timerJob?.isActive == true) return
+        timerJob = adapterScope.launch {
+            while (isActive) {
+                delay(1000)
+                updateVisibleTimers()
+            }
+        }
+    }
+
+    private fun updateVisibleTimers() {
+        val rv = recyclerView ?: return
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i)
+            val vh = rv.getChildViewHolder(child) as? VH ?: continue
+            vh.burnProgressRcvAudio.update()
+            vh.burnProgressRcvText.update()
+            vh.burnProgressSentAudio.update()
+            vh.burnProgressSentText.update()
+        }
     }
 
     private fun showMenu(position: Int) {
@@ -620,6 +724,33 @@ class MessageAdapter(
         }
     }
 
+    private fun applyStatusIndicator(imageView: ImageView?, item: MessageUiModel) {
+        if (imageView == null) return
+        imageView.setImageResource(R.drawable.privacy)
+        when {
+            item.seenAt > 0L -> {
+                // 🟢 Seen
+                imageView.setColorFilter(android.graphics.Color.parseColor("#4CAF50"))
+            }
+            item.deliveredAt > 0L -> {
+                // 🔵 Delivered
+                imageView.setColorFilter(android.graphics.Color.parseColor("#2196F3"))
+            }
+            item.uploadState == "done" -> {
+                // 🟡 Sent
+                imageView.setColorFilter(android.graphics.Color.parseColor("#FFC107"))
+            }
+            item.uploadState == "failed" -> {
+                // 🔴 Failed
+                imageView.setColorFilter(android.graphics.Color.parseColor("#F44336"))
+            }
+            else -> {
+                // 🔴 Sending (pending / uploading)
+                imageView.setColorFilter(android.graphics.Color.parseColor("#F44336"))
+            }
+        }
+    }
+
     private fun bindText(h: VH, item: MessageUiModel, sent: Boolean) {
         h.sentAudio.isVisible = false
         h.rcvAudio.isVisible = false
@@ -670,23 +801,12 @@ class MessageAdapter(
             h.receivedMessageTimeLayout?.visibility = View.GONE
 
             if (type == "WIPE_SYSTEM") {
-                // WhatsApp-style centered system message: full-width, center-aligned, neutral look.
                 h.rlSent.isVisible = false
                 h.rlRcvd.isVisible = false
                 h.rlWipeRequestRcvd?.isVisible = false
-                h.rlWipeRequestSent?.isVisible = true
-                h.tvWipeRequestSentStatus?.text = item.decryptedMsg
-                // Force the container to fill the whole row and center its content
-                h.rlWipeRequestSent?.let { container ->
-                    val lp = container.layoutParams
-                    if (lp is android.widget.LinearLayout.LayoutParams) {
-                        lp.width = android.widget.LinearLayout.LayoutParams.MATCH_PARENT
-                        lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
-                        container.layoutParams = lp
-                    }
-                    container.gravity = android.view.Gravity.CENTER
-                }
-                h.tvWipeRequestSentStatus?.gravity = android.view.Gravity.CENTER
+                h.rlWipeRequestSent?.isVisible = false
+                h.llSystemUpdateBubble.visibility = View.VISIBLE
+                h.tvSystemUpdateText.text = item.decryptedMsg
                 return
             }
 
@@ -708,9 +828,22 @@ class MessageAdapter(
                 h.tvWipeRequestRcvdDesc?.text = statusText
             }
             return
+        } else if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
+            h.rlSent.isVisible = false
+            h.rlRcvd.isVisible = false
+            h.tvDecryptingRcv?.isVisible = false
+            h.sentMessageTimeLayout?.visibility = View.GONE
+            h.receivedMessageTimeLayout?.visibility = View.GONE
+            h.rlWipeRequestSent?.isVisible = false
+            h.rlWipeRequestRcvd?.isVisible = false
+            
+            h.llSystemUpdateBubble.visibility = View.VISIBLE
+            h.tvSystemUpdateText.text = item.decryptedMsg
+            return
         } else {
             h.rlWipeRequestSent?.isVisible = false
             h.rlWipeRequestRcvd?.isVisible = false
+            h.llSystemUpdateBubble.visibility = View.GONE
         }
 
         h.sentMessageTimeLayout?.visibility = View.VISIBLE
@@ -742,19 +875,9 @@ class MessageAdapter(
                 h.tvSent.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f)
             }
 
-            // Text retry and pending logic
-            h.btnRetrySentText?.isVisible = false
-            if (item.uploadState == "pending" || item.uploadState == "uploading") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.setColorFilter(android.graphics.Color.GRAY)
-            } else if (item.uploadState == "failed") {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.setColorFilter(android.graphics.Color.RED)
-                h.btnRetrySentText?.isVisible = true
-            } else {
-                h.ivSentStatus?.setImageResource(R.drawable.privacy)
-                h.ivSentStatus?.colorFilter = null
-            }
+            // ── 4-State message status indicator ─────────────────────────────────
+            applyStatusIndicator(h.ivSentStatus, item)
+            h.btnRetrySentText?.isVisible = item.uploadState == "failed"
 
             h.btnRetrySentText?.setOnClickListener { onRetryUpload(item) }
             return
@@ -788,13 +911,17 @@ class MessageAdapter(
         }
 
         if (animatingIds.contains(msgId)) {
-            h.tvDecryptingRcv?.visibility = View.GONE
-            h.tvRcv.cancelAndShowFinal()
-            h.tvRcv.text = item.decryptedMsg
-            decryptedTextCache[msgId] = item.decryptedMsg
-            animatingIds.remove(msgId)
-            decryptJobs[msgId]?.cancel()
-            decryptJobs.remove(msgId)
+            // Already animating in a background coroutine. 
+            // Ensure the UI state is consistent (showing 'Decrypting' and scramble)
+            // while we wait for the coroutine to progress to the reveal phase.
+            h.tvDecryptingRcv?.visibility = View.VISIBLE
+            h.tvDecryptingRcv?.text = "Decrypting..."
+            
+            // If the view was recycled, it might have final text from another message.
+            // Reset it to the scramble state so it looks correct while waiting.
+            val placeholder = generateEncryptedPlaceholder(item.decryptedMsg)
+            h.tvRcv.prepareForAnimation(placeholder)
+            h.tvRcv.text = placeholder
             return
         }
 
@@ -822,23 +949,27 @@ class MessageAdapter(
                 decryptedTextCache[msgId] = decrypted
 
                 withContext(Dispatchers.Main) {
-                    val liveVH = findVHForMessage(msgId) ?: run {
-                        animatingIds.remove(msgId); decryptJobs.remove(msgId); return@withContext
+                    // Update cache even if VH is not visible, so when we scroll back it's already decrypted.
+                    decryptedTextCache[msgId] = decrypted
+                    
+                    val liveVH = findVHForMessage(msgId)
+                    if (liveVH == null) {
+                        animatingIds.remove(msgId)
+                        decryptJobs.remove(msgId)
+                        return@withContext
                     }
 
+                    liveVH.tvDecryptingRcv?.visibility = View.VISIBLE
                     liveVH.tvRcv.startPhase1(
                         decrypted = decrypted,
                         onPhase1Done = {
                             val vh2 = findVHForMessage(msgId)
                             if (vh2 != null) {
-                                vh2.tvRcv.beginPhase2(
-                                    onDone = {
-                                        findVHForMessage(msgId)?.tvDecryptingRcv?.visibility =
-                                            View.GONE
-                                        animatingIds.remove(msgId)
-                                        decryptJobs.remove(msgId)
-                                    }
-                                )
+                                vh2.tvDecryptingRcv?.visibility = View.GONE
+                                vh2.tvRcv.beginPhase2(onDone = {
+                                    animatingIds.remove(msgId)
+                                    decryptJobs.remove(msgId)
+                                })
                             } else {
                                 animatingIds.remove(msgId)
                                 decryptJobs.remove(msgId)
@@ -886,6 +1017,9 @@ class MessageAdapter(
         h.tvSent.isVisible = false; h.tvRcv.isVisible = false
         h.tvRcv.cancelAndShowFinal()
         h.rlSent.setBackgroundResource(R.drawable.sent_msg_bg)
+        // ── Fix: explicitly hide time layouts so recycled text-message views don't bleed ──
+        h.sentMessageTimeLayout?.visibility = View.GONE
+        h.receivedMessageTimeLayout?.visibility = View.GONE
 
         val ctx = h.itemView.context
 
@@ -949,12 +1083,16 @@ class MessageAdapter(
                     resolveMediaSource(ctx, rawSource, type)
                 }
             }
-            // While downloading, try to show a real thumbnail if available
-            val isDownloading = item.downloadState == "downloading" || item.downloadState == "pending"
-            if (isDownloading) {
+            // While uploading (sender) or downloading (receiver), try to show a real thumbnail
+            val isInTransit = item.downloadState == "downloading"
+                    || item.downloadState == "pending"
+                    || item.uploadState == "uploading"
+                    || item.uploadState == "compressing"
+                    || item.uploadState == "pending"
+            if (isInTransit) {
                 val thumbFile = item.thumbnailPath?.let { java.io.File(it) }
                 if (thumbFile != null && thumbFile.exists()) {
-                    // Real thumbnail available — show it during download
+                    // Real thumbnail available — show it during upload/download
                     Glide.with(ctx)
                         .load(thumbFile)
                         .apply(
@@ -1087,10 +1225,17 @@ class MessageAdapter(
             val sentReady = item.uploadState == "done"
             h.ivSentMedia.isClickable = sentReady
             h.ivSentPlay.isClickable = sentReady
+            
+            // ── Show Time and Status for Sent Media ──
+            h.sentMessageTimeLayout?.visibility = View.VISIBLE
+            applyStatusIndicator(h.ivSentStatus, item)
         } else {
             val rcvReady = item.downloadState == "done"
             h.ivRcvMedia.isClickable = rcvReady
             h.ivRcvPlay.isClickable = rcvReady
+            
+            // ── Show Time for Received Media ──
+            h.receivedMessageTimeLayout?.visibility = View.VISIBLE
         }
     }
 
@@ -1104,21 +1249,7 @@ class MessageAdapter(
         h.receivedMessageTimeLayout?.visibility = View.GONE
         h.sentAudio.isVisible = sent; h.rcvAudio.isVisible = !sent
 
-        // FIX: Route the raw decrypted source through the Base64 file resolver
-        // Prefer the directly assembled local path to avoid Base64 re-decode
-        val uriStr = if (!item.localFilePath.isNullOrBlank() && item.downloadState == "done") {
-            "file://${item.localFilePath}"
-        } else {
-            val rawSource = item.decryptedUri ?: item.decryptedMsg
-            resolveMediaSource(h.itemView.context, rawSource, "AUDIO")
-        }
-        if (uriStr.isBlank() && item.downloadState != "downloading") return
-        if (item.downloadState == "downloading" || item.downloadState == "pending") {
-            // Not ready yet — show state UI only, skip playback setup
-            // (the progress block above already handled the UI)
-            // We still want to show the container
-        } else if (uriStr.isBlank()) return
-
+        // Set waveform (will be flat if ampsJson is empty during lazy load)
         h.waveform(sent).setAmplitudes(decodeAmplitudes(item.ampsJson))
 
 
@@ -1204,73 +1335,118 @@ class MessageAdapter(
         }
 
 
-        h.durationLabel(sent).text = formatDuration(getTotalDuration(h.itemView.context, uriStr))
-        if (activeUri == uriStr) syncPlayingUi(h, sent)
+        // Show duration from metadata
+        if (item.mediaDurationMs > 0L) {
+            val secs = (item.mediaDurationMs / 1000).toInt()
+            h.durationLabel(sent).text = String.format(
+                java.util.Locale.getDefault(), "%d:%02d", secs / 60, secs % 60
+            )
+        } else {
+            h.durationLabel(sent).text = "0:00"
+        }
+
+        if (activeMessageId == item.messageId) syncPlayingUi(h, sent)
         else {
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1); h.waveform(sent)
                 .setProgress(0f); h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         }
 
         h.playPauseFrame(sent).setOnClickListener {
-            if (activeUri == uriStr) {
+            if (activeMessageId == item.messageId) {
                 val player = activePlayer
                 if (player != null && player.isPlaying) {
                     player.pause(); activeHandler?.removeCallbacksAndMessages(null); h.playIcon(sent)
                         .setImageResource(R.drawable.pause_icon_1)
                 } else if (player != null) {
                     player.start(); h.playIcon(sent)
-                        .setImageResource(R.drawable.pause_icon_0); startProgressUpdater(
-                        h,
-                        sent,
-                        uriStr
-                    )
+                        .setImageResource(R.drawable.pause_icon_0); startProgressUpdater(h, sent)
                 }
-            } else startPlayback(h, sent, uriStr)
+            } else {
+                triggerAudioPlayback(h, sent, item)
+            }
         }
         h.waveform(sent).setOnSeekListener { progress ->
-            if (activeUri == uriStr) activePlayer?.let {
-                it.seekTo((progress * it.duration).toInt()); h.waveform(
-                sent
-            ).setProgress(progress)
-            }
-            else {
-                startPlayback(
-                    h,
-                    sent,
-                    uriStr
-                ); activePlayer?.let {
-                    it.seekTo((progress * it.duration).toInt()); h.waveform(sent)
-                    .setProgress(progress)
+            if (activeMessageId == item.messageId) {
+                activePlayer?.let {
+                    it.seekTo((progress * it.duration).toInt())
+                    h.waveform(sent).setProgress(progress)
                 }
             }
+            // Seeking while not playing isn't fully supported without lazy-loading first, so we ignore
         }
         h.speedBadge(sent).setOnClickListener {
-            activeSpeedIdx = if (activeUri == uriStr) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
+            activeSpeedIdx = if (activeMessageId == item.messageId) (activeSpeedIdx + 1) % SPEED_STEPS.size else 0
             val speed = SPEED_STEPS[activeSpeedIdx]; h.speedBadge(sent).text = speed.toLabel()
-            if (activeUri == uriStr) applySpeed(speed)
+            if (activeMessageId == item.messageId) applySpeed(speed)
+        }
+        
+        if (sent) {
+            applyStatusIndicator(h.ivVoiceSentStatus, item)
         }
     }
 
-    private fun startPlayback(h: VH, sent: Boolean, uriStr: String) {
+    private fun triggerAudioPlayback(h: VH, sent: Boolean, item: MessageUiModel) {
+        val ctx = h.itemView.context
+        adapterScope.launch {
+            try {
+                h.playIcon(sent).setImageResource(R.drawable.downloading_vm_ic)
+                h.playIcon(sent).alpha = 0.5f
+
+                // Decrypt lazily
+                val resolvedUri: String
+                val resolvedAmps: String
+
+                if (!item.localFilePath.isNullOrBlank() && item.downloadState == "done") {
+                    resolvedUri = "file://${item.localFilePath}"
+                    resolvedAmps = if (item.ampsJson.isNotBlank()) item.ampsJson else {
+                        app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(
+                            ctx, item.entity.ampsJson, item.senderOnion, item.entity.keyFingerprint, item.entity.iv
+                        )
+                    }
+                } else {
+                    val encUri = item.entity.uri ?: ""
+                    val encAmps = item.entity.ampsJson
+                    val decUri = if (encUri.isNotBlank()) app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(ctx, encUri, item.senderOnion, item.entity.keyFingerprint, item.entity.iv) else ""
+                    resolvedAmps = if (encAmps.isNotBlank()) app.secure.kyber.Utils.MessageEncryptionManager.decryptSmart(ctx, encAmps, item.senderOnion, item.entity.keyFingerprint, item.entity.iv) else ""
+                    resolvedUri = resolveMediaSource(ctx, decUri, "AUDIO")
+                }
+
+                if (resolvedUri.isBlank()) {
+                    h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
+                    h.playIcon(sent).alpha = 1f
+                    android.widget.Toast.makeText(ctx, "Audio not found", android.widget.Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                h.waveform(sent).setAmplitudes(decodeAmplitudes(resolvedAmps))
+                h.playIcon(sent).alpha = 1f
+                startPlayback(h, sent, resolvedUri, item.messageId)
+            } catch (e: Exception) {
+                h.playIcon(sent).setImageResource(R.drawable.pause_icon_1)
+                h.playIcon(sent).alpha = 1f
+            }
+        }
+    }
+
+    private fun startPlayback(h: VH, sent: Boolean, uriStr: String, messageId: String) {
         stopPlayback(resetUi = true)
         val player = try {
             MediaPlayer().apply { setDataSource(h.itemView.context, uriStr.toUri()); prepare() }
         } catch (e: Exception) {
             e.printStackTrace(); return
         }
-        activePlayer = player; activeUri = uriStr; activeHolder = h; activeSpeedIdx = 0
+        activePlayer = player; activeMessageId = messageId; activeHolder = h; activeSpeedIdx = 0
         applySpeed(SPEED_STEPS[0]); player.start()
         h.playIcon(sent).setImageResource(R.drawable.pause_icon_0)
         h.speedBadge(sent).text = SPEED_STEPS[0].toLabel()
         h.durationLabel(sent).text = formatDuration(player.duration)
-        startProgressUpdater(h, sent, uriStr)
+        startProgressUpdater(h, sent)
         player.setOnCompletionListener {
             activeHandler?.removeCallbacksAndMessages(null)
             h.playIcon(sent).setImageResource(R.drawable.pause_icon_1); h.waveform(sent)
             .setProgress(0f)
             h.durationLabel(sent).text = formatDuration(player.duration)
-            val cp = h.bindingAdapterPosition; activePlayer = null; activeUri = null; activeHolder =
-            null
+            val cp = h.bindingAdapterPosition; activePlayer = null; activeMessageId = null; activeHolder = null
             if (cp != -1) playNextAudioIfAvailable(cp)
         }
     }
@@ -1283,41 +1459,50 @@ class MessageAdapter(
         }
     }
 
-    private fun startProgressUpdater(h: VH, sent: Boolean, uriStr: String) {
+    private fun stopPlayback(resetUi: Boolean = false) {
+        activePlayer?.run { if (isPlaying) stop(); release() }
+        activePlayer = null
+        activeHandler?.removeCallbacksAndMessages(null)
+        if (resetUi) {
+            activeHolder?.let { vh ->
+                val s = vh.sentAudio.isVisible
+                vh.playIcon(s).setImageResource(R.drawable.pause_icon_1)
+                vh.waveform(s).setProgress(0f)
+                vh.speedBadge(s).text = SPEED_STEPS[0].toLabel()
+            }
+        }
+        activeMessageId = null
+        activeHolder = null
+    }
+
+    private fun startProgressUpdater(h: VH, sent: Boolean) {
+        val player = activePlayer ?: return
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         activeHandler = handler
-        handler.post(object : Runnable {
+        val r = object : Runnable {
             override fun run() {
-                val player = activePlayer ?: return; if (activeUri != uriStr) return
+                if (activePlayer != player || activeHolder != h) return
                 if (player.isPlaying) {
-                    h.waveform(sent)
-                        .setProgress(player.currentPosition.toFloat() / player.duration); h.durationLabel(
-                        sent
-                    ).text = formatDuration(player.duration - player.currentPosition)
+                    val p = player.currentPosition.toFloat() / player.duration
+                    h.waveform(sent).setProgress(p)
+                    h.durationLabel(sent).text = formatDuration(player.currentPosition)
+                    handler.postDelayed(this, 30)
                 }
-                handler.postDelayed(this, 50)
             }
-        })
+        }
+        handler.post(r)
     }
 
     private fun syncPlayingUi(h: VH, sent: Boolean) {
         val player = activePlayer ?: return
-        h.playIcon(sent)
-            .setImageResource(if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.pause_icon_1)
+        h.playIcon(sent).setImageResource(
+            if (player.isPlaying) R.drawable.pause_icon_0 else R.drawable.pause_icon_1
+        )
         h.speedBadge(sent).text = SPEED_STEPS[activeSpeedIdx].toLabel()
-        if (player.isPlaying) startProgressUpdater(h, sent, activeUri!!)
-    }
-
-    private fun stopPlayback(resetUi: Boolean) {
-        activeHandler?.removeCallbacksAndMessages(null)
-        activePlayer?.stop(); activePlayer?.release(); activePlayer = null
-        if (resetUi) activeHolder?.let { h ->
-            val pos = h.bindingAdapterPosition; if (pos != -1) {
-            val s = getItem(pos).isSent; h.playIcon(s)
-                .setImageResource(R.drawable.pause_icon_1); h.waveform(s).setProgress(0f)
-        }
-        }
-        activeUri = null; activeHolder = null
+        if (player.duration > 0) h.waveform(sent)
+            .setProgress(player.currentPosition.toFloat() / player.duration)
+        if (player.isPlaying) startProgressUpdater(h, sent)
+        else h.durationLabel(sent).text = formatDuration(player.currentPosition)
     }
 
     private fun applySpeed(speed: Float) {

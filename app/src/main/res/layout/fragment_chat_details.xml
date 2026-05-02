@@ -65,7 +65,7 @@
 
                     <!-- Handle / username in blue -->
                     <TextView
-                        android:id="@+id/tv_handle"
+                        android:id="@+id/c"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_6sdp"

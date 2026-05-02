@@ -30,11 +30,13 @@ class TextUploadWorker(
         const val KEY_TIMESTAMP = "timestamp"
         const val KEY_IS_REQUEST = "is_request"
         const val KEY_DISAPPEAR_TTL = "disappear_ttl"
+        const val KEY_NEW_PUBLIC_KEY = "new_public_key"
 
         fun buildRequest(
             messageId: String, text: String, contactOnion: String,
             senderOnion: String, senderName: String, timestamp: String,
-            isRequest: Boolean, disappearTtl: Long = 0L
+            isRequest: Boolean, disappearTtl: Long = 0L,
+            newPublicKey: String? = null
         ): OneTimeWorkRequest {
             val data = workDataOf(
                 KEY_MESSAGE_ID to messageId,
@@ -44,7 +46,8 @@ class TextUploadWorker(
                 KEY_SENDER_NAME to senderName,
                 KEY_TIMESTAMP to timestamp,
                 KEY_IS_REQUEST to isRequest,
-                KEY_DISAPPEAR_TTL to disappearTtl
+                KEY_DISAPPEAR_TTL to disappearTtl,
+                KEY_NEW_PUBLIC_KEY to newPublicKey
             )
 
             val constraints = Constraints.Builder()
@@ -74,6 +77,7 @@ class TextUploadWorker(
         val timestamp = inputData.getString(KEY_TIMESTAMP) ?: return@withContext Result.failure()
         val isRequest = inputData.getBoolean(KEY_IS_REQUEST, false)
         val disappearTtl = inputData.getLong(KEY_DISAPPEAR_TTL, 0L)
+        val newPublicKey = inputData.getString(KEY_NEW_PUBLIC_KEY)
 
         val db = AppDb.get(context)
         val messageDao = db.messageDao()
@@ -118,12 +122,15 @@ class TextUploadWorker(
 
 
 
+                    val nowMs = System.currentTimeMillis()
+                    val nowStr = nowMs.toString()
+
                     val transport = PrivateMessageTransportDto(
                         messageId = messageId,
                         msg = encryptionResult.encryptedPayload,
                         senderOnion = senderOnion,
                         senderName = senderName,
-                        timestamp = timestamp,
+                        timestamp = nowStr,
                         isRequest = isRequest,
                         iv = encryptionResult.iv,
                         senderKeyFingerprint = encryptionResult.senderKeyFingerprint,
@@ -132,7 +139,8 @@ class TextUploadWorker(
                         ampsJson = localMsg?.ampsJson ?: "",
                         disappear_ttl = disappearTtl,
                         replyToText = localMsg?.replyToText ?: "",
-                        type = localMsg?.type ?: "TEXT"
+                        type = localMsg?.type ?: "TEXT",
+                        newPublicKey = newPublicKey
                     )
 
 
@@ -162,6 +170,13 @@ class TextUploadWorker(
 
                         if (response.isSuccessful) {
                             // Sent successfully
+                            if (disappearTtl > 0L) {
+                                val expiresAt = nowMs + disappearTtl
+                                messageDao.updateSentTime(messageId, nowStr, expiresAt)
+                            } else {
+                                // Just update time to match the payload
+                                messageDao.updateSentTime(messageId, nowStr, 0L)
+                            }
                             messageDao.setUploadDone(messageId, "done", "")
                             return@withContext Result.success()
                         }

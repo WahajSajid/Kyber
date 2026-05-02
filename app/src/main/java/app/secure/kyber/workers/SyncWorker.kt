@@ -6,10 +6,15 @@ import android.util.Base64
 import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.work.WorkManager
 import app.secure.kyber.Utils.MessageEncryptionManager
+import app.secure.kyber.activities.AppIntroSliderActivity
+import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.DisappearTime
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.fragments.SettingFragment
+import app.secure.kyber.media.MediaChunkManager
 import app.secure.kyber.onionrouting.UnionService
 import app.secure.kyber.roomdb.AppDb
 import app.secure.kyber.roomdb.ContactRepository
@@ -18,7 +23,11 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 
 /**
  * Periodic WorkManager worker that runs even when the app process is dead.
@@ -37,6 +46,7 @@ class SyncWorker(
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
     private val transportAdapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+    private val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
@@ -100,7 +110,231 @@ class SyncWorker(
                         transportAdapter.fromJson(decoded)
                     } catch (e: Exception) { null }
 
-                    if (transport == null || transport.isAcceptance || transport.type == "CHUNK") {
+                    if (transport == null || transport.isAcceptance) {
+                        return@forEach
+                    }
+
+                    // ═════════════════════════════════════════════════════════════════════
+                    // CHUNK HANDLING: Process media chunks for private chat reassembly
+                    // ═════════════════════════════════════════════════════════════════════
+                    if (transport.type == "CHUNK") {
+                        try {
+                            Log.d(TAG, "Received CHUNK from ${transport.senderOnion}")
+
+                            // Decrypt the chunk payload to extract MediaChunkDto
+                            var decryptedChunkJson = transport.msg
+                            var senderPublicKey: String? = transport.senderPublicKey
+                            
+                            if (!transport.iv.isNullOrBlank() && !transport.recipientKeyFingerprint.isNullOrBlank()) {
+                                try {
+                                    if (senderPublicKey == null) {
+                                        senderPublicKey = contactRepo.getContact(transport.senderOnion)?.publicKey
+                                        if (senderPublicKey != null) Log.d(TAG, "[CHUNK] Found key in contacts")
+                                    }
+                                    if (senderPublicKey == null) {
+                                        senderPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                                            .getString("pending_key_${transport.senderOnion}", null)
+                                        if (senderPublicKey != null) Log.d(TAG, "[CHUNK] Found key in cache")
+                                    }
+                                    if (senderPublicKey == null) {
+                                        Log.d(TAG, "[CHUNK] Fetching key from server")
+                                        val resp = repository.getPublicKey(transport.senderOnion)
+                                        if (resp.isSuccessful) {
+                                            senderPublicKey = resp.body()?.publicKey
+                                            if (senderPublicKey != null) Log.d(TAG, "[CHUNK] Got key from server")
+                                        } else {
+                                            Log.w(TAG, "[CHUNK] Server returned ${resp.code()}")
+                                        }
+                                    }
+                                    
+                                    if (senderPublicKey == null) {
+                                        Log.e(TAG, "[CHUNK] ERROR: No key available. Skipping chunk.")
+                                        return@forEach
+                                    }
+                                    
+                                    decryptedChunkJson = MessageEncryptionManager.decryptMessage(
+                                        context,
+                                        senderPublicKey,
+                                        transport.recipientKeyFingerprint,
+                                        transport.msg,
+                                        transport.iv
+                                    )
+                                    Log.d(TAG, "[CHUNK] Decrypted")
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "[CHUNK] Decrypt error: ${e.message}", e)
+                                    return@forEach
+                                }
+                            }
+
+                            // Parse the decrypted JSON into MediaChunkDto
+                            val chunkDto = try {
+                                val chunkAdapter = moshi.adapter(MediaChunkDto::class.java)
+                                chunkAdapter.fromJson(decryptedChunkJson)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to parse MediaChunkDto: ${e.message}")
+                                return@forEach
+                            }
+
+                            if (chunkDto == null) {
+                                Log.w(TAG, "Null MediaChunkDto after parsing")
+                                return@forEach
+                            }
+
+                            Log.d(TAG, "Parsed chunk: mediaId=${chunkDto.mediaId}, index=${chunkDto.index}, total=${chunkDto.total}")
+
+                            // Validate chunk data
+                            if (chunkDto.data.isNullOrBlank()) {
+                                Log.w(TAG, "Chunk has no data. Skipping.")
+                                return@forEach
+                            }
+
+                            // Save chunk to disk with error handling
+                            try {
+                                MediaChunkManager.saveChunkToDisk(context, chunkDto.mediaId, chunkDto.index, chunkDto.data)
+                                Log.d(TAG, "Successfully saved chunk ${chunkDto.index} for mediaId=${chunkDto.mediaId}")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to save chunk ${chunkDto.index} to disk: ${e.message}", e)
+                                return@forEach
+                            }
+
+                            // Check if this was the first chunk (contains metadata)
+                            if (chunkDto.index == 0) {
+                                // Insert or update the message entity in DB with metadata
+                                var existingMsg = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                if (existingMsg == null) {
+                                    existingMsg = MessageEntity(
+                                        messageId = chunkDto.messageId,
+                                        msg = if (chunkDto.caption.isNotBlank())
+                                            MessageEncryptionManager.encryptLocal(context, chunkDto.caption).encryptedBlob
+                                        else "",
+                                        senderOnion = transport.senderOnion,
+                                        time = DisappearTime.parseMessageTimestampMs(transport.timestamp).toString(),
+                                        isSent = false,
+                                        type = chunkDto.mimeType,
+                                        remoteMediaId = chunkDto.mediaId,
+                                        downloadState = "downloading",
+                                        downloadProgress = 0,
+                                        mediaSizeBytes = chunkDto.totalBytes,
+                                        mediaDurationMs = chunkDto.durationMs,
+                                        totalChunksExpected = chunkDto.total,
+                                        downloadedChunkIndices = "0",
+                                        keyFingerprint = transport.recipientKeyFingerprint,
+                                        iv = transport.iv,
+                                        expiresAt = 0L, // Timer starts after full download
+                                        replyToText = transport.replyToText ?: ""
+                                    )
+                                    messageDao.insert(existingMsg)
+                                    Log.d(TAG, "Inserted new message for CHUNK mediaId=${chunkDto.mediaId}")
+                                } else {
+                                    // Update with chunk tracking
+                                    messageDao.update(
+                                        existingMsg.copy(
+                                            downloadedChunkIndices = "0",
+                                            totalChunksExpected = chunkDto.total,
+                                            thumbnailPath = existingMsg.thumbnailPath
+                                        )
+                                    )
+                                }
+                            } else {
+                                // Update existing message with new chunk index
+                                var existingMsg = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                
+                                // If message doesn't exist, create a placeholder (chunk 0 might arrive later)
+                                if (existingMsg == null) {
+                                    Log.d(TAG, "Message doesn't exist yet for mediaId=${chunkDto.mediaId}, creating placeholder")
+                                    existingMsg = MessageEntity(
+                                        messageId = chunkDto.messageId,
+                                        msg = "", // Placeholder - will be updated when chunk 0 arrives
+                                        senderOnion = transport.senderOnion,
+                                        time = DisappearTime.parseMessageTimestampMs(transport.timestamp).toString(),
+                                        isSent = false,
+                                        type = chunkDto.mimeType,
+                                        remoteMediaId = chunkDto.mediaId,
+                                        downloadState = "downloading",
+                                        downloadProgress = 0,
+                                        mediaSizeBytes = chunkDto.totalBytes,
+                                        mediaDurationMs = chunkDto.durationMs,
+                                        totalChunksExpected = chunkDto.total,
+                                        downloadedChunkIndices = chunkDto.index.toString(),
+                                        keyFingerprint = transport.recipientKeyFingerprint,
+                                        iv = transport.iv,
+                                        expiresAt = DisappearTime.expiresAtFromSent(
+                                            DisappearTime.parseMessageTimestampMs(transport.timestamp),
+                                            transport.disappear_ttl
+                                        ),
+                                        replyToText = transport.replyToText ?: ""
+                                    )
+                                    messageDao.insert(existingMsg)
+                                    Log.d(TAG, "Created placeholder message for mediaId=${chunkDto.mediaId}")
+                                } else {
+                                    // Message exists, update with new chunk index
+                                    val indices = existingMsg.downloadedChunkIndices
+                                        .split(",")
+                                        .filter { it.isNotBlank() }
+                                        .map { it.toIntOrNull() ?: -1 }
+                                        .filter { it >= 0 }
+                                        .toMutableSet()
+                                    indices.add(chunkDto.index)
+                                    val newIndices = indices.sorted().joinToString(",")
+                                    
+                                    val progress = (indices.size * 100) / chunkDto.total
+                                    messageDao.update(
+                                        existingMsg.copy(
+                                            downloadedChunkIndices = newIndices,
+                                            downloadProgress = progress,
+                                            totalChunksExpected = chunkDto.total
+                                        )
+                                    )
+                                    Log.d(TAG, "Updated message with chunk ${chunkDto.index}, progress: $progress%, indices: $newIndices")
+                                }
+                            }
+
+                            // Check if all chunks are received
+                            val savedCount = MediaChunkManager.countSavedChunks(context, chunkDto.mediaId)
+                            Log.d(TAG, "[CHUNK] After save: $savedCount/${chunkDto.total}")
+                            
+                            if (savedCount >= chunkDto.total) {
+                                Log.d(TAG, "[CHUNK] ALL RECEIVED! Enqueueing worker")
+                                
+                                // Find the message entity to get its ID
+                                val msgEntity = messageDao.getByRemoteMediaId(chunkDto.mediaId)
+                                if (msgEntity != null) {
+                                    // Enqueue PrivateMediaDownloadWorker to assemble chunks
+                                    val assemblyRequest = app.secure.kyber.workers.PrivateMediaDownloadWorker.buildRequest(
+                                        messageId = msgEntity.messageId,
+                                        mediaId = chunkDto.mediaId,
+                                        totalChunks = chunkDto.total,
+                                        mimeType = chunkDto.mimeType,
+                                        disappearTtl = transport.disappear_ttl ?: 0L
+                                    )
+                                    WorkManager.getInstance(context).enqueueUniqueWork(
+                                        "download_${msgEntity.messageId}",
+                                        androidx.work.ExistingWorkPolicy.REPLACE,
+                                        assemblyRequest
+                                    )
+                                    Log.d(TAG, "[CHUNK] Enqueued worker for ${msgEntity.messageId}")
+                                }
+                            } else {
+                                Log.d(TAG, "[CHUNK] Incomplete: $savedCount/${chunkDto.total}")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error processing CHUNK message", e)
+                        }
+                        return@forEach
+                    }
+
+                    // ── SECURITY: Strict type whitelist ─────────────────────────────────
+                    // Unknown or unrecognized message types are silently dropped and NOT
+                    // saved to DB. This is a critical security boundary.
+                    val knownTypes = setOf(
+                        "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK",
+                        "WIPE_REQUEST", "WIPE_RESPONSE", "WIPE_SYSTEM", "WIPE_EVENT_RECEIVED",
+                        "REMOTE_WIPE_REQUEST", "REMOTE_WIPE_ACK",
+                        "DELIVERED_RECEIPT", "SEEN_RECEIPT",
+                        "DISAPPEAR_SYSTEM", "KEY_UPDATE"
+                    )
+                    if (transport.type != null && transport.type !in knownTypes) {
+                        Log.w(TAG, "SECURITY: Unknown type '${transport.type}' from ${transport.senderOnion} — dropped.")
                         return@forEach
                     }
 
@@ -158,12 +392,50 @@ class SyncWorker(
                         }
                     }
 
+                    // ── KEY_UPDATE: persist the new public key for accepted contacts ───
+                    // Only accepted contacts may update their stored key (security boundary).
+                    // The system bubble is still stored so the user sees it in the chat.
+                    if (transport.type == "KEY_UPDATE") {
+                        val contact = contactRepo.getContact(transport.senderOnion)
+                        if (contact == null || !contact.isContact) {
+                            Log.w(TAG, "SECURITY: KEY_UPDATE from non-contact ${transport.senderOnion} — dropped.")
+                            return@forEach
+                        }
+                        val freshKey = transport.newPublicKey
+                        if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                            contactRepo.saveContact(contact.onionAddress, contact.name, freshKey)
+                            Log.d(TAG, "KEY_UPDATE: Saved new key for ${contact.onionAddress}")
+                        }
+                        // Fall through: store the system bubble in DB
+                    }
+
                     var effectiveType = transport.type
                     if (transport.type == "WIPE_RESPONSE" && parseWipeResponseAction(decryptedPayloadText) == "ACCEPTED") {
                         val now = System.currentTimeMillis().toString()
                         messageDao.expireAllBySender(transport.senderOnion, now)
                         decryptedPayloadText = "Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}"
                         effectiveType = "WIPE_SYSTEM"
+                    }
+
+                    // Handle remote wipe messages — do NOT store in DB
+                    if (transport.type == "REMOTE_WIPE_REQUEST") {
+                        handleRemoteWipeRequest(decryptedPayloadText, transport.senderOnion, repository)
+                        return@forEach
+                    }
+                    if (transport.type == "REMOTE_WIPE_ACK") {
+                        handleRemoteWipeAck(decryptedPayloadText)
+                        return@forEach
+                    }
+                    if (transport.type == "SEEN_RECEIPT") {
+                        messageDao.markAllSeenForContact(transport.senderOnion, System.currentTimeMillis())
+                        return@forEach
+                    }
+                    if (transport.type == "DELIVERED_RECEIPT") {
+                        // Update the specific message that was delivered
+                        messageDao.updateDeliveredAt(transport.messageId, System.currentTimeMillis())
+                        // Fallback: also mark all older ones as delivered to be safe
+                        messageDao.markAllDeliveredForContact(transport.senderOnion, System.currentTimeMillis())
+                        return@forEach
                     }
 
                     val encryptedUri = if (!transport.uri.isNullOrBlank())
@@ -192,6 +464,17 @@ class SyncWorker(
                     messageDao.insert(entity)
                     newMessageCount++
 
+                    // Send DELIVERED_RECEIPT to the sender so they see the blue checkmark
+                    if (transport.type != "DELIVERED_RECEIPT" && transport.type != "SEEN_RECEIPT") {
+                        Log.d(TAG, "SyncWorker: Dispatching DELIVERED_RECEIPT for msg ${transport.messageId}")
+                        sendReceipt(repository, transport.senderOnion, transport.messageId, "DELIVERED_RECEIPT", transport.senderPublicKey)
+                    }
+
+                    // ── Mark our sent messages to this contact as DELIVERED ──────────────
+                    // When the contact's device pulls messages, it means they are online.
+                    // We confirm delivery of all our previously sent (but undelivered) messages.
+                    messageDao.markAllDeliveredForContact(transport.senderOnion, System.currentTimeMillis())
+
                     // Cache sender name for requests
                     if (contact == null && transport.senderName.isNotBlank()) {
                         context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
@@ -217,31 +500,6 @@ class SyncWorker(
 
             Prefs.setLastSyncTime(context, System.currentTimeMillis())
             Log.d(TAG, "SyncWorker inserted $newMessageCount new messages")
-
-            // --- GLOBAL CONTACT PUBLIC KEY SYNC ---
-            try {
-                val allContacts = contactRepo.getAllOnce()
-                for (contact in allContacts) {
-                    try {
-                        val resp = repository.getPublicKey(contact.onionAddress)
-                        if (resp.isSuccessful) {
-                            val freshKey = resp.body()?.publicKey
-                            if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
-                                contactRepo.saveContact(
-                                    onionAddress = contact.onionAddress,
-                                    name = contact.name,
-                                    publicKey = freshKey
-                                )
-                                Log.d(TAG, "SyncWorker globally refreshed public key for contact ${contact.onionAddress}")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "SyncWorker could not refresh key for ${contact.onionAddress}: ${e.message}")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "SyncWorker contact key global sync loop failed: ${e.message}")
-            }
 
 
             // If service is not running, start it so real-time delivery resumes
@@ -290,13 +548,12 @@ class SyncWorker(
                         android.app.PendingIntent.FLAG_IMMUTABLE
             )
             val notification = androidx.core.app.NotificationCompat
-                .Builder(context, "union_messages_channel")
+                .Builder(context, "union_messages_channel_v2")
                 .setContentTitle("You have a new message")
                 .setContentText(displayMsg)
-                .setSmallIcon(app.secure.kyber.R.drawable.notification)
+                .setSmallIcon(app.secure.kyber.R.drawable.app_ic)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
                 .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL)
                 .build()
             notificationManager.notify(sender.hashCode(), notification)
@@ -315,6 +572,168 @@ class SyncWorker(
         return trimmed.uppercase(java.util.Locale.US)
     }
 
+    // REMOTE WIPE — Target-side
+
+    private suspend fun handleRemoteWipeRequest(
+        payload: String,
+        senderOnion: String,
+        repository: app.secure.kyber.backend.KyberRepository
+    ) {
+        try {
+            val json           = JSONObject(payload)
+            val incomingHash   = json.optString("wipePasswordHash")
+            val requestId      = json.optString("requestId")
+            val initiatorOnion = json.optString("initiatorOnion")
+
+            val localWipePwd = Prefs.getWipePassword(context)
+            if (localWipePwd.isNullOrEmpty()) {
+                sendWipeAck(initiatorOnion, requestId, "NO_WIPE_PASSWORD", repository)
+                return
+            }
+            val localHash = sha256Sync(localWipePwd)
+            if (incomingHash != localHash) {
+                sendWipeAck(initiatorOnion, requestId, "WRONG_PASSWORD", repository)
+                return
+            }
+
+            // Match — send ACK then silently wipe after 5 seconds
+            sendWipeAck(initiatorOnion, requestId, "SUCCESS", repository)
+            delay(5_000L)
+            performSilentWipe()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "SyncWorker.handleRemoteWipeRequest failed", e)
+        }
+    }
+
+    private suspend fun sendWipeAck(
+        initiatorOnion: String,
+        requestId: String,
+        status: String,
+        repository: app.secure.kyber.backend.KyberRepository
+    ) {
+        try {
+            val myOnion = Prefs.getOnionAddress(context) ?: return
+            val myName  = Prefs.getName(context) ?: ""
+
+            val ackPayload = JSONObject()
+                .put("action", "REMOTE_WIPE_ACK")
+                .put("status", status)
+                .put("requestId", requestId)
+                .toString()
+
+            val pubKeyResp = repository.getPublicKey(initiatorOnion)
+            if (!pubKeyResp.isSuccessful || pubKeyResp.body() == null) return
+            val recipientPubKey = pubKeyResp.body()!!.publicKey
+
+            val enc = MessageEncryptionManager.encryptMessage(context, recipientPubKey, ackPayload)
+            val moshi   = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(PrivateMessageTransportDto::class.java)
+            val transport = PrivateMessageTransportDto(
+                messageId = java.util.UUID.randomUUID().toString(),
+                msg = enc.encryptedPayload,
+                senderOnion = myOnion,
+                senderName = myName,
+                timestamp = System.currentTimeMillis().toString(),
+                type = "REMOTE_WIPE_ACK",
+                iv = enc.iv,
+                senderKeyFingerprint = enc.senderKeyFingerprint,
+                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                senderPublicKey = enc.senderPublicKeyBase64
+            )
+            val json   = adapter.toJson(transport)
+            val base64 = Base64.encodeToString(json.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            var circuit = Prefs.getCircuitId(context) ?: ""
+            if (circuit.isEmpty()) {
+                val r = repository.createCircuit()
+                if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(context, circuit) }
+            }
+            if (circuit.isNotEmpty()) repository.sendMessage(initiatorOnion, base64, circuit)
+        } catch (e: Exception) {
+            Log.e(TAG, "SyncWorker.sendWipeAck failed", e)
+        }
+    }
+
+    private fun performSilentWipe() {
+        try { AppDb.get(context).clearAllTables() } catch (e: Exception) {}
+        try { deleteRecursive(context.filesDir) } catch (e: Exception) {}
+        try { deleteRecursive(context.cacheDir) } catch (e: Exception) {}
+        try { context.externalCacheDir?.let { deleteRecursive(it) } } catch (e: Exception) {}
+        try {
+            context.getSharedPreferences("kyber_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("app_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        } catch (e: Exception) {}
+        try {
+            val intent = Intent(context, AppIntroSliderActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) { Log.e(TAG, "SyncWorker: remote wipe navigation failed", e) }
+    }
+
+    private fun deleteRecursive(f: File) {
+        if (f.isDirectory) f.listFiles()?.forEach { deleteRecursive(it) }
+        f.delete()
+    }
+
+    private fun sha256Sync(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    // REMOTE WIPE — Initiator-side ACK
+
+    private fun handleRemoteWipeAck(payload: String) {
+        try {
+            val json      = JSONObject(payload)
+            val status    = json.optString("status", "UNKNOWN")
+            val requestId = json.optString("requestId")
+
+            val pendingId = SettingFragment.pendingWipeRequestId
+            val callback  = SettingFragment.onWipeAckReceived
+
+            if (pendingId != null && pendingId == requestId && callback != null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    callback.invoke(status)
+                    SettingFragment.onWipeAckReceived = null
+                    SettingFragment.pendingWipeRequestId = null
+                }
+            } else {
+                showRemoteWipeNotification(status)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "SyncWorker.handleRemoteWipeAck failed", e)
+        }
+    }
+
+    private fun showRemoteWipeNotification(status: String) {
+        val (title, body) = when (status) {
+            "SUCCESS"          -> Pair("Remote Wipe Successful", "Target device app data has been wiped.")
+            "NO_WIPE_PASSWORD" -> Pair("Wipe Failed", "Target user has not set a wipe password.")
+            "WRONG_PASSWORD"   -> Pair("Wipe Failed", "Incorrect wipe password for the target user.")
+            else               -> Pair("Wipe Failed", "An unknown error occurred.")
+        }
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            val pi = android.app.PendingIntent.getActivity(
+                context, 0, launchIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            val notif = androidx.core.app.NotificationCompat.Builder(context, "union_messages_channel")
+                .setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(app.secure.kyber.R.drawable.app_ic)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .build()
+            nm.notify("remote_wipe_ack".hashCode(), notif)
+        } catch (e: Exception) {
+            Log.e(TAG, "SyncWorker.showRemoteWipeNotification failed", e)
+        }
+    }
+
     private fun formatWipeTimestamp(ts: Long): String {
         val now = java.util.Calendar.getInstance()
         val then = java.util.Calendar.getInstance().apply { timeInMillis = ts }
@@ -324,6 +743,76 @@ class SyncWorker(
             java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()).format(java.util.Date(ts))
         } else {
             java.text.SimpleDateFormat("MMM dd, yyyy", java.util.Locale.getDefault()).format(java.util.Date(ts))
+        }
+    }
+
+    private suspend fun sendReceipt(
+        repository: app.secure.kyber.backend.KyberRepository,
+        recipientOnion: String,
+        messageId: String,
+        type: String,
+        providedPublicKey: String? = null
+    ) {
+        try {
+            val myOnion = Prefs.getOnionAddress(context) ?: return
+            val myName = Prefs.getName(context) ?: ""
+            
+            // Priority 1: Provided key
+            var recipientPublicKey: String? = providedPublicKey
+            
+            // Priority 2: Local DB
+            if (recipientPublicKey == null) {
+                recipientPublicKey = AppDb.get(context).contactDao().get(recipientOnion)?.publicKey
+            }
+            
+            // Priority 3: Pending cache
+            if (recipientPublicKey == null) {
+                recipientPublicKey = context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                    .getString("pending_key_$recipientOnion", null)
+            }
+            
+            if (recipientPublicKey == null) {
+                Log.w(TAG, "Cannot send $type: No public key for $recipientOnion")
+                return
+            }
+
+            val enc = MessageEncryptionManager.encryptMessage(context, recipientPublicKey!!, "")
+            
+            val transport = PrivateMessageTransportDto(
+                messageId = messageId,
+                msg = enc.encryptedPayload,
+                senderOnion = myOnion,
+                senderName = myName,
+                timestamp = System.currentTimeMillis().toString(),
+                type = type,
+                iv = enc.iv,
+                senderKeyFingerprint = enc.senderKeyFingerprint,
+                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                senderPublicKey = enc.senderPublicKeyBase64
+            )
+            
+            val json = transportAdapter.toJson(transport)
+            val base64 = android.util.Base64.encodeToString(json.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            
+            var circuit = Prefs.getCircuitId(context) ?: ""
+            if (circuit.isEmpty()) {
+                val r = repository.createCircuit()
+                if (r.isSuccessful) { 
+                    circuit = r.body()?.circuitId ?: ""
+                    Prefs.setCircuitId(context, circuit) 
+                }
+            }
+            
+            if (circuit.isNotEmpty()) {
+                val resp = repository.sendMessage(recipientOnion, base64, circuit)
+                if (resp.isSuccessful) {
+                    Log.d(TAG, "SyncWorker: Successfully sent $type to $recipientOnion")
+                } else {
+                    Log.e(TAG, "SyncWorker: Failed to send $type (code: ${resp.code()})")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "SyncWorker: Failed to send $type", e)
         }
     }
 }

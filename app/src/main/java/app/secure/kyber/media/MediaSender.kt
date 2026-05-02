@@ -41,13 +41,17 @@ class MediaSender(
         val fileSize   = resolveFileSize(durableFilePath)
         val durationMs = if (mimeType != "IMAGE") getDurationMs(durableFilePath) else 0L
 
-        // Generate thumbnail immediately for VIDEO so the bubble shows a real frame
+        // Generate thumbnail immediately so the bubble shows a real frame/preview
         // from the very first DB write — before the upload worker even starts.
-        val earlyThumbnailPath: String? = if (mimeType == "VIDEO") {
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val earlyThumbnailPath: String? = when (mimeType) {
+            "VIDEO" -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 VideoCompressor.generateThumbnailForPath(context, durableFilePath)
             }
-        } else null
+            "IMAGE" -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                generateImageThumbnail(context, durableFilePath)
+            }
+            else -> null
+        }
 
         val disappearTimerMs = app.secure.kyber.backend.common.Prefs.getEffectiveDisappearingTimerMs(context, contactOnion)
         var localExpiresAt = 0L
@@ -58,22 +62,27 @@ class MediaSender(
         // 1. Insert local pending row immediately
         messageDao.insert(
             MessageEntity(
-                messageId      = messageId,
-                msg            = MessageEncryptionManager.encryptLocal(context, caption).encryptedBlob,
-                senderOnion    = contactOnion,
-                time           = timestamp,
-                isSent         = true,
-                type           = mimeType,
-                uri            = MessageEncryptionManager.encryptLocal(context, durableFilePath).encryptedBlob,
-                ampsJson       = if (ampsJson.isNotBlank()) MessageEncryptionManager.encryptLocal(context, ampsJson).encryptedBlob else "",
-                uploadState    = "pending",
-                uploadProgress = 0,
-                remoteMediaId  = mediaId,
-                localFilePath  = durableFilePath.removePrefix("file://"),
-                mediaSizeBytes = fileSize,
-                thumbnailPath  = earlyThumbnailPath,
-                expiresAt = localExpiresAt,
-                replyToText = replyToText
+                messageId            = messageId,
+                msg                  = MessageEncryptionManager.encryptLocal(context, caption).encryptedBlob,
+                senderOnion          = contactOnion,
+                time                 = timestamp,
+                isSent               = true,
+                type                 = mimeType,
+                uri                  = MessageEncryptionManager.encryptLocal(context, durableFilePath).encryptedBlob,
+                ampsJson             = if (ampsJson.isNotBlank()) MessageEncryptionManager.encryptLocal(context, ampsJson).encryptedBlob else "",
+                uploadState          = "pending",
+                uploadProgress       = 0,
+                remoteMediaId        = mediaId,
+                localFilePath        = durableFilePath.removePrefix("file://"),
+                mediaSizeBytes       = fileSize,
+                thumbnailPath        = earlyThumbnailPath,
+                expiresAt            = 0L, // Timer starts after successful upload
+                replyToText          = replyToText,
+                uploadedChunkIndices = "",       // Will be updated as chunks are sent
+                downloadedChunkIndices = "",     // N/A for sender
+                totalChunksExpected  = 0,        // Will be set by worker after building chunks
+                uploadAttemptCount   = 0,        // Retry counter
+                lastUploadAttemptTime = 0L       // Exponential backoff timestamp
             )
         )
         onLocalMessageSaved?.invoke(messageId)
@@ -107,7 +116,8 @@ class MediaSender(
         contactOnion: String,
         senderOnion: String,
         senderName: String,
-        isContact: Boolean
+        isContact: Boolean,
+        missingIndices: String = ""
     ) {
         val entity = messageDao.getByMessageId(messageId) ?: return
         val filePath   = entity.localFilePath ?: return
@@ -118,7 +128,27 @@ class MediaSender(
             if (entity.ampsJson.isNotBlank()) MessageEncryptionManager.decryptLocal(context, entity.ampsJson) else ""
         } catch (e: Exception) { "" }
 
-        messageDao.updateUploadProgress(messageId, "pending", 0)
+        // If missingIndices is provided, calculate the already uploaded ones to skip them
+        val totalChunks = entity.totalChunksExpected
+        val missingList = if (missingIndices.isNotBlank()) missingIndices.split(",").mapNotNull { it.toIntOrNull() } else emptyList()
+        val newUploadedIndices = mutableListOf<Int>()
+        if (missingList.isNotEmpty() && totalChunks > 0) {
+            for (i in 0 until totalChunks) {
+                if (i !in missingList) newUploadedIndices.add(i)
+            }
+        }
+        val newUploadedIndicesStr = newUploadedIndices.joinToString(",")
+
+        // Reset chunk-tracking fields for retry
+        messageDao.update(
+            entity.copy(
+                uploadState = "pending",
+                uploadProgress = if (totalChunks > 0) (newUploadedIndices.size * 100) / totalChunks else 0,
+                uploadAttemptCount = 0,
+                uploadedChunkIndices = if (missingList.isNotEmpty()) newUploadedIndicesStr else "",
+                lastUploadAttemptTime = 0L
+            )
+        )
 
         val request = MediaUploadWorker.buildRequest(
             messageId    = messageId,
@@ -264,5 +294,26 @@ class MediaSender(
             if (destFile.exists() && destFile.length() > 0) "file://${destFile.absolutePath}"
             else uriString
         } catch (e: Exception) { uriString }
+    }
+    private fun generateImageThumbnail(context: Context, path: String): String? {
+        return try {
+            val file = java.io.File(path.removePrefix("file://"))
+            if (!file.exists()) return null
+            
+            val bitmap = android.graphics.BitmapFactory.decodeFile(file.absolutePath) ?: return null
+            val thumb = android.media.ThumbnailUtils.extractThumbnail(bitmap, 320, 320)
+            bitmap.recycle()
+            
+            val destDir = java.io.File(context.cacheDir, "thumbnails").apply { mkdirs() }
+            val destFile = java.io.File(destDir, "thumb_${System.currentTimeMillis()}.jpg")
+            destFile.outputStream().use { out ->
+                thumb.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+            }
+            thumb.recycle()
+            destFile.absolutePath
+        } catch (e: Exception) {
+            Log.e("MediaSender", "Error generating image thumbnail: ${e.message}")
+            null
+        }
     }
 }

@@ -40,6 +40,8 @@ object Prefs {
 
     private const val IS_APP_OPEN = "IS_APP_OPEN"
 
+    private const val KEY_LAST_BROADCAST_PUBLIC_KEY = "last_broadcast_public_key"
+
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -194,6 +196,10 @@ object Prefs {
 
     fun getDummyPublicKey(ctx: Context): String? = prefs(ctx).getString(DUMMY_PUBLIC_KEY, null)
 
+    fun getLastBroadcastPublicKey(ctx: Context): String? = prefs(ctx).getString(KEY_LAST_BROADCAST_PUBLIC_KEY, null)
+    fun setLastBroadcastPublicKey(ctx: Context, value: String) {
+        prefs(ctx).edit().putString(KEY_LAST_BROADCAST_PUBLIC_KEY, value).apply()
+    }
 
     fun getAppOpen(ctx: Context): String? = prefs(ctx).getString(IS_APP_OPEN, "false")
 

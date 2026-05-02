@@ -18,6 +18,12 @@ import app.secure.kyber.activities.MainActivity
 import app.secure.kyber.backend.common.Prefs
 import app.secure.kyber.databinding.FragmentChatDetailsBinding
 import app.secure.kyber.databinding.FragmentGroupDetailsBinding
+import app.secure.kyber.roomdb.roomViewModel.GroupMessagesViewModel
+import app.secure.kyber.GroupCreationBackend.GroupManager
+import app.secure.kyber.Utils.SystemUpdateManager
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import kotlin.collections.forEach
 
 class GroupDetailsFragment : Fragment() {
@@ -39,6 +45,11 @@ class GroupDetailsFragment : Fragment() {
 
     private val groupId by lazy {
         requireArguments().getString("group_id").orEmpty()
+    }
+
+    private val groupManager = GroupManager()
+    private val vms by lazy {
+        ViewModelProvider(this)[GroupMessagesViewModel::class.java]
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -130,8 +141,17 @@ class GroupDetailsFragment : Fragment() {
         refreshRadios(currentStatus)
         
         fun select(label: String) {
-            Prefs.setChatSpecificDisappearingStatus(requireContext(), groupId, label)
-            binding.disappearingMessagesState.text = label
+            val oldLabel = Prefs.getChatSpecificDisappearingStatus(requireContext(), groupId)
+                ?: Prefs.getDisappearingMessageStatus(requireContext())
+            
+            if (oldLabel != label) {
+                Prefs.setChatSpecificDisappearingStatus(requireContext(), groupId, label)
+                binding.disappearingMessagesState.text = label
+                
+                lifecycleScope.launch {
+                    SystemUpdateManager.sendGroupDisappearingUpdate(requireContext(), groupId, label, groupManager, vms)
+                }
+            }
             dialog.dismiss()
         }
         

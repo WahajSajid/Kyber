@@ -25,7 +25,12 @@ data class PrivateMessageTransportDto(
     
     // Settings metadata
     @Json(name = "disappear_ttl") val disappear_ttl: Long? = 0L,
+    @Json(name = "thumbnail") val thumbnail: String? = null,
+
     
     // Reply context
-    @Json(name = "replyToText") val replyToText: String = ""
+    @Json(name = "replyToText") val replyToText: String = "",
+
+    // Key propagation: carries sender's new public key on KEY_UPDATE messages (not secret — public keys are inherently public)
+    @Json(name = "newPublicKey") val newPublicKey: String? = null
 )

@@ -56,6 +56,7 @@ interface GroupMessageDao {
                 "  SELECT group_id,\n" +
                 "         MAX(CAST(time AS INTEGER)) AS maxTime\n" +
                 "  FROM group_messages\n" +
+                "  WHERE type NOT IN ('DISAPPEAR_SYSTEM', 'KEY_UPDATE')\n" +
                 "  GROUP BY group_id\n" +
                 "),\n" +
                 "latest_row AS (\n" +
@@ -120,4 +121,6 @@ interface GroupMessageDao {
     @Query("UPDATE group_messages SET thumbnailPath = :path WHERE messageId = :messageId")
     suspend fun setThumbnailPath(messageId: String, path: String)
 
+    @Query("UPDATE group_messages SET time = :time, expiresAt = :expiresAt WHERE messageId = :messageId")
+    suspend fun updateSentTime(messageId: String, time: String, expiresAt: Long)
 }

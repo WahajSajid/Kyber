@@ -350,6 +350,14 @@ class GroupManager {
 
             val disappearTimerMs = context?.let { app.secure.kyber.backend.common.Prefs.getEffectiveDisappearingTimerMs(it, groupId) } ?: 0L
             val localExpiresAt = if (disappearTimerMs > 0L) System.currentTimeMillis() + disappearTimerMs else 0L
+            
+            val thumbnailPath = if (isMedia && uri != null) {
+                when (type.uppercase()) {
+                    "VIDEO" -> app.secure.kyber.media.VideoCompressor.generateThumbnailForPath(context!!, uri)
+                    "IMAGE" -> generateImageThumbnail(context!!, uri)
+                    else -> null
+                }
+            } else null
 
             // Room entity — always use the local file path (uri).
             val roomEntity = GroupMessageEntity(
@@ -366,7 +374,8 @@ class GroupManager {
                 uploadState = initialUploadState,
                 uploadProgress = initialUploadProgress,
                 localFilePath = uri?.removePrefix("file://"),
-                expiresAt = localExpiresAt,
+                thumbnailPath = thumbnailPath,
+                expiresAt = 0L, // Timer starts after successful upload
                 replyToText = replyToText ?: ""
             )
 
@@ -389,19 +398,30 @@ class GroupManager {
                 )
                 groupMessagesRef.child(groupId).child(messageId).setValue(firebasePayload).await()
                 
-                val lastMsg = when (type.uppercase()) {
-                    "WIPE_REQUEST"  -> "$senderName: Wipe Chat Request"
-                    "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
-                    "WIPE_SYSTEM"   -> "Chat history updated"
-                    "WIPE_EVENT_RECEIVED" -> messageText
-                    else            -> "$senderName: $messageText"
+                val nowMs = System.currentTimeMillis()
+                val nowStr = nowMs.toString()
+                if (disappearTimerMs > 0L) {
+                    val expiresAt = nowMs + disappearTimerMs
+                    AppDb.get(context ?: return@sendMessage true).groupsMessagesDao().updateSentTime(messageId, nowStr, expiresAt)
+                } else {
+                    AppDb.get(context ?: return@sendMessage true).groupsMessagesDao().updateSentTime(messageId, nowStr, 0L)
                 }
-                val updates = hashMapOf<String, Any>(
-                    "lastMessage"       to lastMsg,
-                    "lastMessageTime"   to roomEntity.time,
-                    "lastMessageSenderId" to senderId
-                )
-                groupsRef.child(groupId).updateChildren(updates).await()
+                
+                if (type != "DISAPPEAR_SYSTEM" && type != "KEY_UPDATE") {
+                    val lastMsg = when (type.uppercase()) {
+                        "WIPE_REQUEST"  -> "$senderName: Wipe Chat Request"
+                        "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
+                        "WIPE_SYSTEM"   -> "Chat history updated"
+                        "WIPE_EVENT_RECEIVED" -> messageText
+                        else            -> "$senderName: $messageText"
+                    }
+                    val updates = hashMapOf<String, Any>(
+                        "lastMessage"       to lastMsg,
+                        "lastMessageTime"   to roomEntity.time,
+                        "lastMessageSenderId" to senderId
+                    )
+                    groupsRef.child(groupId).updateChildren(updates).await()
+                }
             } else if (context != null && uri != null) {
                 // Media message: Enqueue Chunked Upload Worker
                 val request = app.secure.kyber.workers.GroupMediaUploadWorker.buildRequest(
@@ -418,18 +438,20 @@ class GroupManager {
                 androidx.work.WorkManager.getInstance(context).enqueue(request)
             }
             
-            // ALWAYS update local preview immediately for all message types
-            val localLastMsg = when (type.uppercase()) {
-                "WIPE_REQUEST" -> "$senderName: Wipe Request Sent"
-                "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
-                "IMAGE" -> "$senderName: sent an image"
-                "VIDEO" -> "$senderName: sent a video"
-                "AUDIO" -> "$senderName: sent a voice message"
-                else -> "$senderName: $messageText"
+            // ALWAYS update local preview immediately for all message types (EXCEPT SYSTEM)
+            if (type != "DISAPPEAR_SYSTEM" && type != "KEY_UPDATE") {
+                val localLastMsg = when (type.uppercase()) {
+                    "WIPE_REQUEST" -> "$senderName: Wipe Request Sent"
+                    "WIPE_RESPONSE" -> "$senderName: Wipe Request Update"
+                    "IMAGE" -> "$senderName: sent an image"
+                    "VIDEO" -> "$senderName: sent a video"
+                    "AUDIO" -> "$senderName: sent a voice message"
+                    else -> "$senderName: $messageText"
+                }
+                AppDb.get(context ?: return true).groupsDao().updateLastMessage(
+                    groupId, localLastMsg, roomEntity.time.toLongOrNull() ?: 0L
+                )
             }
-            AppDb.get(context ?: return true).groupsDao().updateLastMessage(
-                groupId, localLastMsg, roomEntity.time.toLongOrNull() ?: 0L
-            )
             
             true
         } catch (e: Exception) {
@@ -509,12 +531,14 @@ class GroupManager {
 
                             val isMyMessage = sender_id == mySenderId
 
-                            // ── Resolve media URI ────────────────────────────────
+                            // ── Resolve media URI & Thumbnail ────────────────────────────────
                             var resolvedUri: String? = null
+                            var resolvedThumbPath: String? = null
+                            
                             if (rawType == "CHUNKED_MEDIA") {
                                 val thumbnailB64 = messageSnapshot.child("thumbnail").getValue(String::class.java) ?: ""
                                 if (thumbnailB64.isNotEmpty()) {
-                                    resolvedUri = resolveIncomingUri(context, thumbnailB64, if (type == "VIDEO") "jpg" else "jpg")
+                                    resolvedThumbPath = app.secure.kyber.media.MediaChunkManager.decodeThumbnail(context!!, thumbnailB64, messageId)
                                 }
                             } else {
                                 resolvedUri = resolveIncomingUri(context, rawUri, type)
@@ -522,7 +546,7 @@ class GroupManager {
 
                             val disappearTtl = messageSnapshot.child("disappear_ttl").getValue(Long::class.java) ?: 0L
                             val sentMs = timeStamp.toLongOrNull() ?: System.currentTimeMillis()
-                            val localExpiresAt = if (disappearTtl > 0L) sentMs + disappearTtl else 0L
+                            val localExpiresAt = if (disappearTtl > 0L && rawType != "CHUNKED_MEDIA") sentMs + disappearTtl else 0L
 
                             val message = GroupMessageEntity(
                                 messageId   = messageId,
@@ -534,6 +558,7 @@ class GroupManager {
                                 isSent      = isMyMessage,
                                 type        = type,
                                 uri         = resolvedUri,
+                                thumbnailPath = resolvedThumbPath,
                                 ampsJson    = ampsJson,
                                 reaction    = reaction,
                                 downloadState = if (rawType == "CHUNKED_MEDIA") "pending" else "done",
@@ -684,7 +709,8 @@ class GroupManager {
                                             groupId = group_id,
                                             mediaId = mediaId,
                                             totalChunks = totalChunks,
-                                            mimeType = type
+                                            mimeType = type,
+                                            disappearTtl = disappearTtl
                                         )
                                         androidx.work.WorkManager.getInstance(context).enqueue(downloadRequest)
                                     }
@@ -769,7 +795,7 @@ class GroupManager {
         val disappearTtl = snapshot.child("disappear_ttl").getValue(Long::class.java) ?: 0L
         val msgTimeRaw = timeStamp.toLongOrNull() ?: 0L
         val sentBaseMs = if (msgTimeRaw > 0L) msgTimeRaw else System.currentTimeMillis()
-        val localExpiresAt = DisappearTime.expiresAtFromSent(sentBaseMs, disappearTtl)
+        val localExpiresAt = if (disappearTtl > 0L && type != "CHUNKED_MEDIA") DisappearTime.expiresAtFromSent(sentBaseMs, disappearTtl) else 0L
 
         val displayName = resolveAnonymousDisplayName(
             context = context,
@@ -847,7 +873,8 @@ class GroupManager {
                     groupId = groupId,
                     mediaId = mediaId,
                     totalChunks = totalChunks,
-                    mimeType = mediaType
+                    mimeType = mediaType,
+                    disappearTtl = disappearTtl
                 )
                 androidx.work.WorkManager.getInstance(context).enqueue(downloadRequest)
             }
@@ -959,6 +986,11 @@ class GroupManager {
                 return
             }
             dao.insertGroupMessage(message)
+        }
+
+        // ── SYSTEM UPDATES (SILENT): Never update last message preview, time, or unread count
+        if (type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
+            return
         }
 
         // Sync metadata (Last Message Preview) — never expose raw wipe JSON
@@ -1075,7 +1107,7 @@ class GroupManager {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
 
-        val channelId = "group_messages_channel"
+        val channelId = "group_messages_channel_v2"
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val channel = android.app.NotificationChannel(
                 channelId, "Group Messages", android.app.NotificationManager.IMPORTANCE_HIGH
@@ -1271,5 +1303,35 @@ class GroupManager {
             responderOnion = null,
             requestId = null
         )
+    }
+
+    private fun generateImageThumbnail(context: Context, path: String): String? {
+        return try {
+            // Resolve the bitmap from either a content:// URI or a file:// path
+            val bitmap: android.graphics.Bitmap? = when {
+                path.startsWith("content://") -> {
+                    val uri = android.net.Uri.parse(path)
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        android.graphics.BitmapFactory.decodeStream(stream)
+                    }
+                }
+                else -> {
+                    val file = java.io.File(path.removePrefix("file://"))
+                    if (file.exists()) android.graphics.BitmapFactory.decodeFile(file.absolutePath) else null
+                }
+            } ?: return null
+
+            val thumb = android.media.ThumbnailUtils.extractThumbnail(bitmap, 320, 320)
+            bitmap!!.recycle()
+            val destDir = java.io.File(context.cacheDir, "thumbnails").apply { mkdirs() }
+            val destFile = java.io.File(destDir, "thumb_${System.currentTimeMillis()}.jpg")
+            destFile.outputStream().use { out ->
+                thumb.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+            }
+            thumb.recycle()
+            destFile.absolutePath
+        } catch (e: Exception) {
+            null
+        }
     }
 }

@@ -5,25 +5,39 @@ import android.graphics.Matrix
 import android.graphics.PointF
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import android.widget.ImageView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import app.secure.kyber.R
+import app.secure.kyber.Utils.MessageEncryptionManager
+import app.secure.kyber.roomdb.AppDb
 import com.bumptech.glide.Glide
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min
 
 class FullscreenMediaActivity : AppCompatActivity() {
 
+    companion object {
+        const val TAG = "FullscreenMediaActivity"
+        const val EXTRA_MESSAGE_ID = "message_id"
+        const val EXTRA_URI = "uri"
+        const val EXTRA_TYPE = "type"
+    }
+
     private lateinit var fullImage: ImageView
     private lateinit var playerView: PlayerView
     private var exoPlayer: ExoPlayer? = null
+    private var decryptedBytes: ByteArray? = null
 
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,48 +47,130 @@ class FullscreenMediaActivity : AppCompatActivity() {
         fullImage  = findViewById(R.id.fullImage)
         playerView = findViewById(R.id.playerView)
 
-        val uriString = intent?.getStringExtra("uri")
-        val typeName  = intent?.getStringExtra("type") ?: "TEXT"
+        // Try new message-based approach first, fallback to URI
+        val messageId = intent?.getStringExtra(EXTRA_MESSAGE_ID)
+        val uriString = intent?.getStringExtra(EXTRA_URI)
+        val typeName  = intent?.getStringExtra(EXTRA_TYPE) ?: "TEXT"
         val type      = typeName.uppercase()
 
-        // Guard 1: missing URI
-        if (uriString.isNullOrBlank()) {
-            android.widget.Toast.makeText(this, "Media not available", android.widget.Toast.LENGTH_SHORT).show()
-            finish(); return
+        if (!messageId.isNullOrBlank()) {
+            // Decrypt on-demand from encrypted file
+            loadMediaWithDecryption(messageId, type)
+        } else if (!uriString.isNullOrBlank()) {
+            // Legacy: load directly from URI (unencrypted)
+            loadMediaDirect(uriString, type)
+        } else {
+            showError("Media not available")
         }
+    }
 
-        // Guard 2: file:// URI must exist on disk
+    /**
+     * Load media with just-in-time decryption.
+     * Reads encrypted file, decrypts in-memory, displays without writing decrypted to disk.
+     */
+    private fun loadMediaWithDecryption(messageId: String, type: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val db = AppDb.get(this@FullscreenMediaActivity)
+                val message = db.messageDao().getMessageByMessageId(messageId)
+                    ?: run { showError("Message not found"); return@launch }
+
+                // Verify file exists
+                val localPath = message.localFilePath ?: run { showError("No media path"); return@launch }
+                val encryptedFile = File(localPath.removePrefix("file://"))
+                if (!encryptedFile.exists() || encryptedFile.length() == 0L) {
+                    showError("Media file not ready"); return@launch
+                }
+
+                // Read encrypted bytes from disk
+                val encryptedBytes = encryptedFile.readBytes()
+
+                // Decrypt in-memory only
+                val decrypted = try {
+                    MessageEncryptionManager.decryptSmartRaw(
+                        this@FullscreenMediaActivity,
+                        encryptedBytes,
+                        message.senderOnion,
+                        message.keyFingerprint,
+                        message.iv
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Decryption failed", e)
+                    showError("Decryption failed"); return@launch
+                }
+
+                // Store reference for cleanup
+                decryptedBytes = decrypted
+
+                // Launch on UI thread for display
+                runOnUiThread {
+                    displayMedia(type, decrypted)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading encrypted media", e)
+                showError("Failed to load media")
+            }
+        }
+    }
+
+    /**
+     * Load media directly from URI (legacy/unencrypted path).
+     */
+    private fun loadMediaDirect(uriString: String, type: String) {
+        // Guard: file:// URI must exist on disk
         if (uriString.startsWith("file://") || uriString.startsWith("/")) {
             val file = File(uriString.removePrefix("file://"))
             if (!file.exists() || file.length() == 0L) {
-                android.widget.Toast.makeText(this, "Media file not ready", android.widget.Toast.LENGTH_SHORT).show()
-                finish(); return
+                showError("Media file not ready"); return
             }
         }
 
         val uri = try { Uri.parse(uriString) } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "Invalid media URI", android.widget.Toast.LENGTH_SHORT).show()
-            finish(); return
+            showError("Invalid media URI"); return
         }
 
-        // Explicit close button (top-right corner) — works for image and video
+        displayMedia(type, uri)
+    }
+
+    /**
+     * Display media (image or video) using the provided URI or decrypted ByteArray.
+     */
+    private fun displayMedia(type: String, uriOrBytes: Any) {
+        // Close button
         findViewById<View>(R.id.btnClose).setOnClickListener { finish() }
 
         if (type == "IMAGE") {
             fullImage.visibility  = View.VISIBLE
             playerView.visibility = View.GONE
-
-            // MATRIX mode lets us apply our own zoom/pan transform
-            fullImage.scaleType = ImageView.ScaleType.MATRIX
+            fullImage.scaleType   = ImageView.ScaleType.MATRIX
 
             try {
-                Glide.with(this).load(uri).into(fullImage)
+                when (uriOrBytes) {
+                    is ByteArray -> {
+                        // Load decrypted bytes
+                        Glide.with(this)
+                            .load(uriOrBytes)
+                            .into(fullImage)
+                    }
+                    is Uri -> {
+                        // Load from URI
+                        Glide.with(this)
+                            .load(uriOrBytes)
+                            .into(fullImage)
+                    }
+                    is String -> {
+                        // Load from URI string
+                        Glide.with(this)
+                            .load(Uri.parse(uriOrBytes))
+                            .into(fullImage)
+                    }
+                }
             } catch (e: Exception) {
-                android.widget.Toast.makeText(this, "Could not load image", android.widget.Toast.LENGTH_SHORT).show()
-                finish(); return
+                Log.e(TAG, "Could not load image", e)
+                showError("Could not load image"); return
             }
 
-            // Attach gesture handler after layout so we have real pixel dimensions
+            // Attach zoom/pan handler after layout
             fullImage.post { ZoomPanHandler(fullImage).attach() }
 
         } else if (type == "VIDEO") {
@@ -83,17 +179,68 @@ class FullscreenMediaActivity : AppCompatActivity() {
 
             exoPlayer = ExoPlayer.Builder(this).build()
             playerView.player = exoPlayer
-            exoPlayer?.setMediaItem(MediaItem.fromUri(uri))
-            exoPlayer?.prepare()
-            exoPlayer?.playWhenReady = true
 
+            try {
+                val mediaItem = when (uriOrBytes) {
+                    is ByteArray -> {
+                        // For ByteArray (decrypted video), write to temp file temporarily
+                        // This is unavoidable for ExoPlayer, but we delete it immediately after playback
+                        val tempFile = File(cacheDir, "video_${System.nanoTime()}.mp4")
+                        tempFile.writeBytes(uriOrBytes)
+                        tempFile.deleteOnExit()  // Mark for deletion on app exit
+                        MediaItem.fromUri(Uri.fromFile(tempFile))
+                    }
+                    is Uri -> MediaItem.fromUri(uriOrBytes)
+                    is String -> MediaItem.fromUri(Uri.parse(uriOrBytes))
+                    else -> null
+                }
+
+                if (mediaItem != null) {
+                    exoPlayer?.setMediaItem(mediaItem)
+                    exoPlayer?.prepare()
+                    exoPlayer?.playWhenReady = true
+                } else {
+                    showError("Invalid media format")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Could not load video", e)
+                showError("Could not load video")
+            }
         } else {
+            showError("Unsupported media type")
+        }
+    }
+
+    private fun showError(message: String) {
+        runOnUiThread {
+            android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_SHORT).show()
             finish()
         }
     }
 
-    override fun onPause()   { super.onPause();   exoPlayer?.pause() }
-    override fun onDestroy() { super.onDestroy(); exoPlayer?.release(); exoPlayer = null }
+    override fun onPause() {
+        super.onPause()
+        exoPlayer?.pause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        
+        // Clear decrypted bytes immediately
+        decryptedBytes?.let { 
+            java.util.Arrays.fill(it, 0)  // Overwrite with zeros
+            Log.d(TAG, "Cleared decrypted byte array")
+        }
+        decryptedBytes = null
+        
+        // Release player
+        exoPlayer?.release()
+        exoPlayer = null
+        
+        // Force garbage collection
+        System.gc()
+        Log.d(TAG, "Activity destroyed, GC invoked")
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

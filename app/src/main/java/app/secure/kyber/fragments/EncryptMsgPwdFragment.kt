@@ -158,7 +158,7 @@ class EncryptMsgPwdFragment : Fragment(R.layout.fragment_encrypt_msg_pwd) {
         val btnUndo     = dialogView.findViewById<MaterialButton>(R.id.btn_wipe_undo)
 
         tvMessage.text = if (isAuthorized)
-            "App data will be wiped out"
+            "Kyber is proceeding your request.."
         else
             "App is being wiped due to unauthorized access"
 

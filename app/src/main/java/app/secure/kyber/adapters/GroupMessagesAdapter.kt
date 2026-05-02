@@ -19,6 +19,8 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import app.secure.kyber.R
 import app.secure.kyber.roomdb.GroupMessageEntity
+import app.secure.kyber.Utils.DateUtils
+import app.secure.kyber.Other.CircularBurnProgressView
 import app.secure.kyber.Other.DecryptRevealTextView
 import app.secure.kyber.Other.WaveformView
 import com.bumptech.glide.Glide
@@ -29,6 +31,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -112,6 +115,7 @@ class GroupMessagesAdapter(
     private var activeHandler: android.os.Handler? = null
     private var activeSpeedIdx: Int = 0
     private val openMenuPositions = mutableSetOf<Int>()
+    private var timerJob: Job? = null
 
     private val adapterScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val decryptedTextCache: MutableMap<String, String> get() = persistentCache
@@ -160,12 +164,14 @@ class GroupMessagesAdapter(
     override fun onAttachedToRecyclerView(rv: RecyclerView) {
         super.onAttachedToRecyclerView(rv)
         rvRef = rv
-        // stackFromEnd intentionally NOT set — messages start from top in new chats.
+        startTimer()
     }
 
     override fun onDetachedFromRecyclerView(rv: RecyclerView) {
-        super.onDetachedFromRecyclerView(rv); rvRef =
-            null; adapterScope.coroutineContext.cancelChildren()
+        super.onDetachedFromRecyclerView(rv)
+        rvRef = null
+        timerJob?.cancel()
+        adapterScope.coroutineContext.cancelChildren()
     }
 
     override fun getItemId(position: Int) = getItem(position).messageId.hashCode().toLong()
@@ -250,6 +256,9 @@ class GroupMessagesAdapter(
         val tvSentReaction: TextView = view.findViewById(R.id.tvSentReaction)
         val tvRcvReaction: TextView = view.findViewById(R.id.tvReceivedReaction)
         val tvDecryptingRcv: TextView? = view.findViewById(R.id.tvDecryptingRcv)
+
+        val burnProgressRcv: CircularBurnProgressView = view.findViewById(R.id.burnProgressRcv)
+        val burnProgressSent: CircularBurnProgressView = view.findViewById(R.id.burnProgressSent)
         
         val rlWipeRequestSent: LinearLayout? = view.findViewById(R.id.rlWipeRequestSent)
         val tvWipeRequestSentStatus: TextView? = view.findViewById(R.id.tvWipeRequestSentStatus)
@@ -304,6 +313,9 @@ class GroupMessagesAdapter(
         val tvReplyQuoteRcv: TextView = replyQuoteBlockRcv.findViewById(R.id.tvReplyQuote)
         fun replyQuote(sent: Boolean) = if (sent) replyQuoteBlockSent else replyQuoteBlockRcv
         fun tvReplyQuote(sent: Boolean) = if (sent) tvReplyQuoteSent else tvReplyQuoteRcv
+
+        val dateSeparatorLayout: View = view.findViewById(R.id.dateSeparatorLayout)
+        val tvDateSeparator: TextView = view.findViewById(R.id.tvDateSeparator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
@@ -318,6 +330,22 @@ class GroupMessagesAdapter(
         val pos = holder.bindingAdapterPosition
         if (pos == RecyclerView.NO_POSITION) return
         val item = getItem(pos)
+
+        // ── Reset UI State for Recycled Views ────────────────────────────────
+        holder.tvGroupSystemMessage?.visibility = View.GONE
+        holder.rlWipeRequestSent?.visibility = View.GONE
+        holder.rlWipeRequestRcvd?.visibility = View.GONE
+        holder.dateSeparatorLayout.visibility = View.GONE
+        val prevItem = if (pos > 0) getItem(pos - 1) else null
+        val itemTime = item.time.toLongOrNull() ?: 0L
+        val prevTime = prevItem?.time?.toLongOrNull() ?: 0L
+
+        if (pos == 0 || !DateUtils.isSameDay(itemTime, prevTime)) {
+            holder.dateSeparatorLayout.visibility = View.VISIBLE
+            holder.tvDateSeparator.text = DateUtils.getChatSeparatorDate(itemTime)
+        } else {
+            holder.dateSeparatorLayout.visibility = View.GONE
+        }
         val nextItem = if (pos < itemCount - 1) getItem(pos + 1) else null
         val nextType = nextItem?.type?.uppercase(Locale.US) ?: ""
         val nextIsSystem = nextType.startsWith("WIPE_")
@@ -389,6 +417,26 @@ class GroupMessagesAdapter(
             holder.tvRcvTime.text = convertDatetime(item.time)
         }
 
+        // ── Burn Time Indicators ─────────────────────────────────────────────
+        val expiresAt = item.expiresAt
+        val startTime = item.time.toLongOrNull() ?: System.currentTimeMillis()
+        val totalDuration = if (expiresAt > 0) (expiresAt - startTime).coerceAtLeast(1000L) else 0L
+
+        if (expiresAt > 0) {
+            if (isSent) {
+                holder.burnProgressSent.isVisible = true
+                holder.burnProgressSent.setTimer(expiresAt, totalDuration)
+                holder.burnProgressRcv.isVisible = false
+            } else {
+                holder.burnProgressRcv.isVisible = true
+                holder.burnProgressRcv.setTimer(expiresAt, totalDuration)
+                holder.burnProgressSent.isVisible = false
+            }
+        } else {
+            holder.burnProgressSent.isVisible = false
+            holder.burnProgressRcv.isVisible = false
+        }
+
         val rv = holder.reaction(isSent)
         val isWipeType = type.startsWith("WIPE_")
         if (!isWipeType && item.reaction.isNotEmpty()) {
@@ -399,7 +447,8 @@ class GroupMessagesAdapter(
         }
 
         holder.itemView.setOnLongClickListener {
-            if (item.type.uppercase(Locale.US).startsWith("WIPE_")) {
+            val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
                 return@setOnLongClickListener false
             }
             val p =
@@ -411,6 +460,9 @@ class GroupMessagesAdapter(
                 return@setOnClickListener
             }
             val t = item.type.uppercase(Locale.US)
+            if (t.startsWith("WIPE_") || t == "DISAPPEAR_SYSTEM" || t == "KEY_UPDATE") {
+                return@setOnClickListener
+            }
             // Guard: do NOT fire onClick for text/emoji prevents "Media not available"
             if (t != "IMAGE" && t != "VIDEO" && t != "AUDIO") {
                 return@setOnClickListener
@@ -455,6 +507,26 @@ class GroupMessagesAdapter(
                 item.uri ?: return
             )
         } else onBindViewHolder(holder, position)
+    }
+
+    private fun startTimer() {
+        if (timerJob?.isActive == true) return
+        timerJob = adapterScope.launch {
+            while (isActive) {
+                delay(1000)
+                updateVisibleTimers()
+            }
+        }
+    }
+
+    private fun updateVisibleTimers() {
+        val rv = rvRef ?: return
+        for (i in 0 until rv.childCount) {
+            val child = rv.getChildAt(i)
+            val vh = rv.getChildViewHolder(child) as? VH ?: continue
+            vh.burnProgressRcv.update()
+            vh.burnProgressSent.update()
+        }
     }
 
     private fun showMenu(position: Int) {
@@ -600,7 +672,7 @@ class GroupMessagesAdapter(
                 return
             }
 
-            if (type == "WIPE_SYSTEM") {
+            if (type == "WIPE_SYSTEM" || type == "DISAPPEAR_SYSTEM" || type == "KEY_UPDATE") {
                 h.rlSendMsg.isVisible = false
                 h.rlRecieveMsg.isVisible = false
                 h.rlWipeRequestRcvd?.isVisible = false

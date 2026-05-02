@@ -1,123 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/root"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/_70sdp"
-    android:layout_marginTop="@dimen/_10sdp"
-    android:background="@drawable/contact_bg"
-    android:paddingHorizontal="@dimen/_10sdp"
-    android:paddingVertical="@dimen/_8sdp">
+    android:layout_height="wrap_content">
 
-    <!-- Avatar + small clock badge -->
-    <FrameLayout
-        android:id="@+id/avatarHolder"
-        android:layout_width="@dimen/_48sdp"
-        android:layout_height="@dimen/_48sdp"
-        android:background="@drawable/bg_avatar"
-        android:backgroundTint="#2A3E63"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
+    <LinearLayout
+        android:id="@+id/chatActionMenu"
+        android:layout_width="@dimen/_200sdp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/_14sdp"
+        android:background="@drawable/delete_chat_dialog_bg"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:elevation="@dimen/_8sdp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="@id/root"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <ImageView
-            android:id="@+id/imgAvatar"
+
+        <LinearLayout
+            android:id="@+id/btnDelete"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:contentDescription="@string/app_name"
-            android:padding="@dimen/_5sdp"
-            android:src="@drawable/ano_ic" />
+            android:layout_height="@dimen/_48sdp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="@dimen/_16sdp">
 
-        <!-- little clock badge -->
-        <View
-            android:id="@+id/clockBadge"
-            android:layout_width="@dimen/_16sdp"
-            android:layout_height="@dimen/_16sdp"
-            android:layout_gravity="top|end"
-            android:layout_margin="@dimen/_2sdp"
-            android:background="@drawable/clock" />
-    </FrameLayout>
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/_16sdp"
+                android:layout_weight="1"
+                android:fontFamily="@font/roboto_regular"
+                android:text="Delete"
+                android:textColor="#FF4444"
+                android:textSize="@dimen/_16sdp" />
 
-    <!-- Name -->
-    <TextView
-        android:id="@+id/tvName"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/_10sdp"
-        android:fontFamily="@font/roboto_regular"
-        android:text="Bryan"
-        android:textColor="#E0F1FF"
-        android:textSize="@dimen/_16sdp"
-        app:layout_constraintEnd_toStartOf="@id/rightTimeGroup"
-        app:layout_constraintHorizontal_bias="0"
-        app:layout_constraintStart_toEndOf="@id/avatarHolder"
-        app:layout_constraintTop_toTopOf="@id/avatarHolder" />
-
-    <!-- Subtitle / last message -->
-    <TextView
-        android:id="@+id/tvSubtitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:fontFamily="@font/roboto_regular"
-        android:maxLines="2"
-        android:text="What do you think? \n kdf;j;aj \n jfd;laj"
-        android:textColor="#A8ADBD"
-        android:textSize="@dimen/_14sdp"
-        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
-        app:layout_constraintEnd_toStartOf="@id/badgeUnread"
-        app:layout_constraintStart_toStartOf="@id/tvName"
-        app:layout_constraintTop_toBottomOf="@id/tvName" />
-
-    <!-- Right top: 18 min remain  -  4:30 PM -->
-    <LinearLayout
-        android:id="@+id/rightTimeGroup"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/avatarHolder">
-
-        <TextView
-            android:id="@+id/tvRemain"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/roboto_regular"
-            android:text="18 min remain"
-            android:textColor="#A8ADBD"
-            android:textSize="@dimen/_12sdp" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/roboto_regular"
-            android:text="  -  "
-            android:textColor="#A8ADBD"
-            android:textSize="@dimen/_12sdp"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/tvTime"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="@font/roboto_regular"
-            android:text="4:30 PM"
-            android:textColor="#A8ADBD"
-            android:textSize="@dimen/_12sdp"
-            android:visibility="gone" />
+            <ImageView
+                android:layout_width="@dimen/_24sdp"
+                android:layout_height="@dimen/_24sdp"
+                android:contentDescription="delete"
+                android:src="@drawable/trash_icon"
+                app:tint="#FF4444" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- Unread count pill -->
-    <TextView
-        android:id="@+id/badgeUnread"
-        android:layout_width="@dimen/_22sdp"
-        android:layout_height="@dimen/_22sdp"
-        android:background="@drawable/bg_unread_pill"
-        android:fontFamily="@font/roboto_medium"
-        android:gravity="center"
-        android:text="2"
-        android:textColor="#FFFFFF"
-        android:textSize="@dimen/_12sdp"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
-        app:layout_constraintEnd_toEndOf="parent" />
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/root"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/_70sdp"
+        android:layout_marginTop="@dimen/_10sdp"
+        android:background="@drawable/contact_bg"
+        android:paddingHorizontal="@dimen/_10sdp"
+        android:paddingVertical="@dimen/_8sdp"
+        app:layout_constraintTop_toBottomOf="@+id/chatActionMenu">
+
+        <!-- Avatar + small clock badge -->
+        <FrameLayout
+            android:id="@+id/avatarHolder"
+            android:layout_width="@dimen/_48sdp"
+            android:layout_height="@dimen/_48sdp"
+            android:background="@drawable/bg_avatar"
+            android:backgroundTint="#2A3E63"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/imgAvatar"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/app_name"
+                android:padding="@dimen/_5sdp"
+                android:src="@drawable/ano_ic" />
+
+            <!-- little clock badge -->
+            <View
+                android:id="@+id/clockBadge"
+                android:layout_width="@dimen/_16sdp"
+                android:layout_height="@dimen/_16sdp"
+                android:layout_gravity="top|end"
+                android:layout_margin="@dimen/_2sdp"
+                android:background="@drawable/clock" />
+        </FrameLayout>
+
+        <!-- Name -->
+        <TextView
+            android:id="@+id/tvName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/_10sdp"
+            android:fontFamily="@font/roboto_regular"
+            android:text="Bryan"
+            android:textColor="#E0F1FF"
+            android:textSize="@dimen/_16sdp"
+            app:layout_constraintEnd_toStartOf="@id/rightTimeGroup"
+            app:layout_constraintHorizontal_bias="0"
+            app:layout_constraintStart_toEndOf="@id/avatarHolder"
+            app:layout_constraintTop_toTopOf="@id/avatarHolder" />
+
+        <!-- Subtitle / last message -->
+        <TextView
+            android:id="@+id/tvSubtitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="@font/roboto_regular"
+            android:maxLines="2"
+            android:text="What do you think? \n kdf;j;aj \n jfd;laj"
+            android:textColor="#A8ADBD"
+            android:textSize="@dimen/_14sdp"
+            app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
+            app:layout_constraintEnd_toStartOf="@id/badgeUnread"
+            app:layout_constraintStart_toStartOf="@id/tvName"
+            app:layout_constraintTop_toBottomOf="@id/tvName" />
+
+        <!-- Right top: 18 min remain  -  4:30 PM -->
+        <LinearLayout
+            android:id="@+id/rightTimeGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/avatarHolder">
+
+            <TextView
+                android:id="@+id/tvRemain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/roboto_regular"
+                android:text="18 min remain"
+                android:textColor="#A8ADBD"
+                android:textSize="@dimen/_12sdp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/roboto_regular"
+                android:text="  -  "
+                android:textColor="#A8ADBD"
+                android:textSize="@dimen/_12sdp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/roboto_regular"
+                android:text="4:30 PM"
+                android:textColor="#A8ADBD"
+                android:textSize="@dimen/_12sdp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Unread count pill -->
+        <TextView
+            android:id="@+id/badgeUnread"
+            android:layout_width="@dimen/_22sdp"
+            android:layout_height="@dimen/_22sdp"
+            android:background="@drawable/bg_unread_pill"
+            android:fontFamily="@font/roboto_medium"
+            android:gravity="center"
+            android:text="2"
+            android:textColor="#FFFFFF"
+            android:textSize="@dimen/_12sdp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/avatarHolder"
+            app:layout_constraintEnd_toEndOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+
+
+
 </androidx.constraintlayout.widget.ConstraintLayout>
+
+
+
+
+

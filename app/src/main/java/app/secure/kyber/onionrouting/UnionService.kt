@@ -18,10 +18,12 @@ import app.secure.kyber.R
 import app.secure.kyber.Utils.MessageEncryptionManager
 import app.secure.kyber.backend.KyberRepository
 import app.secure.kyber.backend.beans.ApiMessage
+import app.secure.kyber.activities.AppIntroSliderActivity
 import app.secure.kyber.backend.beans.MediaChunkDto
 import app.secure.kyber.backend.beans.PrivateMessageTransportDto
 import app.secure.kyber.backend.common.DisappearTime
 import app.secure.kyber.backend.common.Prefs
+import app.secure.kyber.fragments.SettingFragment
 import app.secure.kyber.media.MediaChunkManager
 import app.secure.kyber.media.MediaTransferNotifier
 import app.secure.kyber.roomdb.AppDb
@@ -33,6 +35,9 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID
@@ -44,7 +49,7 @@ class UnionService : Service() {
     companion object {
         private const val TAG = "UnionService"
         private const val NOTIFICATION_ID = 1001
-        private const val MSG_CHANNEL_ID = "union_messages_channel"
+        private const val MSG_CHANNEL_ID = "union_messages_channel_v2"
         private const val CHANNEL_ID = "union_service_channel"
 
         const val ACTION_START_SERVICE = "START_UNION_SERVICE"
@@ -61,6 +66,7 @@ class UnionService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val chunkMutexes = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.sync.Mutex>()
+    private val lastChunkReceivedMap = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     private lateinit var transferNotifier: MediaTransferNotifier
 
@@ -114,14 +120,11 @@ class UnionService : Service() {
                 app.secure.kyber.GroupCreationBackend.GlobalGroupSync.startGlobalSync(applicationContext, myId)
             }
             
+            startDownloadWatchdog()
             refreshCircuitOnStart()
             var pollCount = 0
             while (isActive && isServiceRunning) {
                 fetchGlobalMessages()
-                
-                if (pollCount % 20 == 0) {
-                    fetchContactPublicKeysGlobally()
-                }
                 
                 val delayMs = if (pollCount < 10) 1000L else 3000L
                 pollCount++
@@ -213,6 +216,35 @@ class UnionService : Service() {
         }
     }
 
+    private fun startDownloadWatchdog() {
+        serviceScope.launch {
+            while (isActive && isServiceRunning) {
+                delay(30_000)
+                try {
+                    val downloadingMessages = messageDao.getMessagesByDownloadState("downloading")
+                    val now = System.currentTimeMillis()
+                    for (msg in downloadingMessages) {
+                        val mediaId = msg.remoteMediaId ?: continue
+                        val lastRx = lastChunkReceivedMap[mediaId] ?: now
+                        if (lastChunkReceivedMap[mediaId] == null) {
+                            lastChunkReceivedMap[mediaId] = now
+                        } else if (now - lastRx > 60_000) {
+                            messageDao.updateDownloadProgress(msg.messageId, "failed", msg.downloadProgress)
+                            val mimeType = msg.type
+                            val myApp = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
+                            if (myApp?.activeChatOnion != msg.senderOnion) {
+                                transferNotifier.showDownloadFailed(msg.messageId, mimeType)
+                            }
+                            lastChunkReceivedMap.remove(mediaId)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Watchdog error", e)
+                }
+            }
+        }
+    }
+
     private fun processApiMessages(messages: List<ApiMessage>) {
         if (messages.isEmpty()) return
         messages.forEach { apiMsg ->
@@ -283,13 +315,30 @@ class UnionService : Service() {
                     }
                 }
 
-                // If we got a NEW public key in the transport, and this is a trusted contact,
-                // we should update their key to ensure future messages work.
+                // If we got a NEW public key in the transport, or a better name,
+                // we should update the contact entry.
                 if (transport.senderPublicKey != null) {
-                    if (contact != null && transport.senderPublicKey != contact.publicKey) {
-                        contactRepo.saveContact(contact.onionAddress, contact.name, transport.senderPublicKey)
-                    } else if (contact == null) {
-                        cachePendingContactInfo(transport.senderOnion, transport.senderName, transport.senderPublicKey!!)
+                    val currentName = contact?.name
+                    val transportName = transport.senderName
+                    
+                    val betterName = if (!transportName.isNullOrBlank() && 
+                        (currentName == null || currentName == "Unknown User" || currentName == transport.senderOnion)) {
+                        transportName
+                    } else {
+                        currentName ?: transportName.ifBlank { transport.senderOnion }
+                    }
+
+                    if (contact != null) {
+                        if (transport.senderPublicKey != contact.publicKey || betterName != contact.name) {
+                            contactRepo.saveContact(
+                                onionAddress = contact.onionAddress,
+                                name = betterName,
+                                publicKey = transport.senderPublicKey,
+                                isContact = contact.isContact
+                            )
+                        }
+                    } else {
+                        cachePendingContactInfo(transport.senderOnion, transportName, transport.senderPublicKey!!)
                     }
                 }
                 
@@ -315,16 +364,89 @@ class UnionService : Service() {
             return
         }
 
+        if (transport.type == "CHUNK_RETRY_REQUEST") {
+            handleChunkRetryRequest(transport, decryptedPayloadText)
+            return
+        }
+
+        // ── SECURITY: Strict type whitelist ─────────────────────────────────────────
+        // Any unknown or unrecognized message type is silently dropped and NOT persisted.
+        // This is a critical security boundary — unknown payloads must never reach the DB.
+        val knownTypes = setOf(
+            "TEXT", "IMAGE", "VIDEO", "AUDIO", "CHUNK", "CHUNK_RETRY_REQUEST",
+            "WIPE_REQUEST", "WIPE_RESPONSE", "WIPE_SYSTEM", "WIPE_EVENT_RECEIVED",
+            "REMOTE_WIPE_REQUEST", "REMOTE_WIPE_ACK",
+            "DELIVERED_RECEIPT", "SEEN_RECEIPT",
+            "DISAPPEAR_SYSTEM", "KEY_UPDATE"
+        )
+        if (transport.type != null && transport.type !in knownTypes) {
+            Log.w(TAG, "SECURITY: Unknown message type '${transport.type}' from ${transport.senderOnion} — dropped.")
+            return
+        }
+
         if (contact == null && transport.senderName.isNotBlank()) {
             cachePendingContactName(transport.senderOnion, transport.senderName)
         }
-        
+
+        // ── System Updates: only process for accepted contacts ─────────────
+        if (transport.type == "KEY_UPDATE" || transport.type == "DISAPPEAR_SYSTEM" || transport.type == "WIPE_SYSTEM") {
+            if (contact == null || !contact.isContact) {
+                Log.w(TAG, "SECURITY: ${transport.type} from non-contact ${transport.senderOnion} — dropped.")
+                return
+            }
+            
+            if (transport.type == "KEY_UPDATE") {
+                val freshKey = transport.newPublicKey
+                if (!freshKey.isNullOrBlank() && freshKey != contact.publicKey) {
+                    contactRepo.saveContact(contact.onionAddress, contact.name, freshKey)
+                    Log.d(TAG, "KEY_UPDATE: Stored new public key for ${contact.onionAddress}")
+                }
+            }
+            // Store the system bubble, fall through to DB insert below
+        }
+
         var effectiveType = transport.type ?: "TEXT"
         if (transport.type == "WIPE_RESPONSE" && parseWipeResponseAction(decryptedPayloadText) == "ACCEPTED") {
             val now = System.currentTimeMillis().toString()
             messageDao.expireAllBySender(transport.senderOnion, now)
-            decryptedPayloadText = "Chat history cleared on ${formatWipeTimestamp(System.currentTimeMillis())}"
+            decryptedPayloadText = "You wiped out the chat at ${formatWipeTimestamp(System.currentTimeMillis())}"
             effectiveType = "WIPE_SYSTEM"
+        }
+
+        if (transport.type == "REMOTE_WIPE_REQUEST") {
+            handleRemoteWipeRequest(decryptedPayloadText, transport.senderOnion)
+            return
+        }
+
+        if (transport.type == "REMOTE_WIPE_ACK") {
+            handleRemoteWipeAck(decryptedPayloadText)
+            return
+        }
+
+        if (transport.type == "SEEN_RECEIPT") {
+            Log.d(TAG, "RECEIVE SEEN_RECEIPT from ${transport.senderOnion} for all messages")
+            messageDao.markAllSeenForContact(transport.senderOnion, System.currentTimeMillis())
+            return
+        }
+        if (transport.type == "DELIVERED_RECEIPT") {
+            Log.d(TAG, "RECEIVE DELIVERED_RECEIPT from ${transport.senderOnion} for msg ${transport.messageId}")
+            // Update the specific message that was delivered
+            messageDao.updateDeliveredAt(transport.messageId, System.currentTimeMillis())
+            // Fallback: also mark all older ones as delivered to be safe
+            messageDao.markAllDeliveredForContact(transport.senderOnion, System.currentTimeMillis())
+            return
+        }
+
+        // Always send a Delivered Receipt when a message arrives via socket.
+        // Optimization: Use the sender's public key provided in the transport DTO 
+        // to send the receipt instantly, bypassing slow API lookups.
+        if (transport.type != "DELIVERED_RECEIPT" && transport.type != "SEEN_RECEIPT") {
+            // Robustness: If we are receiving a message from this person, they are clearly online.
+            // Mark all our previously sent messages to them as delivered.
+            messageDao.markAllDeliveredForContact(transport.senderOnion, System.currentTimeMillis())
+
+            Log.d(TAG, "SEND DELIVERED_RECEIPT to ${transport.senderOnion} for msg ${transport.messageId}")
+            sendReceipt(transport.senderOnion, transport.messageId, "DELIVERED_RECEIPT", transport.senderPublicKey)
         }
 
         val existing = messageDao.getMessageByMessageId(transport.messageId)
@@ -356,13 +478,16 @@ class UnionService : Service() {
             )
             messageDao.insert(entity)
 
+
+
             val isAccepted = contactRepo.getContact(transport.senderOnion) != null
             if (transport.isRequest || !isAccepted) {
                 val msgCount = messageDao.getBySender(transport.senderOnion).size
                 if (msgCount == 1) {
                     showPushNotification(transport.senderOnion, "Someone", "New message request")
                 }
-            } else {
+            } else if (effectiveType != "KEY_UPDATE" && effectiveType != "DISAPPEAR_SYSTEM") {
+                // KEY_UPDATE and system messages are silent — no push notification
                 val displayMsg = generateDisplayMessage(decryptedPayloadText, effectiveType)
                 showPushNotification(transport.senderOnion, "contact", displayMsg)
             }
@@ -398,19 +523,181 @@ class UnionService : Service() {
 
     private suspend fun handleAcceptanceAck(transport: PrivateMessageTransportDto) {
         val existing = contactRepo.getContact(transport.senderOnion)
-        if (existing == null) {
-            val name = transport.senderName.ifBlank { transport.senderOnion }
-            var pk: String? = transport.senderPublicKey
-            if (pk == null) {
+        val name = transport.senderName.ifBlank { existing?.name ?: "Unknown User" }
+        var pk: String? = transport.senderPublicKey ?: existing?.publicKey
+        
+        if (pk == null) {
+            try {
+                val resp = repository.getPublicKey(transport.senderOnion)
+                if (resp.isSuccessful) pk = resp.body()?.publicKey
+            } catch (e: Exception) {}
+        }
+        
+        // Always save to update name, public key, and set isContact = true
+        contactRepo.saveContact(
+            onionAddress = transport.senderOnion,
+            name = name,
+            publicKey = pk,
+            isContact = true
+        )
+    }
+
+    private fun sendReceipt(senderOnion: String, messageId: String, type: String, providedPublicKey: String? = null) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val ctx = applicationContext
+                val myOnion = Prefs.getOnionAddress(ctx) ?: return@launch
+                val myName = Prefs.getName(ctx) ?: ""
+                
+                // Priority 1: Use the public key provided in the transport (if available)
+                var recipientPublicKey: String? = providedPublicKey
+                
+                // Priority 2: Keep the necessary API call as requested
+                if (recipientPublicKey == null) {
+                    try {
+                        val pubKeyResp = repository.getPublicKey(senderOnion)
+                        if (pubKeyResp.isSuccessful) {
+                            recipientPublicKey = pubKeyResp.body()?.publicKey
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "getPublicKey API failed for $type, attempting local fallback")
+                    }
+                }
+                
+                // Priority 3: Fallback to local DB
+                if (recipientPublicKey == null) {
+                    recipientPublicKey = contactRepo.getContact(senderOnion)?.publicKey
+                }
+                
+                if (recipientPublicKey == null) {
+                    Log.e(TAG, "No public key available for $senderOnion, cannot send $type")
+                    return@launch
+                }
+                
+                val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(ctx, recipientPublicKey!!, "")
+                
+                val transport = PrivateMessageTransportDto(
+                    messageId = messageId, // Use the original message ID for the receipt
+                    msg = enc.encryptedPayload,
+                    senderOnion = myOnion,
+                    senderName = myName,
+                    timestamp = System.currentTimeMillis().toString(),
+                    type = type,
+                    iv = enc.iv,
+                    senderKeyFingerprint = enc.senderKeyFingerprint,
+                    recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                    senderPublicKey = enc.senderPublicKeyBase64
+                )
+                
+                val json = transportAdapter.toJson(transport)
+                val base64 = android.util.Base64.encodeToString(json.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                
+                var sentViaSocket = false
                 try {
-                    val resp = repository.getPublicKey(transport.senderOnion)
-                    if (resp.isSuccessful) pk = resp.body()?.publicKey
-                } catch (e: Exception) {}
+                    val result = unionClient.sendMessage(senderOnion, base64)
+                    if (result.isSuccess) {
+                        sentViaSocket = true
+                        Log.d(TAG, "SUCCESS dispatch $type via SOCKET to $senderOnion")
+                    } else {
+                        Log.w(TAG, "FAILED dispatch $type via SOCKET to $senderOnion: ${result.exceptionOrNull()?.message}")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "ERROR dispatch $type via SOCKET", e)
+                }
+                
+                if (!sentViaSocket) {
+                    var circuit = Prefs.getCircuitId(ctx) ?: ""
+                    if (circuit.isEmpty()) {
+                        val r = repository.createCircuit()
+                        if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(ctx, circuit) }
+                    }
+                    if (circuit.isNotEmpty()) {
+                        val resp = repository.sendMessage(senderOnion, base64, circuit)
+                        if (resp.isSuccessful) {
+                            Log.d(TAG, "SUCCESS dispatch $type via API to $senderOnion")
+                        } else {
+                            Log.e(TAG, "FAILED dispatch $type via API to $senderOnion (code: ${resp.code()})")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FATAL error in sendReceipt for $type", e)
             }
-            
-            contactRepo.saveContact(onionAddress = transport.senderOnion, name = name, publicKey = pk)
-        } else if (transport.senderPublicKey != null && transport.senderPublicKey != existing.publicKey) {
-            contactRepo.saveContact(existing.onionAddress, existing.name, transport.senderPublicKey)
+        }
+    }
+
+    fun sendChunkRetryRequest(senderOnion: String, mediaId: String, missingIndices: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val ctx = applicationContext
+                val myOnion = Prefs.getOnionAddress(ctx) ?: return@launch
+                val myName = Prefs.getName(ctx) ?: ""
+                
+                var recipientPublicKey: String? = contactRepo.getContact(senderOnion)?.publicKey
+                if (recipientPublicKey == null) {
+                    try {
+                        val pubKeyResp = repository.getPublicKey(senderOnion)
+                        if (pubKeyResp.isSuccessful) {
+                            recipientPublicKey = pubKeyResp.body()?.publicKey
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "getPublicKey API failed for CHUNK_RETRY_REQUEST")
+                    }
+                }
+                
+                if (recipientPublicKey == null) {
+                    Log.e(TAG, "No public key available for $senderOnion, cannot send CHUNK_RETRY_REQUEST")
+                    return@launch
+                }
+                
+                val payloadJson = JSONObject().apply {
+                    put("mediaId", mediaId)
+                    put("missingIndices", missingIndices)
+                }.toString()
+                
+                val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(ctx, recipientPublicKey!!, payloadJson)
+                
+                val transport = PrivateMessageTransportDto(
+                    messageId = UUID.randomUUID().toString(),
+                    msg = enc.encryptedPayload,
+                    senderOnion = myOnion,
+                    senderName = myName,
+                    timestamp = System.currentTimeMillis().toString(),
+                    type = "CHUNK_RETRY_REQUEST",
+                    iv = enc.iv,
+                    senderKeyFingerprint = enc.senderKeyFingerprint,
+                    recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                    senderPublicKey = enc.senderPublicKeyBase64
+                )
+                
+                val json = transportAdapter.toJson(transport)
+                val base64 = android.util.Base64.encodeToString(json.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                
+                var sentViaSocket = false
+                try {
+                    val result = unionClient.sendMessage(senderOnion, base64)
+                    if (result.isSuccess) {
+                        sentViaSocket = true
+                        Log.d(TAG, "SUCCESS dispatch CHUNK_RETRY_REQUEST via SOCKET to $senderOnion")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "ERROR dispatch CHUNK_RETRY_REQUEST via SOCKET", e)
+                }
+                
+                if (!sentViaSocket) {
+                    var circuit = Prefs.getCircuitId(ctx) ?: ""
+                    if (circuit.isEmpty()) {
+                        val r = repository.createCircuit()
+                        if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(ctx, circuit) }
+                    }
+                    if (circuit.isNotEmpty()) {
+                        repository.sendMessage(senderOnion, base64, circuit)
+                        Log.d(TAG, "SUCCESS dispatch CHUNK_RETRY_REQUEST via API to $senderOnion")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FATAL error in sendChunkRetryRequest", e)
+            }
         }
     }
 
@@ -474,6 +761,8 @@ class UnionService : Service() {
         )
         try {
             messageDao.insert(entity)
+            // Legacy path: send a receipt to trigger delivered status on the other side
+            sendReceipt(senderOnion, entity.messageId, "DELIVERED_RECEIPT")
             val displayMsg = generateDisplayMessage(msgText, msgType)
             showPushNotification(senderOnion, "legacy", displayMsg)
         } catch (e: Exception) {}
@@ -518,6 +807,8 @@ class UnionService : Service() {
             apiMessageId = ""
         )
         messageDao.insert(entity)
+        // Legacy path: send a receipt to trigger delivered status on the other side
+        sendReceipt(message.from, entity.messageId, "DELIVERED_RECEIPT")
         val contact = contactRepo.getContact(message.from)
         val name = contact?.name ?: "Unknown User"
         showPushNotification(message.from, name, generateDisplayMessage(decodedPayload, "TEXT"))
@@ -540,6 +831,169 @@ class UnionService : Service() {
             }
         }
         return trimmed.uppercase(Locale.US)
+    }
+
+    // REMOTE WIPE — Target-side: receive and execute
+
+    private fun handleRemoteWipeRequest(payload: String, senderOnion: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val json             = JSONObject(payload)
+                val incomingHash     = json.optString("wipePasswordHash")
+                val requestId        = json.optString("requestId")
+                val initiatorOnion   = json.optString("initiatorOnion")
+
+                val localWipePwd = Prefs.getWipePassword(applicationContext)
+                if (localWipePwd.isNullOrEmpty()) {
+                    sendRemoteWipeAck(initiatorOnion, requestId, "NO_WIPE_PASSWORD")
+                    return@launch
+                }
+
+                val localHash = sha256Remote(localWipePwd)
+                if (incomingHash != localHash) {
+                    sendRemoteWipeAck(initiatorOnion, requestId, "WRONG_PASSWORD")
+                    return@launch
+                }
+
+                // Password matches — send ACK first, then silently wipe after 5s
+                sendRemoteWipeAck(initiatorOnion, requestId, "SUCCESS")
+                delay(5_000L)
+                performSilentRemoteWipe()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "handleRemoteWipeRequest failed", e)
+            }
+        }
+    }
+
+    private suspend fun sendRemoteWipeAck(initiatorOnion: String, requestId: String, status: String) {
+        try {
+            val ctx      = applicationContext
+            val myOnion  = Prefs.getOnionAddress(ctx) ?: return
+            val myName   = Prefs.getName(ctx) ?: ""
+
+            val payload = JSONObject()
+                .put("action", "REMOTE_WIPE_ACK")
+                .put("status", status)
+                .put("requestId", requestId)
+                .toString()
+
+            val pubKeyResp = repository.getPublicKey(initiatorOnion)
+            if (!pubKeyResp.isSuccessful || pubKeyResp.body() == null) return
+            val recipientPublicKey = pubKeyResp.body()!!.publicKey
+
+            val enc = app.secure.kyber.Utils.MessageEncryptionManager.encryptMessage(ctx, recipientPublicKey, payload)
+
+            val moshi = com.squareup.moshi.Moshi.Builder()
+                .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(app.secure.kyber.backend.beans.PrivateMessageTransportDto::class.java)
+            val transport = app.secure.kyber.backend.beans.PrivateMessageTransportDto(
+                messageId = java.util.UUID.randomUUID().toString(),
+                msg = enc.encryptedPayload,
+                senderOnion = myOnion,
+                senderName = myName,
+                timestamp = System.currentTimeMillis().toString(),
+                type = "REMOTE_WIPE_ACK",
+                iv = enc.iv,
+                senderKeyFingerprint = enc.senderKeyFingerprint,
+                recipientKeyFingerprint = enc.recipientKeyFingerprint,
+                senderPublicKey = enc.senderPublicKeyBase64
+            )
+
+            val json   = adapter.toJson(transport)
+            val base64 = android.util.Base64.encodeToString(json.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+            var circuit = Prefs.getCircuitId(ctx) ?: ""
+            if (circuit.isEmpty()) {
+                val r = repository.createCircuit()
+                if (r.isSuccessful) { circuit = r.body()?.circuitId ?: ""; Prefs.setCircuitId(ctx, circuit) }
+            }
+            if (circuit.isNotEmpty()) repository.sendMessage(initiatorOnion, base64, circuit)
+        } catch (e: Exception) {
+            Log.e(TAG, "sendRemoteWipeAck failed", e)
+        }
+    }
+
+    private fun performSilentRemoteWipe() {
+        try {
+            AppDb.get(applicationContext).clearAllTables()
+        } catch (e: Exception) { Log.e(TAG, "Remote wipe: DB clear failed", e) }
+        try { deleteRecursiveRemote(applicationContext.filesDir) } catch (e: Exception) {}
+        try { deleteRecursiveRemote(applicationContext.cacheDir) } catch (e: Exception) {}
+        try { applicationContext.externalCacheDir?.let { deleteRecursiveRemote(it) } } catch (e: Exception) {}
+        try {
+            applicationContext.getSharedPreferences("kyber_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+            applicationContext.getSharedPreferences("app_settings", Context.MODE_PRIVATE).edit().clear().commit()
+        } catch (e: Exception) {}
+
+        try {
+            val intent = Intent(applicationContext, AppIntroSliderActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            applicationContext.startActivity(intent)
+        } catch (e: Exception) { Log.e(TAG, "Remote wipe: navigation failed", e) }
+    }
+
+    private fun deleteRecursiveRemote(fileOrDir: File) {
+        if (fileOrDir.isDirectory) fileOrDir.listFiles()?.forEach { deleteRecursiveRemote(it) }
+        fileOrDir.delete()
+    }
+
+    private fun sha256Remote(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
+    }
+
+    // REMOTE WIPE — Initiator-side: receive confirmation ACK
+
+    private fun handleRemoteWipeAck(payload: String) {
+        try {
+            val json      = JSONObject(payload)
+            val status    = json.optString("status", "UNKNOWN")
+            val requestId = json.optString("requestId")
+
+            val pendingId = SettingFragment.pendingWipeRequestId
+            val callback  = SettingFragment.onWipeAckReceived
+
+            if (pendingId != null && pendingId == requestId && callback != null) {
+                // Dialog is open — deliver result on main thread
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    callback.invoke(status)
+                    SettingFragment.onWipeAckReceived = null
+                    SettingFragment.pendingWipeRequestId = null
+                }
+            } else {
+                // Dialog dismissed or app in background — show push notification
+                showRemoteWipeResultNotification(status)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "handleRemoteWipeAck failed", e)
+        }
+    }
+
+    private fun showRemoteWipeResultNotification(status: String) {
+        val (title, body) = when (status) {
+            "SUCCESS"          -> Pair("Remote Wipe Successful", "Target device app data has been wiped.")
+            "NO_WIPE_PASSWORD" -> Pair("Wipe Failed", "Target user has not set a wipe password.")
+            "WRONG_PASSWORD"   -> Pair("Wipe Failed", "Incorrect wipe password for the target user.")
+            else               -> Pair("Wipe Failed", "An unknown error occurred.")
+        }
+        try {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            val pi = PendingIntent.getActivity(this, 0, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val notif = NotificationCompat.Builder(this, MSG_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setSmallIcon(R.drawable.app_ic)
+                .setContentIntent(pi)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            nm.notify("remote_wipe_ack".hashCode(), notif)
+        } catch (e: Exception) {
+            Log.e(TAG, "showRemoteWipeResultNotification failed", e)
+        }
     }
 
     private fun formatWipeTimestamp(ts: Long): String {
@@ -591,11 +1045,11 @@ class UnionService : Service() {
             .setContentTitle(secureTitle)
             .setContentText(secureBody)
             .setStyle(inboxStyle)
-            .setSmallIcon(R.drawable.notification)
+            .setSmallIcon(R.drawable.app_ic)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE or NotificationCompat.DEFAULT_LIGHTS)
             .build()
 
         notificationManager.notify(sender.hashCode(), notification)
@@ -639,14 +1093,43 @@ class UnionService : Service() {
 
     private fun startPersistentConnectionLoop(host: String, port: Int) {
         serviceScope.launch {
+            var wasDisconnected = true
             while (isServiceRunning) {
                 val state = unionClient.connectionState.value
                 if (state == UnionClient.ConnectionState.DISCONNECTED || state == UnionClient.ConnectionState.ERROR) {
                     unionClient.connect(host, port)
+                    wasDisconnected = true
+                } else if (state == UnionClient.ConnectionState.CONNECTED && wasDisconnected) {
+                    wasDisconnected = false
+                    try {
+                        val failedMessages = messageDao.getMessagesByDownloadState("failed")
+                        for (msg in failedMessages) {
+                            val mediaId = msg.remoteMediaId ?: continue
+                            val missing = findMissingChunkIndices(msg)
+                            messageDao.updateDownloadProgress(msg.messageId, "downloading", msg.downloadProgress)
+                            lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
+                            sendChunkRetryRequest(msg.senderOnion, mediaId, missing)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Auto-retry error", e)
+                    }
                 }
                 delay(8000)
             }
         }
+    }
+
+    private fun findMissingChunkIndices(msg: MessageEntity): String {
+        val total = msg.totalChunksExpected
+        if (total <= 0) return ""
+        val downloaded = msg.downloadedChunkIndices.split(",").filter { it.isNotBlank() }.mapNotNull { it.toIntOrNull() }.toSet()
+        val missing = mutableListOf<Int>()
+        for (i in 0 until total) {
+            if (!downloaded.contains(i)) {
+                missing.add(i)
+            }
+        }
+        return missing.joinToString(",")
     }
 
     @SuppressLint("ForegroundServiceType")
@@ -654,7 +1137,7 @@ class UnionService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Kyber Background Sync")
             .setContentText("Listening for secure messages...")
-            .setSmallIcon(R.drawable.notification)
+            .setSmallIcon(R.drawable.app_ic)
             .setOngoing(true)
             .build()
         startForeground(NOTIFICATION_ID, notification)
@@ -669,24 +1152,32 @@ class UnionService : Service() {
                 CHANNEL_ID,
                 "Background Service",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
             val downloadChannel = NotificationChannel(
                 MediaTransferNotifier.DOWNLOAD_CHANNEL_ID,
                 "Media Downloads",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
 
             val uploadChannel = NotificationChannel(
                 MediaTransferNotifier.UPLOAD_CHANNEL_ID,
                 "Media Uploads",
                 NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
+            ).apply { 
+                setShowBadge(false)
+            }
 
             val messageChannel = NotificationChannel(
                 MSG_CHANNEL_ID,
                 "Message Notifications",
                 NotificationManager.IMPORTANCE_HIGH
-            ).apply { setShowBadge(true) }
+            ).apply { 
+                setShowBadge(true)
+            }
 
             notificationManager.createNotificationChannel(downloadChannel)
             notificationManager.createNotificationChannel(uploadChannel)
@@ -776,19 +1267,23 @@ class UnionService : Service() {
     ) {
         val mediaId = chunk.mediaId
         val originalMessageId = chunk.messageId
-        val chunkDir = java.io.File(applicationContext.cacheDir, "chunks_$mediaId")
-        val chunkFile = java.io.File(chunkDir, "chunk_${chunk.index.toString().padStart(6, '0')}")
-        if (chunkFile.exists() && chunkFile.length() > 0) return
         MediaChunkManager.saveChunkToDisk(applicationContext, mediaId, chunk.index, chunk.data)
+        lastChunkReceivedMap[mediaId] = System.currentTimeMillis()
         val savedCount = MediaChunkManager.countSavedChunks(applicationContext, mediaId)
         val progress = (savedCount * 100) / chunk.total
 
+        val downloadedIndices = MediaChunkManager.getChunkDir(applicationContext, mediaId).listFiles()
+            ?.filter { it.name.startsWith("chunk_") && it.length() > 0 }
+            ?.mapNotNull { it.name.removePrefix("chunk_").toIntOrNull() }
+            ?.joinToString(",") ?: ""
+
         if (chunk.index == 0) {
+            val thumbPath = transport.thumbnail?.let { 
+                app.secure.kyber.media.MediaChunkManager.decodeThumbnail(applicationContext, it, mediaId) 
+            }
             val existing = messageDao.getByRemoteMediaId(mediaId)
             if (existing == null) {
                 val sentMs = DisappearTime.parseMessageTimestampMs(transport.timestamp)
-                val localExpiresAt = DisappearTime.expiresAtFromSent(sentMs, transport.disappear_ttl)
-
                 val entity = MessageEntity(
                     messageId = originalMessageId,
                     apiMessageId = apiMsg?.id,
@@ -804,6 +1299,7 @@ class UnionService : Service() {
                     isSent = false,
                     type = chunk.mimeType,
                     uri = null,
+                    thumbnailPath = thumbPath,
                     ampsJson = if (chunk.ampsJson.isNotBlank())
                         MessageEncryptionManager.encryptLocal(applicationContext, chunk.ampsJson).encryptedBlob else "",
                     downloadState = "downloading",
@@ -815,12 +1311,13 @@ class UnionService : Service() {
                     keyFingerprint = transport.recipientKeyFingerprint,
                     iv = transport.iv,
                     replyToText = transport.replyToText,
-                    expiresAt = localExpiresAt
+                    expiresAt = 0L, // Timer starts after full download
+                    totalChunksExpected = chunk.total,
+                    downloadedChunkIndices = downloadedIndices
                 )
                 messageDao.insert(entity)
                 val isAccepted = contactRepo.getContact(transport.senderOnion) != null
                 if (isAccepted) {
-                    val name = contactRepo.getContact(transport.senderOnion)?.name ?: "Unknown"
                     val displayMsg = when (chunk.mimeType) {
                         "AUDIO" -> "Voice message"
                         "VIDEO" -> "Video"
@@ -828,40 +1325,55 @@ class UnionService : Service() {
                     }
                     showPushNotification(transport.senderOnion, "media", displayMsg)
                 } else {
-                    val msgCount = messageDao.getBySender(transport.senderOnion).size
-                    if (msgCount == 1) {
-                        showPushNotification(transport.senderOnion, "Someone", "New message request")
-                    }
+                    showPushNotification(transport.senderOnion, "Someone", "New message request")
+                }
+            } else {
+                if (thumbPath != null && existing.thumbnailPath == null) {
+                    messageDao.setThumbnailPath(existing.messageId, thumbPath)
                 }
             }
+
+            // Media Delivery Receipt: Send ACK for the original message ID when the first chunk arrives
+            Log.d(TAG, "SEND MEDIA DELIVERED_RECEIPT to ${transport.senderOnion} for msg ${chunk.messageId}")
+            sendReceipt(transport.senderOnion, chunk.messageId, "DELIVERED_RECEIPT", transport.senderPublicKey)
         } else {
             val existing = messageDao.getByRemoteMediaId(mediaId)
             if (existing != null) {
-                messageDao.updateDownloadProgress(existing.messageId, "downloading", progress)
+                messageDao.update(existing.copy(
+                    downloadedChunkIndices = downloadedIndices,
+                    downloadProgress = progress
+                ))
             }
         }
 
         if (savedCount >= chunk.total) {
             val entity = messageDao.getByRemoteMediaId(mediaId)
-            if (entity != null) {
+            if (entity != null && entity.downloadState != "done") {
                 messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
                 val myApp = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
                 val isInChat = myApp?.activeChatOnion == entity.senderOnion
                 if (!isInChat && progress % 10 == 0) {
                     transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)
                 }
-                val assembledPath = MediaChunkManager.assembleChunks(applicationContext, mediaId, chunk.mimeType) { p ->
+                val assembledPath = MediaChunkManager.assembleChunksFromDisk(applicationContext, mediaId, chunk.mimeType, chunk.total) { p ->
                     serviceScope.launch {
                         messageDao.updateDownloadProgress(entity.messageId, "downloading", progress)
                         transferNotifier.showDownloadProgress(entity.messageId, chunk.mimeType, progress)
                     }
                 }
                 if (assembledPath != null) {
+                    val nowMs = System.currentTimeMillis()
+                    val nowStr = nowMs.toString()
+                    val ttl = transport.disappear_ttl ?: 0L
+                    val localExpiresAt = if (ttl > 0L) nowMs + ttl else 0L
+
                     val updated = entity.copy(
                         uri = MessageEncryptionManager.encryptLocal(applicationContext, assembledPath).encryptedBlob,
                         downloadState = "done",
                         downloadProgress = 100,
-                        localFilePath = assembledPath.removePrefix("file://")
+                        localFilePath = assembledPath.removePrefix("file://"),
+                        time = nowStr,
+                        expiresAt = localExpiresAt
                     )
                     messageDao.update(updated)
                     val myApp2 = try { applicationContext as app.secure.kyber.MyApp.MyApp } catch (e: Exception) { null }
@@ -884,4 +1396,31 @@ class UnionService : Service() {
     private fun getChunkMutex(mediaId: String): kotlinx.coroutines.sync.Mutex =
         chunkMutexes.getOrPut(mediaId) { kotlinx.coroutines.sync.Mutex() }
 
+    private fun handleChunkRetryRequest(transport: PrivateMessageTransportDto, decryptedPayloadText: String) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val json = JSONObject(decryptedPayloadText)
+                val missingMediaId = json.optString("mediaId")
+                val missingIndices = json.optString("missingIndices", "")
+                val existing = messageDao.getByRemoteMediaId(missingMediaId)
+                if (existing != null && existing.isSent) {
+                    val mediaSender = app.secure.kyber.media.MediaSender(applicationContext, messageDao)
+                    val senderName = Prefs.getName(applicationContext) ?: ""
+                    val isContact = contactRepo.getContact(transport.senderOnion) != null
+                    
+                    // We only want to retry this specific one
+                    mediaSender.retryUpload(
+                        messageId = existing.messageId,
+                        contactOnion = transport.senderOnion,
+                        senderOnion = Prefs.getOnionAddress(applicationContext) ?: "",
+                        senderName = senderName,
+                        isContact = isContact,
+                        missingIndices = missingIndices
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling CHUNK_RETRY_REQUEST", e)
+            }
+        }
+    }
 }

@@ -38,7 +38,8 @@ class WipeService : Service() {
         const val ACTION_CANCEL_WIPE = "app.secure.kyber.ACTION_CANCEL_WIPE"
 
         private const val NOTIFICATION_ID = 8888
-        const val CHANNEL_ID = "kyber_wipe_channel"
+        private const val CHANNEL_ID = "kyber_wipe_channel_v2"
+        private const val CHANNEL_ID_SILENT = "kyber_wipe_channel_silent_v2"
 
         private const val WIPE_COUNTDOWN_SECONDS = 5
     }
@@ -65,7 +66,8 @@ class WipeService : Service() {
         secondsRemaining = WIPE_COUNTDOWN_SECONDS
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildCountdownNotification(secondsRemaining))
+        val channelId = if (isAuthorized) CHANNEL_ID_SILENT else CHANNEL_ID
+        startForeground(NOTIFICATION_ID, buildCountdownNotification(secondsRemaining, channelId))
 
         Prefs.setWipePending(applicationContext, true)
 
@@ -87,7 +89,9 @@ class WipeService : Service() {
         override fun run() {
             if (cancelled) return
 
-            updateNotification(secondsRemaining)
+            if (!isAuthorized) {
+                updateNotification(secondsRemaining)
+            }
 
             if (secondsRemaining <= 0) {
                 performWipe()
@@ -206,29 +210,47 @@ class WipeService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "KyberChat Security",
+                "KyberChat Security (Urgent)",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Security wipe countdown notification"
+                description = "Urgent security wipe countdown"
+                setShowBadge(false)
+                enableVibration(true)
+                setSound(null, null)
+            }
+            
+            val silentChannel = NotificationChannel(
+                CHANNEL_ID_SILENT,
+                "KyberChat Background Cleanup",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Background data cleanup process"
                 setShowBadge(false)
                 enableVibration(false)
+                setSound(null, null)
             }
+
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
+            nm.createNotificationChannel(silentChannel)
         }
     }
 
-    private fun buildCountdownNotification(seconds: Int): Notification {
-        val title = if (isAuthorized) "Wiping KyberChat data..." else "Wiping KyberChat due to unauthorized access"
-        val text = "Wiping in $seconds second${if (seconds != 1) "s" else ""}..."
+    private fun buildCountdownNotification(seconds: Int, channelId: String = CHANNEL_ID): Notification {
+        val title = if (isAuthorized) "Kyber Cleanup" else "Wiping KyberChat due to unauthorized access"
+        val text = if (isAuthorized) 
+            "Secure data cleanup in progress..." 
+        else 
+            "Wiping in $seconds second${if (seconds != 1) "s" else ""}..."
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, channelId)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(R.drawable.security_ic)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (isAuthorized) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(false)
+            .setSilent(true)
 
         // Only add UNDO action for authorized (manual) wipe
         if (isAuthorized) {
@@ -254,7 +276,7 @@ class WipeService : Service() {
     private fun updateNotification(seconds: Int) {
         try {
             val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(NOTIFICATION_ID, buildCountdownNotification(seconds))
+            nm.notify(NOTIFICATION_ID, buildCountdownNotification(seconds, if (isAuthorized) CHANNEL_ID_SILENT else CHANNEL_ID))
         } catch (e: Exception) {
             Log.e(TAG, "updateNotification failed", e)
         }

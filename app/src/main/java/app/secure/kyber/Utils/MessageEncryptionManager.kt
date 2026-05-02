@@ -65,6 +65,26 @@ object MessageEncryptionManager {
         encryptedPayload: String,
         ivBase64: String
     ): String {
+        val decryptedBytes = decryptMessageRaw(
+            context,
+            senderPublicKeyBase64,
+            myKeyFingerprint,
+            Base64.decode(encryptedPayload, Base64.NO_WRAP),
+            ivBase64
+        )
+        return String(decryptedBytes, Charsets.UTF_8)
+    }
+
+    /**
+     * Decrypts raw encrypted bytes from a sender.
+     */
+    suspend fun decryptMessageRaw(
+        context: Context,
+        senderPublicKeyBase64: String,
+        myKeyFingerprint: String,
+        encryptedData: ByteArray,
+        ivBase64: String
+    ): ByteArray {
         val db = AppDb.get(context)
         
         val myKey = findLocalKeyByFingerprint(db, myKeyFingerprint)
@@ -81,8 +101,7 @@ object MessageEncryptionManager {
         val iv = Base64.decode(ivBase64, Base64.NO_WRAP)
         cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(TAG_LENGTH_BIT, iv))
         
-        val decryptedBytes = cipher.doFinal(Base64.decode(encryptedPayload, Base64.NO_WRAP))
-        return String(decryptedBytes, Charsets.UTF_8)
+        return cipher.doFinal(encryptedData)
     }
 
     // --- LOCAL STORAGE ---
@@ -183,6 +202,37 @@ object MessageEncryptionManager {
         }
 
         return encryptedText
+    }
+
+    /**
+     * Raw version of decryptSmart for binary data.
+     */
+    suspend fun decryptSmartRaw(
+        context: Context,
+        encryptedData: ByteArray,
+        senderOnion: String,
+        keyFingerprint: String?,
+        iv: String?
+    ): ByteArray {
+        if (encryptedData.isEmpty()) return byteArrayOf()
+
+        // Remote metadata present?
+        if (!keyFingerprint.isNullOrBlank() && !iv.isNullOrBlank()) {
+            try {
+                val db = AppDb.get(context)
+                val contact = db.contactDao().get(senderOnion)
+                var otherPublicKey = contact?.publicKey ?: context.getSharedPreferences("contact_name_cache", Context.MODE_PRIVATE)
+                    .getString("pending_key_$senderOnion", null)
+
+                if (otherPublicKey != null) {
+                    return decryptMessageRaw(context, otherPublicKey, keyFingerprint, encryptedData, iv)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MessageEncryption", "decryptSmartRaw remote failed", e)
+            }
+        }
+
+        return encryptedData // Fallback if no metadata or decryption failed
     }
 
     private suspend fun findLocalKeyByFingerprint(db: AppDb, fingerprint: String): KeyEntity? {
